@@ -10,14 +10,35 @@
 %%   - Control branches are represented as a list of atom/protocol pairs
 %%   - The atom endP is used to end a protocol because "end" is a reserved keyword.
 -type protocol () :: {'act', atom(), protocol()}
+                   | {'act', atom(), protocol(), 'aft', number(), protocol()}
                    | {'branch', [ {atom(), protocol()} ]}
+                   | {'branch', [ {atom(), protocol()} ], 'aft', number(), protocol()}
+                   | {'aft', number(), protocol()}
+                   | {'set', atom(), protocol()}
+                   | {'delay', time_region(), protocol()}
+                   | {'iff', time_constraint(), protocol()}
+                   | {'iff', time_constraint(), protocol(), 'else', protocol()}
                    | {'assert', atom(), protocol()}
                    | {'require', atom(), protocol()}
                    | {'consume', atom(), protocol()}
                    | {'rec', string(), protocol()}
                    | {'rvar', string()}
-                   | 'endP'.
+                   | 'endP'
+                   | 'error'.
 
+-type time_constraint () :: {number()}
+                          | {'neg', time_constraint()}
+                          | {time_constraint(), 'land', time_constraint()}
+                          % | {'eq', number()}
+                          % | {number(), 'leq', number()}
+                          | {atom(), 'in', time_region()}
+                          | {'tt'}.
+
+-type time_region () :: {'neg', time_region()}
+                      | {time_region(), 'cup', time_region()}
+                      | {'eq',number()}
+                      | {'leq',number()}
+                      | {'tt'}.
 
 % # Examples
 e1() ->
@@ -40,16 +61,6 @@ e6() ->
 
 e7() ->
   {act, r_pwd, {branch, [{ok, {assert, n, endP}},{fail, endP}]}}.
-
-e8() ->
-  {require, n, {act, do_banking, endP}}.
-
-e9() ->
-  {rec, "x", {act, a, {act, b, {rvar, "x"}}}}.
-
-e10() ->
-  {rec, "y", {act, a, {branch, [{l, {act, b, {require, n, endP}}}
-                               ,{r, {rvar, "y"}}]}}}.
 
 bank() ->
   {require, pin, {rec, "t", {branch, [{statement, {act, s_statement, {rvar, "t"}}},
@@ -784,3 +795,46 @@ fact(_, endP) -> endP.
 bramatch([{A,S}],[{A,T}]) -> [fact(S,T)];
 bramatch([{A,S}|B1],[{A,T}|B2]) -> [fact(S,T) | bramatch(B1,B2)];
 bramatch(_,_)-> noP.
+
+
+
+
+%% timeout branch 
+
+e4t() ->
+  {branch, [{l, {act, b, {assert, n, endP}}} ,{r, {act, c, {assert, n, endP}}}], aft, t, endP}.
+
+e5t() ->
+  {branch, [{l, {assert, n, endP}} ,{r, {assert, n, endP}}, {m, {assert, n, endP}}], aft, t, endP}.
+
+e6t() ->
+  {branch, [{l, {require, n, endP}} ,{r, {act, c, endP}}, {m, {assert, n, endP}}], aft, t, endP}.
+
+e7t() ->
+  {act, r_pwd, {branch, [{ok, {assert, n, endP}},{fail, endP}], aft, t, endP}}.
+
+e10t() ->
+  {rec, "y", {act, a, {branch, [{l, {act, b, {require, n, endP}}}
+                               ,{r, {rvar, "y"}}]}, aft, t, endP}}.
+
+bankt() ->
+  {require, pin, {rec, "t", {branch, [{statement, {act, s_statement, {rvar, "t"}}},
+                                    {payment, {assert, pay,{consume, tan,{act, r_details,  {rvar, "t"}}}}},
+                                    {logout, {consume, pin, endP}}], aft, t, endP
+                          }
+                  }
+  }.
+
+pintant() ->
+  {act, r_pin, {branch, [
+                          {ok, {assert, pin, {rec, "r", {consume, pay, ctan()}}}},
+                          {fail, endP}], aft, t, endP
+                }
+  }.
+
+ctant() ->
+   {act, s_id, {act, r_tan, {branch, [{tok, {assert, tan, {rvar, "r"}}},
+                                            {tfail, {rvar, "r"}}], aft, t, endP
+                            }
+              }
+  }.

@@ -208,16 +208,19 @@ parse_function_clause({clause, Line, [_Call, Event | Args], Guards, Body},
           PrettyBody = erl_pp:exprs(Body),
           PrettyEvent = erl_pp:expr(Event),
           PrettyArgs = erl_pp:exprs(Args),
-          #edge{from = FnName, to = NextState, edge_data =
-                                                        #edge_data{
-                                                          event = PrettyEvent,
-                                                          args = PrettyArgs,
-                                                          pattern = Args,
-                                                          guard = PrettyGuards,
-                                                          code = PrettyBody,
-                                                          attributes = Options, 
-                                                          comments = maps:get(Line, Comms, {})}
-                                                      }
+          #edge{
+            from = FnName, 
+            to = NextState, 
+            edge_data =
+              #edge_data{
+                event = PrettyEvent,
+                args = PrettyArgs,
+                pattern = Args,
+                guard = PrettyGuards,
+                code = PrettyBody,
+                attributes = Options, 
+                comments = maps:get(Line, Comms, {})}
+          }
         end,
   map_parse_func(Fun, FnName, Body, gen_statem).
 

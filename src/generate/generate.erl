@@ -13,7 +13,14 @@ end_state() ->
 
 
 init_state(Id, [Edge], Nodes) ->
-  NextState = list_to_atom("state" ++ integer_to_list(Edge#edge.to)),
+  % NextState = list_to_atom("state" ++ integer_to_list(Edge#edge.to)),
+  case maps:get(Edge#edge.to, Nodes) of
+    end_state -> NextState = normal;
+    standard_state -> NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to));
+    choice_state -> NextState = list_to_atom("choice_state" ++ integer_to_list(Edge#edge.to));
+    mixed_choice_state -> NextState = list_to_atom("mixed_choice_state" ++ integer_to_list(Edge#edge.to));
+    _Else -> NextState = list_to_atom("_state" ++ integer_to_list(Edge#edge.to)), io:format("\n[unhandled NextState] init_state, Nodes: ~p.\n", [Nodes])
+  end,
   Comms = lists:map(fun({A, B}) ->  atom_to_list(A) ++ " " ++ 
                       atom_to_list(B) end, Edge#edge.edge_data#edge_data.comments),
   Cl = ?Q(["([]) -> {ok, '@NextState@', {} }"]),
@@ -37,13 +44,20 @@ clause(Event, Act, Var, Trans, NextState, Cons) ->
 
 %% @doc an extra clause for enter state
 enter_clause() -> ?Q(["(enter, _OldState, _Data) -> keep_state_and_data"]).
+enter_clause(Timeout,Q) -> ?Q(["(enter, _OldState, Data) -> {keep_state, Data, [{state_timeout,'@Timeout@','@Q@'}]}"]).
 
 %% @doc generates standard states, i.e. act x
 std_state(Id, [Edge], Nodes) ->
   case maps:get(Edge#edge.to, Nodes) of
     end_state -> NextState = normal,
                  Trans = stop;
-    _Else -> NextState = list_to_atom("state" ++ integer_to_list(Edge#edge.to)),
+    standard_state -> NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to)),
+              Trans = next_state;
+    choice_state -> NextState = list_to_atom("choice_state" ++ integer_to_list(Edge#edge.to)),
+              Trans = next_state;
+    mixed_choice_state -> NextState = list_to_atom("mixed_choice_state" ++ integer_to_list(Edge#edge.to)),
+               Trans = next_state;
+    _Else -> NextState = list_to_atom("_state" ++ integer_to_list(Edge#edge.to)),
              Trans = next_state
   end,
   {Act, Var} = Edge#edge.edge_data#edge_data.event,
@@ -53,7 +67,7 @@ std_state(Id, [Edge], Nodes) ->
   Comms = lists:map(fun({A, B}) ->  atom_to_list(A) ++ " " ++ 
                       atom_to_list(B) end, Cons),
   Clause = clause(Event, Act, merl:var(Var), Trans, NextState, Comms),
-  Name = list_to_atom("state" ++ integer_to_list(Id)),
+  Name = list_to_atom("std_state" ++ integer_to_list(Id)),
   {true, Name, [enter_clause(), Clause]}.
 
 %% @doc generates choice states, i.e. branch
@@ -62,7 +76,13 @@ choice_state(Id, Edges, Nodes) ->
     case maps:get(Edge#edge.to, Nodes) of
       end_state -> NextState = normal,
                    Trans = stop;
-      _Else -> NextState = list_to_atom("state" ++ integer_to_list(Edge#edge.to)),
+      standard_state -> NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to)),
+              Trans = next_state;
+      choice_state -> NextState = list_to_atom("choice_state" ++ integer_to_list(Edge#edge.to)),
+               Trans = next_state;
+      mixed_choice_state -> NextState = list_to_atom("mixed_choice_state" ++ integer_to_list(Edge#edge.to)),
+               Trans = next_state;
+      _Else -> NextState = list_to_atom("_state" ++ integer_to_list(Edge#edge.to)),
                Trans = next_state
     end,
     {Act, Var} = Edge#edge.edge_data#edge_data.event,
@@ -73,7 +93,39 @@ choice_state(Id, Edges, Nodes) ->
     end,
 
   Clauses = [enter_clause()] ++ lists:map(Fun, Edges),
-  Name = list_to_atom("state" ++ integer_to_list(Id)),
+  Name = list_to_atom("choice_state" ++ integer_to_list(Id)),
+  {true, Name, Clauses}.
+
+%% @doc generates mixed-choice states, i.e. branch-after, act-after, if-then-else
+% TODO add mixed-choice state (timeouts)
+mixed_choice_state(Id, Edges, Nodes) ->
+  Fun = fun(Edge) ->
+    case maps:get(Edge#edge.to, Nodes) of 
+      end_state -> NextState = normal,
+                   Trans = stop;
+      standard_state -> NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to)),
+              Trans = next_state;
+      choice_state -> NextState = list_to_atom("choice_state" ++ integer_to_list(Edge#edge.to)),
+               Trans = next_state;
+      mixed_choice_state -> NextState = list_to_atom("mixed_choice_state" ++ integer_to_list(Edge#edge.to)),
+               Trans = next_state;
+      _Else -> NextState = list_to_atom("_state" ++ integer_to_list(Edge#edge.to)),
+               Trans = next_state
+    end,
+    {Act, Var} = Edge#edge.edge_data#edge_data.event,
+    Event = Edge#edge.edge_data#edge_data.event_type,
+    Cons = Edge#edge.edge_data#edge_data.comments,
+    Comms = lists:map(fun({A, B}) -> atom_to_list(A) ++ " " ++ atom_to_list(B) end, Cons),
+    clause(Event, Act, merl:var(Var), Trans, NextState, Comms)
+  end,
+  
+%% TODO find way to extract the timeout and destination from Edges?
+%% ! maybe structure choices so that thye have to be only one pair of mixed choices? or maybe represent them as a list of substates
+  Timeout = 0,
+  Q = 0,
+  
+  Clauses = [enter_clause(Timeout,Q)] ++ lists:map(Fun, Edges),
+  Name = list_to_atom("mixed_state" ++ integer_to_list(Id)),
   {true, Name, Clauses}.
 
 %% @doc calls the appropriate function for choice and standard states
@@ -84,6 +136,7 @@ state_funs(K, V, Edges, Nodes) ->
     init_state -> init_state(K, Es, Nodes);
     end_state -> end_state();
     choice_state -> choice_state(K, Es, Nodes);
+    mixed_choice_state -> mixed_choice_state(K, Es, Nodes);
     standard_state -> std_state(K, Es, Nodes)
   end.
 
@@ -101,12 +154,14 @@ cb_fun(Data, NameMacro) ->
 gen_module(FileName, P) ->
   Server = merl:var(list_to_atom("?SERVER")),
   Module = merl:var(list_to_atom("?MODULE")),
-  Start = ?Q(["() -> ",
-           "gen_statem:start_link({local, _@Server}, _@Module, [], []) "]),
-  Cb = merl:quote(["() -> ",
-           "[state_functions, state_enter]" ]),
-  Stop = merl:quote(["() -> ",
-            "gen_statem:stop(_@Server)"]),
+
+  Start = ?Q(["() -> ", "gen_statem:start_link({local, _@Server}, _@Module, [], []) "]),
+
+  % Cb = merl:quote(["() -> ", "[state_functions, state_enter]" ]),
+  Cb = merl:quote(["() -> ", "[state_functions, state_enter]" ]),
+
+  Stop = merl:quote(["() -> ", "gen_statem:stop(_@Server)"]),
+
   % Init = merl:quote(["([]) ->
   %              {ok, state1, {}}
   %           "]),
@@ -134,6 +189,6 @@ gen_module(FileName, P) ->
 gen(P, FileName) ->
     ModuleName = list_to_atom(lists:last(lists:droplast(string:tokens(FileName, "/.")))),
     Forms = gen_module(ModuleName, P),
-    file:write_file(FileName,
+    file:write_file(string:concat("tool_output/", FileName),
                     erl_prettypr:format(erl_syntax:form_list(Forms),
                                         [{paper,160},{ribbon,80}])).
