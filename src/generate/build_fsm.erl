@@ -7,13 +7,24 @@
 
 standard_state() -> standard_state.
 choice_state() -> choice_state.
-mixed_choice_state() -> mixed_choice_state.
+% mixed_choice_state() -> mixed_choice_state.
 end_state() -> end_state.
+
+recv_after_state() -> recv_after_state.
+branch_after_state() -> branch_after_state.
+send_after_state() -> send_after_state.
+% after_recv_state() -> after_recv_state.
+% after_branch_state() -> after_branch_state.
+% after_send_state() -> after_send_state.
+after_state() -> after_state.
+unknown_state() -> unknown_state.
+
+
 %% @doc wrapper function that initializes the main to_fsm function
 %% takes a protocol and returns a list of transitions/edges and nodes/states
 -spec to_fsm(interleave:protocol()) -> {list(), map()}.
 to_fsm(P) ->
-  Edge = #edge{from = 0, to = 1, edge_data = #edge_data{event = init, event_type = init}},
+  Edge = #edge{from = 0, to = 1, edge_data = #edge_data{event = init, event_type = init}, is_silent = false},
   {Edges, Nodes, _, _, _, _, _} = to_fsm(P, 
                                       [Edge], 
                                       maps:put(0, init_state, maps:new()), 
@@ -32,86 +43,142 @@ args(Param) ->
   if
     Recv =:= Str ->
       Event = cast,
+      TransType = recv,
       Var = lists:last(string:split(Str, "r_")),
       Act = list_to_atom("receive_"++ Var);
     Send =:= Str ->
       Event = internal,
+      TransType = send,
       Var = lists:last(string:split(Str, "s_")),
       Act = list_to_atom("send_" ++ Var);
     true ->
       Event = cast,
+      TransType = unknown,
       Var = Str,
       Act = list_to_atom("act_" ++ Var)
    end,
-   {Act, string:titlecase(Var), Event}.
+   {Act, string:titlecase(Var), Event, TransType}.
 
 %% @doc Checks whether there are any constraints; adds them to the trans record
 %% calls args.
 -spec data(atom()) -> {atom(), string(), atom()}.
 data(Param) ->
-  {Act, Var, Event} = args(Param),
-  #edge_data{event = {Act, list_to_atom(Var)}, event_type = Event}.
+  {Act, Var, Event, TransType} = args(Param),
+  % #edge_data{event = {Act, list_to_atom(Var)}, event_type = Event, guard = tt}.
+  #edge_data{event = {Act, list_to_atom(Var)}, event_type = Event, trans_type = TransType}.
 
 %% @doc Checks whether there are any constraints; adds them to the trans record
 %% calls args.
--spec data(atom(), interleave:time_constraint()) -> {atom(), string(), atom()}.
-data(Param, Constraint) ->
-  {Act, Var, Event} = args(Param),
-  #edge_data{event = {Act, list_to_atom(Var)}, event_type = Event, guard = Constraint}.
+% -spec data(atom(), interleave:time_constraint()) -> {atom(), string(), atom()}.
+% data(Param, _Constraint) ->
+%   {Act, Var, Event} = args(Param),
+%   % #edge_data{event = {Act, list_to_atom(Var)}, event_type = Event, guard = Constraint}.
+%   #edge_data{event = {Act, list_to_atom(Var)}, event_type = Event}.
 
 %% @doc transform the protocol to a list of transitions between states and a
 %% map of nodes, easier to work with in generate
 -spec to_fsm(interleave:protocol(), list(), map(), map(), integer(), integer(),
   integer(), map()) -> {list(), map(), map(), integer(), integer(), integer(), map()}. % ! added clocks
+
+
 to_fsm({act, Act, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
     Index = PrevIndex + 1,
-    Edge = #edge{from = PrevVis, to = Index, edge_data = data(Act)},
+    Edge = #edge{from = PrevVis, to = Index, edge_data = data(Act), is_silent = false},
     Edges1 = Edges ++ [Edge],
     Nodes1 = maps:put(PrevVis, standard_state(), Nodes),
     to_fsm(P, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks);
 
+
+
+to_fsm({aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
+    Index = PrevIndex, % +1,
+    %% PrevVis contains index of node to transition from
+    Edge = #edge{from = PrevVis, to = Index, edge_data = #edge_data{timeout = Timeout}, is_silent = true},
+    Edges1 = Edges ++ [Edge],
+    %% TODO figure out why we do the below:
+    % Nodes1 = maps:put(PrevVis, after_state(), Nodes),
+    % io:format("\n[{aft, Timeout, Q}]:...\n\tEdges: ~p\n\tNodes: ~p\n\tPrevIndex: ~p\n\tPrevVis: ~p\n\tEndIndex: ~p.\n", [Edges, Nodes, PrevIndex, PrevVis, EndIndex]),
+    Nodes1 = maps:put(PrevIndex, after_state(), Nodes),
+    % io:format("\n[{aft, Timeout, Q}], Nodes1: ~p.\n", [Nodes1]),
+    {Edges2, Nodes2, RecMap2, Index2, Index2, EndIndex2, Clocks2} = to_fsm(Q, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks),
+    %% reapply after_state
+    % Nodes3 = maps:put(PrevIndex, after_state(), Nodes2),
+    % {Edges2, Nodes3, RecMap2, Index2, Index2, EndIndex2, Clocks2};
+    {Edges2, Nodes2, RecMap2, Index2, Index2, EndIndex2, Clocks2};
+
+
+
 to_fsm({act, Act, P, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
-    % Index = PrevIndex + 1,
     % Edge = #edge{from = PrevVis, to = Index, edge_data = data(Act)},
     % Edges1 = Edges ++ [Edge],
     %
-    %% check what Q is
-    % TODO add Timeout guard to immediate action within Q and inverse to {Act, P}
-    Act1 = {Act, P, {leq,Timeout}},
-    case Q of
-      {act, Act_Q, Next_Q} ->
-        Choice = [Act1,{Act_Q, Next_Q, {neg,{leq,Timeout}}}],
-        to_fsm({mixed_choice, Choice}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks);
-      
-      {act, Act_Q, Next_Q, aft, Inner_Timeout, Inner_Q} ->
-        Choice = [Act1,{Act_Q, Next_Q, {neg,{leq,Timeout}}}],
-        %% send to {branch} to unfold any timeouts
-        to_fsm({branch, Choice, aft, Inner_Timeout, Inner_Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks);
-      
-      {branch, Branches_Q} ->
-        Branches_Q1 = lists:map(fun(Elem) -> 
-          case Elem of
-            {Branch_Msg, Branch_P} -> {Branch_Msg, Branch_P, {neg,{leq,Timeout}}};
-            _Else -> io:format("\n[unhandled Branches_Q] act aft:\n\tact: ~p,\n\tQ: ~p,\n\tElem: ~p.\n", [Act1,Branches_Q,Elem])
-          end end, Branches_Q),
-        Choice = [Act1] ++ Branches_Q1,
-        to_fsm({mixed_choice, Choice}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks);
+    Index = PrevIndex + 1,
+    EdgeData = data(Act),
+    case EdgeData#edge_data.trans_type of
+      %% if recv, add timeout to silent transition between states ?
+      recv -> 
+              Edge1 = #edge{from = PrevVis, to = Index, edge_data = EdgeData, is_silent = false},
+              Edges1 = Edges ++ [Edge1],
+              Nodes1 = maps:put(PrevVis, recv_after_state(), Nodes),
+              {Edges2, Nodes2, RecMap2, PrevIndex2, _PrevVis2, EndIndex2, Clocks2} = to_fsm(P, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks),
+              %% still pass on the current nodes index in PrevVis to after, to point back to this
+              to_fsm({aft, Timeout, Q}, Edges2, Nodes2, RecMap2, PrevIndex2, Index, EndIndex2, Clocks2);
 
-      {branch, Branches_Q, aft, Inner_Timeout, Inner_Q} ->
-        Branches_Q1 = lists:map(fun(Elem) -> 
-          case Elem of
-            {Branch_Msg, Branch_P} -> {Branch_Msg, Branch_P, {neg,{leq,Timeout}}};
-            _Else -> io:format("\n[unhandled Branches_Q aft] act aft:\n\tact: ~p,\n\tQ: ~p,\n\tElem: ~p.\n", [Act1,Branches_Q,Elem])
-          end end, Branches_Q),
-        Choice = [Act1] ++ Branches_Q1,
-        %% send to {branch} to unfold any timeouts
-        to_fsm({branch, Choice, aft, Inner_Timeout, Inner_Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks);
-    
-     _Else ->
-        %% skip Q, only handle P
-        io:format("\n[unhandled Q] act aft:\n\tact: ~p,\n\tQ: ~p.\n", [{Act, P},Q]),
-        to_fsm(P, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks)
+      send ->
+              %% TODO implement for send
+              io:format("[unhandled send] act aft: ~p.", [[{act,Act,P},{aft,Timeout,Q}]]),
+              %% TEMP: act as normal
+              Edge = #edge{from = PrevVis, to = Index, edge_data = data(Act), is_silent = false},
+              Edges1 = Edges ++ [Edge],
+              Nodes1 = maps:put(PrevVis, send_after_state(), Nodes),
+              to_fsm(P, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks);
+
+      _Else ->
+              io:format("[unhandled trans_type] act aft: ~p.", [[{act,Act,P},{aft,Timeout,Q}]]),
+              %% TEMP: act as normal
+              Edge = #edge{from = PrevVis, to = Index, edge_data = data(Act), is_silent = false},
+              Edges1 = Edges ++ [Edge],
+              Nodes1 = maps:put(PrevVis, unknown_state(), Nodes),
+              to_fsm(P, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks)
     end;
+
+    % %% check what Q is
+    % % TODO add Timeout guard to immediate action within Q and inverse to {Act, P}
+    % Act1 = {Act, P, {leq,Timeout}},
+    % case Q of
+    %   {act, Act_Q, Next_Q} ->
+    %     Choice = [Act1,{Act_Q, Next_Q, {neg,{leq,Timeout}}}],
+    %     to_fsm({mixed_choice, Choice}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks);
+      
+    %   {act, Act_Q, Next_Q, aft, Inner_Timeout, Inner_Q} ->
+    %     Choice = [Act1,{Act_Q, Next_Q, {neg,{leq,Timeout}}}],
+    %     %% send to {branch} to unfold any timeouts
+    %     to_fsm({branch, Choice, aft, Inner_Timeout, Inner_Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks);
+      
+    %   {branch, Branches_Q} ->
+    %     Branches_Q1 = lists:map(fun(Elem) -> 
+    %       case Elem of
+    %         {Branch_Msg, Branch_P} -> {Branch_Msg, Branch_P, {neg,{leq,Timeout}}};
+    %         _Else -> io:format("\n[unhandled Branches_Q] act aft:\n\tact: ~p,\n\tQ: ~p,\n\tElem: ~p.\n", [Act1,Branches_Q,Elem])
+    %       end end, Branches_Q),
+    %     Choice = [Act1] ++ Branches_Q1,
+    %     to_fsm({mixed_choice, Choice}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks);
+
+    %   {branch, Branches_Q, aft, Inner_Timeout, Inner_Q} ->
+    %     Branches_Q1 = lists:map(fun(Elem) -> 
+    %       case Elem of
+    %         {Branch_Msg, Branch_P} -> {Branch_Msg, Branch_P, {neg,{leq,Timeout}}};
+    %         _Else -> io:format("\n[unhandled Branches_Q aft] act aft:\n\tact: ~p,\n\tQ: ~p,\n\tElem: ~p.\n", [Act1,Branches_Q,Elem])
+    %       end end, Branches_Q),
+    %     Choice = [Act1] ++ Branches_Q1,
+    %     %% send to {branch} to unfold any timeouts
+    %     to_fsm({branch, Choice, aft, Inner_Timeout, Inner_Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks);
+    
+    %  _Else ->
+    %     %% skip Q, only handle P
+    %     io:format("\n[unhandled Q] act aft:\n\tact: ~p,\n\tQ: ~p.\n", [{Act, P},Q]),
+    %     to_fsm(P, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks)
+    % end;
     %
     % Choice = [{Act, P}, Q], 
     % Nodes1 = maps:put(PrevVis, choice_state(), Nodes),
@@ -125,25 +192,50 @@ to_fsm({act, Act, P, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis,
 to_fsm({branch, Branches}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
     Index = PrevIndex + 1,
     Nodes1 = maps:put(PrevVis, choice_state(), Nodes),
-    case lists:last(Branches) of
-      {_, _} -> 
+    % case lists:last(Branches) of
+    %   {_, _} -> 
         lists:foldl(fun({Label, P1}, {E, N, R, I, _, EI, CI}) ->
           I1 = I + 1,
-          Edge = #edge{from = PrevVis, to = I1, edge_data = data(Label)},
+          Edge = #edge{from = PrevVis, to = I1, edge_data = data(Label), is_silent = false},
           E1 = E ++ [Edge],
           to_fsm(P1, E1, N, R, I1, I1, EI, CI) end,
           {Edges, Nodes1, RecMap, PrevIndex, Index, EndIndex, Clocks}, Branches);
-      {_, _, _} ->
-        lists:foldl(fun({Label, P1, Constraint}, {E, N, R, I, _, EI, CI}) ->
-          I1 = I + 1,
-          EdgeData = data(Label, Constraint),
-          Edge = #edge{from = PrevVis, to = I1, edge_data = EdgeData},
-          E1 = E ++ [Edge],
-          to_fsm(P1, E1, N, R, I1, I1, EI, CI) end,
-          {Edges, Nodes1, RecMap, PrevIndex, Index, EndIndex, Clocks}, Branches)
-    end;
+    %   {_, _, _} ->
+    %     lists:foldl(fun({Label, P1, Constraint}, {E, N, R, I, _, EI, CI}) ->
+    %       I1 = I + 1,
+    %       EdgeData = data(Label, Constraint),
+    %       Edge = #edge{from = PrevVis, to = I1, edge_data = EdgeData, is_silent = false},
+    %       E1 = E ++ [Edge],
+    %       to_fsm(P1, E1, N, R, I1, I1, EI, CI) end,
+    %       {Edges, Nodes1, RecMap, PrevIndex, Index, EndIndex, Clocks}, Branches)
+    % end;
 
 to_fsm({branch, Branches, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
+    Index = PrevIndex + 1,
+    % Nodes1 = maps:put(PrevVis, choice_state(), Nodes),
+    Nodes1 = maps:put(PrevVis, branch_after_state(), Nodes),
+    %% fully explore the other branches first
+    {Edges2, Nodes2, RecMap2, PrevIndex2, _PrevVis2, EndIndex2, Clocks2} = lists:foldl(
+      fun({Label, P1}, {E, N, R, I, _, EI, CI}) ->
+        I1 = I + 1,
+        Edge = #edge{from = PrevVis, to = I1, edge_data = data(Label), is_silent = false},
+        E1 = E ++ [Edge],
+        to_fsm(P1, E1, N, R, I1, I1, EI, CI) end,
+        {Edges, Nodes1, RecMap, PrevIndex, Index, EndIndex, Clocks}, 
+      Branches
+    ),
+    %% still pass on the current nodes index in PrevVis to after, to point back to this
+    {Edges3, Nodes3, RecMap3, PrevIndex3, PrevVis3, EndIndex3, Clocks3} = to_fsm({aft, Timeout, Q}, Edges2, Nodes2, RecMap2, PrevIndex2, PrevIndex, EndIndex2, Clocks2),
+    io:format("\n[{branch, Branches, aft, Timeout, Q}]:...\n\tEdges: ~p;\n\tNodes: ~p;\n\tPrevIndex: ~p;\n\tPrevVis: ~p;\n\tEndIndex: ~p.\n", [Edges3, Nodes3, PrevIndex3, PrevVis3, EndIndex3]),
+    {Edges3, Nodes3, RecMap3, PrevIndex3, PrevVis3, EndIndex3, Clocks3};
+    %
+    %
+    %
+    %
+    %
+    %
+    %
+    %
     % Index = PrevIndex + 1,
     % Nodes1 = maps:put(PrevVis, choice_state(), Nodes),
     % Choice = Branches ++ [Q], 
@@ -157,53 +249,53 @@ to_fsm({branch, Branches, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, Pre
     %% check what Q is
     % TODO add Timeout guard to immediate action within Q and inverse to Branches
     %% add timeout constraint to all current branches
-    Branches1 = lists:map(fun(Elem) -> 
-      case Elem of
-        {Branch_Msg, Branch_P} -> {Branch_Msg, Branch_P, {leq,Timeout}};
-        % ! TODO unsure on the below case, Constraint?
-        {Branch_Msg, Branch_P, Branch_Constraint} -> {Branch_Msg, Branch_P, {leq,Timeout+Branch_Constraint}};
-        _Else -> io:format("\n[unhandled Branches] branch aft:\n\tbranches: ~p,\n\tQ: ~p,\n\tElem: ~p.\n", [Branches,Q,Elem])
-      end end, Branches),
+    % Branches1 = lists:map(fun(Elem) -> 
+    %   case Elem of
+    %     {Branch_Msg, Branch_P} -> {Branch_Msg, Branch_P, {leq,Timeout}};
+    %     % ! TODO unsure on the below case, Constraint?
+    %     {Branch_Msg, Branch_P, Branch_Constraint} -> {Branch_Msg, Branch_P, {leq,Timeout+Branch_Constraint}};
+    %     _Else -> io:format("\n[unhandled Branches] branch aft:\n\tbranches: ~p,\n\tQ: ~p,\n\tElem: ~p.\n", [Branches,Q,Elem])
+    %   end end, Branches),
 
-    case Q of
-      {act, Act_Q, Next_Q} ->
-        Choice = Branches1 ++ [{Act_Q,Next_Q, {neg,{leq,Timeout}}}],
-        to_fsm({mixed_choice, Choice}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks);
+    % case Q of
+    %   {act, Act_Q, Next_Q} ->
+    %     Choice = Branches1 ++ [{Act_Q,Next_Q, {neg,{leq,Timeout}}}],
+    %     to_fsm({mixed_choice, Choice}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks);
 
-      {act, Act_Q, Next_Q, aft, Inner_Timeout, Inner_Q} ->
-        % ! TODO unsure on the below case, Constraint?
-        Choice = Branches1 ++ [{Act_Q, Next_Q, {neg,{leq,Timeout}}}],
-        %% send to {branch} to unfold any timeouts
-        to_fsm({branch, Choice, aft, Inner_Timeout, Inner_Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks);
+    %   {act, Act_Q, Next_Q, aft, Inner_Timeout, Inner_Q} ->
+    %     % ! TODO unsure on the below case, Constraint?
+    %     Choice = Branches1 ++ [{Act_Q, Next_Q, {neg,{leq,Timeout}}}],
+    %     %% send to {branch} to unfold any timeouts
+    %     to_fsm({branch, Choice, aft, Inner_Timeout, Inner_Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks);
       
-      {branch, Branches_Q} ->
-        Branches_Q1 = lists:map(fun(Elem) -> 
-          case Elem of
-            {Branch_Msg, Branch_P} -> {Branch_Msg, Branch_P, {leq,Timeout}};
-            % ! TODO unsure on the below case, Constraint?
-            {Branch_Msg, Branch_P, Branch_Constraint} -> {Branch_Msg, Branch_P, {leq,Timeout+Branch_Constraint}};
-            _Else -> io:format("\n[unhandled Branches_Q] branch aft:\n\tbranches: ~p,\n\tElem: ~p.\n", [Branches_Q,Elem])
-          end end, Branches_Q),
-        Choice = Branches1 ++ Branches_Q1,
-        to_fsm({mixed_choice, Choice}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks);
-      _Else ->
-        %% skip Q, only handle Branches
-        io:format("\n[unhandled Q] branch aft:\n\tbranches: ~p,\n\tQ: ~p.\n", [Branches1,Q]),
-        to_fsm(Branches1, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks)
-    end;
+    %   {branch, Branches_Q} ->
+    %     Branches_Q1 = lists:map(fun(Elem) -> 
+    %       case Elem of
+    %         {Branch_Msg, Branch_P} -> {Branch_Msg, Branch_P, {leq,Timeout}};
+    %         % ! TODO unsure on the below case, Constraint?
+    %         {Branch_Msg, Branch_P, Branch_Constraint} -> {Branch_Msg, Branch_P, {leq,Timeout+Branch_Constraint}};
+    %         _Else -> io:format("\n[unhandled Branches_Q] branch aft:\n\tbranches: ~p,\n\tElem: ~p.\n", [Branches_Q,Elem])
+    %       end end, Branches_Q),
+    %     Choice = Branches1 ++ Branches_Q1,
+    %     to_fsm({mixed_choice, Choice}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks);
+    %   _Else ->
+    %     %% skip Q, only handle Branches
+    %     io:format("\n[unhandled Q] branch aft:\n\tbranches: ~p,\n\tQ: ~p.\n", [Branches1,Q]),
+    %     to_fsm(Branches1, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks)
+    % end;
 
-to_fsm({mixed_choice, Choice}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
-    io:format("\n[info] mixed-choice: ~p.\n", [Choice]),
-    Index = PrevIndex + 1,
-    Nodes1 = maps:put(PrevVis, mixed_choice_state(), Nodes),
-    lists:foldl(fun({Label, P1, Constraint}, {E, N, R, I, _, EI, CI}) ->
-      io:format("\n[info] mc.foldl: ~p\n\t::~p.\n", [{Label, P1, Constraint},{E, N, R, I, EI, CI}]),
-      I1 = I + 1,
-      EdgeData = data(Label, Constraint),
-      Edge = #edge{from = PrevVis, to = I1, edge_data = EdgeData},
-      E1 = E ++ [Edge],
-      to_fsm(P1, E1, N, R, I1, I1, EI, CI) end,
-      {Edges, Nodes1, RecMap, PrevIndex, Index, EndIndex, Clocks}, Choice);
+% to_fsm({mixed_choice, Choice}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
+%     io:format("\n[info] mixed-choice: ~p.\n", [Choice]),
+%     Index = PrevIndex + 1,
+%     Nodes1 = maps:put(PrevVis, mixed_choice_state(), Nodes),
+%     lists:foldl(fun({Label, P1, Constraint}, {E, N, R, I, _, EI, CI}) ->
+%       io:format("\n[info] mc.foldl: ~p\n\t::~p.\n", [{Label, P1, Constraint},{E, N, R, I, EI, CI}]),
+%       I1 = I + 1,
+%       EdgeData = data(Label, Constraint),
+%       Edge = #edge{from = PrevVis, to = I1, edge_data = EdgeData},
+%       E1 = E ++ [Edge],
+%       to_fsm(P1, E1, N, R, I1, I1, EI, CI) end,
+%       {Edges, Nodes1, RecMap, PrevIndex, Index, EndIndex, Clocks}, Choice);
 
 to_fsm({rec, BoundVar, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
     RecMap1 = maps:put(BoundVar, PrevVis, RecMap),

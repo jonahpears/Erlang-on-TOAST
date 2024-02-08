@@ -18,8 +18,21 @@ init_state(Id, [Edge], Nodes) ->
     end_state -> NextState = normal;
     standard_state -> NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to));
     choice_state -> NextState = list_to_atom("choice_state" ++ integer_to_list(Edge#edge.to));
-    mixed_choice_state -> NextState = list_to_atom("mixed_choice_state" ++ integer_to_list(Edge#edge.to));
-    _Else -> NextState = list_to_atom("_state" ++ integer_to_list(Edge#edge.to)), io:format("\n[unhandled NextState] init_state, Nodes: ~p.\n", [Nodes])
+    % mixed_choice_state -> NextState = list_to_atom("mixed_choice_state" ++ integer_to_list(Edge#edge.to));
+    recv_after_state ->   NextState = list_to_atom("recv_after_state" ++ integer_to_list(Edge#edge.to)), 
+                          io:format("\n[init_state -> recv_after_state] Nodes: ~p.\n", [Nodes]);
+    branch_after_state -> NextState = list_to_atom("branch_after_state" ++ integer_to_list(Edge#edge.to)), 
+                          io:format("\n[init_state -> branch_after_state] Nodes: ~p.\n", [Nodes]);
+    send_after_state ->   NextState = list_to_atom("send_after_state" ++ integer_to_list(Edge#edge.to)), 
+                          io:format("\n[init_state -> send_after_state] Nodes: ~p.\n", [Nodes]);
+    % after_recv_state ->   NextState = list_to_atom("after_recv_state" ++ integer_to_list(Edge#edge.to)), 
+    %                       io:format("\n[init_state -> after_recv_state] Nodes: ~p.\n", [Nodes]);
+    % after_send_state ->   NextState = list_to_atom("after_send_state" ++ integer_to_list(Edge#edge.to)), 
+    %                       io:format("\n[init_state -> after_send_state] Nodes: ~p.\n", [Nodes]);
+    after_state ->        NextState = list_to_atom("after_state" ++ integer_to_list(Edge#edge.to)), 
+                          io:format("\n[init_state -> after_state] Nodes: ~p.\n", [Nodes]);
+    _Else -> NextState = list_to_atom("_state" ++ integer_to_list(Edge#edge.to)), 
+             io:format("\n[unhandled NextState] init_state, Nodes: ~p.\n", [Nodes])
   end,
   Comms = lists:map(fun({A, B}) ->  atom_to_list(A) ++ " " ++ 
                       atom_to_list(B) end, Edge#edge.edge_data#edge_data.comments),
@@ -42,21 +55,51 @@ clause(Event, Act, Var, Trans, NextState, Cons) ->
     true -> Clause
   end.
 
+timeout_clause(TimeoutState, Cons) -> 
+% timeout_clause(Cons) -> 
+    % Clause = ?Q(["(state_timeout, TimeoutState, Data) ->", " {next_state, TimeoutState, Data}"]),
+    Clause = ?Q(["(state_timeout, '@TimeoutState@', Data) ->", " {next_state, '@TimeoutState@', Data}"]),
+    if
+      length(Cons) > 0 -> erl_syntax:add_precomments(lists:map(fun(Com) -> 
+                                     erl_syntax:comment([Com]) end, Cons), Clause);
+      true -> Clause
+    end.
+
 %% @doc an extra clause for enter state
 enter_clause() -> ?Q(["(enter, _OldState, _Data) -> keep_state_and_data"]).
-enter_clause(Timeout,Q) -> ?Q(["(enter, _OldState, Data) -> {keep_state, Data, [{state_timeout,'@Timeout@','@Q@'}]}"]).
+enter_clause(Timeout,State) -> ?Q(["(enter, _OldState, Data) ->", "{keep_state, Data, [{state_timeout, '@Timeout@', '@State@'}]}"]).
+% enter_clause(Timeout,State) -> ?Q(["(enter, _OldState, Data) ->", "{keep_state, Data, [{state_timeout, ", Timeout, ", ", State, "}]}"]).
+% enter_clause(Timeout,State) -> ?Q(["(enter, _OldState, Data) -> {keep_state, Data, [{state_timeout,1000,init}]}"]).
 
 %% @doc generates standard states, i.e. act x
 std_state(Id, [Edge], Nodes) ->
   case maps:get(Edge#edge.to, Nodes) of
-    end_state -> NextState = normal,
-                 Trans = stop;
-    standard_state -> NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to)),
-              Trans = next_state;
-    choice_state -> NextState = list_to_atom("choice_state" ++ integer_to_list(Edge#edge.to)),
-              Trans = next_state;
-    mixed_choice_state -> NextState = list_to_atom("mixed_choice_state" ++ integer_to_list(Edge#edge.to)),
-               Trans = next_state;
+    end_state ->          NextState = normal,
+                          Trans = stop;
+    standard_state ->     NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to)),
+                          Trans = next_state;
+    choice_state ->       NextState = list_to_atom("choice_state" ++ integer_to_list(Edge#edge.to)),
+                          Trans = next_state;
+    % mixed_choice_state -> NextState = list_to_atom("mixed_choice_state" ++ integer_to_list(Edge#edge.to)),
+    %            Trans = next_state;
+    recv_after_state ->   NextState = list_to_atom("recv_after_state" ++ integer_to_list(Edge#edge.to)), 
+                          Trans = next_state,
+                          io:format("\n[std_state -> recv_after_state] Nodes: ~p.\n", [Nodes]);
+    branch_after_state -> NextState = list_to_atom("branch_after_state" ++ integer_to_list(Edge#edge.to)), 
+                          Trans = next_state,
+                          io:format("\n[std_state -> branch_after_state] Nodes: ~p.\n", [Nodes]);
+    send_after_state ->   NextState = list_to_atom("send_after_state" ++ integer_to_list(Edge#edge.to)), 
+                          Trans = next_state,
+                          io:format("\n[std_state -> send_after_state] Nodes: ~p.\n", [Nodes]);
+    % after_recv_state ->   NextState = list_to_atom("after_recv_state" ++ integer_to_list(Edge#edge.to)), 
+    %                       Trans = next_state,
+    %                       io:format("\n[std_state -> after_recv_state] Nodes: ~p.\n", [Nodes]);
+    % after_send_state ->   NextState = list_to_atom("after_send_state" ++ integer_to_list(Edge#edge.to)), 
+    %                       Trans = next_state,
+    %                       io:format("\n[std_state -> after_send_state] Nodes: ~p.\n", [Nodes]);
+    after_state ->        NextState = list_to_atom("after_state" ++ integer_to_list(Edge#edge.to)), 
+                          Trans = next_state,
+                          io:format("\n[std_state -> after_state] Nodes: ~p.\n", [Nodes]);
     _Else -> NextState = list_to_atom("_state" ++ integer_to_list(Edge#edge.to)),
              Trans = next_state
   end,
@@ -80,8 +123,26 @@ choice_state(Id, Edges, Nodes) ->
               Trans = next_state;
       choice_state -> NextState = list_to_atom("choice_state" ++ integer_to_list(Edge#edge.to)),
                Trans = next_state;
-      mixed_choice_state -> NextState = list_to_atom("mixed_choice_state" ++ integer_to_list(Edge#edge.to)),
-               Trans = next_state;
+      % mixed_choice_state -> NextState = list_to_atom("mixed_choice_state" ++ integer_to_list(Edge#edge.to)),
+      %          Trans = next_state;
+      recv_after_state ->   NextState = list_to_atom("recv_after_state" ++ integer_to_list(Edge#edge.to)), 
+                            Trans = next_state,
+                            io:format("\n[choice_state -> recv_after_state] Nodes: ~p.\n", [Nodes]);
+      branch_after_state -> NextState = list_to_atom("branch_after_state" ++ integer_to_list(Edge#edge.to)), 
+                            Trans = next_state,
+                            io:format("\n[choice_state -> branch_after_state] Nodes: ~p.\n", [Nodes]);
+      send_after_state ->   NextState = list_to_atom("send_after_state" ++ integer_to_list(Edge#edge.to)), 
+                            Trans = next_state,
+                            io:format("\n[choice_state -> send_after_state] Nodes: ~p.\n", [Nodes]);
+      % after_recv_state ->   NextState = list_to_atom("after_recv_state" ++ integer_to_list(Edge#edge.to)), 
+      %                       Trans = next_state,
+      %                       io:format("\n[choice_state -> after_recv_state] Nodes: ~p.\n", [Nodes]);
+      % after_send_state ->   NextState = list_to_atom("after_send_state" ++ integer_to_list(Edge#edge.to)), 
+      %                       Trans = next_state,
+      %                       io:format("\n[choice_state -> after_send_state] Nodes: ~p.\n", [Nodes]);
+      after_state ->        NextState = list_to_atom("after_state" ++ integer_to_list(Edge#edge.to)), 
+                            Trans = next_state,
+                            io:format("\n[choice_state -> after_state] Nodes: ~p.\n", [Nodes]);
       _Else -> NextState = list_to_atom("_state" ++ integer_to_list(Edge#edge.to)),
                Trans = next_state
     end,
@@ -96,48 +157,200 @@ choice_state(Id, Edges, Nodes) ->
   Name = list_to_atom("choice_state" ++ integer_to_list(Id)),
   {true, Name, Clauses}.
 
-%% @doc generates mixed-choice states, i.e. branch-after, act-after, if-then-else
-% TODO add mixed-choice state (timeouts)
-mixed_choice_state(Id, Edges, Nodes) ->
-  Fun = fun(Edge) ->
-    case maps:get(Edge#edge.to, Nodes) of 
-      end_state -> NextState = normal,
-                   Trans = stop;
-      standard_state -> NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to)),
-              Trans = next_state;
-      choice_state -> NextState = list_to_atom("choice_state" ++ integer_to_list(Edge#edge.to)),
-               Trans = next_state;
-      mixed_choice_state -> NextState = list_to_atom("mixed_choice_state" ++ integer_to_list(Edge#edge.to)),
-               Trans = next_state;
-      _Else -> NextState = list_to_atom("_state" ++ integer_to_list(Edge#edge.to)),
-               Trans = next_state
-    end,
-    {Act, Var} = Edge#edge.edge_data#edge_data.event,
-    Event = Edge#edge.edge_data#edge_data.event_type,
-    Cons = Edge#edge.edge_data#edge_data.comments,
-    Comms = lists:map(fun({A, B}) -> atom_to_list(A) ++ " " ++ atom_to_list(B) end, Cons),
-    clause(Event, Act, merl:var(Var), Trans, NextState, Comms)
+recv_after_state(Id, [Edge], Nodes) -> 0.
+
+
+branch_after_state(Id, Edges, Nodes) -> 
+  Name = list_to_atom("branch_after_state" ++ integer_to_list(Id)),
+
+  TimeoutEdge = lists:last(lists:filter(fun(Elem) -> Elem#edge.is_silent end, Edges)),
+  Timeout = TimeoutEdge#edge.edge_data#edge_data.timeout,
+
+  case maps:get(TimeoutEdge#edge.to, Nodes) of
+      end_state ->          Q_NextState = normal;
+                            % Q_Trans = stop;
+
+      standard_state ->     Q_NextState = list_to_atom("std_state" ++ integer_to_list(TimeoutEdge#edge.to));
+                            % Q_Trans = next_state;
+
+      choice_state ->       Q_NextState = list_to_atom("choice_state" ++ integer_to_list(TimeoutEdge#edge.to));
+                            % Q_Trans = next_state;
+
+      recv_after_state ->   Q_NextState = list_to_atom("recv_after_state" ++ integer_to_list(TimeoutEdge#edge.to)), 
+                            % Q_Trans = next_state,
+                            io:format("\n[Q: branch_after_state -> recv_after_state] Nodes: ~p.\n", [Nodes]);
+
+      branch_after_state -> Q_NextState = list_to_atom("branch_after_state" ++ integer_to_list(TimeoutEdge#edge.to)), 
+                            % Q_Trans = next_state,
+                            io:format("\n[Q: branch_after_state -> branch_after_state] Nodes: ~p.\n", [Nodes]);
+
+      send_after_state ->   Q_NextState = list_to_atom("send_after_state" ++ integer_to_list(TimeoutEdge#edge.to)), 
+                            % Q_Trans = next_state,
+                            io:format("\n[Q: branch_after_state -> send_after_state] Nodes: ~p.\n", [Nodes]);
+
+      after_state ->        Q_NextState = list_to_atom("after_state" ++ integer_to_list(TimeoutEdge#edge.to)), 
+                            % Q_Trans = next_state,
+                            io:format("\n[ERROR] [Q: branch_after_state -> after_state] Nodes: ~p.\n", [Nodes]);
+
+      _Else ->              Q_NextState = list_to_atom("_state" ++ integer_to_list(TimeoutEdge#edge.to))
+                            % Q_Trans = next_state
   end,
+
+  EnterClause = enter_clause(Timeout,Q_NextState),
+  Q_Cons = TimeoutEdge#edge.edge_data#edge_data.comments,
+        
+  Q_Comms = lists:map(fun({A, B}) -> atom_to_list(A) ++ " " ++ atom_to_list(B) end, Q_Cons),
+  Q_Clause = timeout_clause(Q_NextState, Q_Comms),
+
   
-%% TODO find way to extract the timeout and destination from Edges?
-%% ! maybe structure choices so that thye have to be only one pair of mixed choices? or maybe represent them as a list of substates
-  Timeout = 0,
-  Q = 0,
-  
-  Clauses = [enter_clause(Timeout,Q)] ++ lists:map(Fun, Edges),
-  Name = list_to_atom("mixed_state" ++ integer_to_list(Id)),
+  Fun = fun(Edge) ->
+    % if 
+    %   Edge#edge.is_silent ->
+    %       io:format("\n[branch_after_state] is_silent, Nodes: ~p.\n", [Nodes]),
+
+
+    %       % TimeoutState = Name,
+    %       Cons = Edge#edge.edge_data#edge_data.comments,
+        
+    %       Comms = lists:map(fun({A, B}) -> atom_to_list(A) ++ " " ++ atom_to_list(B) end, Cons),
+    %       Clause = timeout_clause(AfterName, Comms),
+    %       % Clause = timeout_clause(TimeoutState, Comms),
+    %       % {true, ParentName, Clause}.
+    %       % clause(Event, Act, merl:var(Var), Trans, NextState, Comms)
+    %       io:format("\n[branch_after_state] Clause: ~p.\n", [Clause]),
+    %       Clause;
+
+    %   true ->
+          case maps:get(Edge#edge.to, Nodes) of
+              end_state ->          NextState = normal,
+                                    Trans = stop;
+
+              standard_state ->     NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to)),
+                                    Trans = next_state;
+
+              choice_state ->       NextState = list_to_atom("choice_state" ++ integer_to_list(Edge#edge.to)),
+                                    Trans = next_state;
+
+              recv_after_state ->   NextState = list_to_atom("recv_after_state" ++ integer_to_list(Edge#edge.to)), 
+                                    Trans = next_state,
+                                    io:format("\n[branch_after_state -> recv_after_state] Nodes: ~p.\n", [Nodes]);
+
+              branch_after_state -> NextState = list_to_atom("branch_after_state" ++ integer_to_list(Edge#edge.to)), 
+                                    Trans = next_state,
+                                    io:format("\n[branch_after_state -> branch_after_state] Nodes: ~p.\n", [Nodes]);
+
+              send_after_state ->   NextState = list_to_atom("send_after_state" ++ integer_to_list(Edge#edge.to)), 
+                                    Trans = next_state,
+                                    io:format("\n[branch_after_state -> send_after_state] Nodes: ~p.\n", [Nodes]);
+
+              after_state ->        NextState = list_to_atom("after_state" ++ integer_to_list(Edge#edge.to)), 
+                                    Trans = next_state,
+                                    io:format("\n[ERROR] [branch_after_state -> after_state] Nodes: ~p.\n", [Nodes]);
+
+              _Else1 ->              NextState = list_to_atom("_state" ++ integer_to_list(Edge#edge.to)),
+                                    Trans = next_state
+          end,
+          {Act, Var} = Edge#edge.edge_data#edge_data.event,
+          Event = Edge#edge.edge_data#edge_data.event_type,
+          Cons = Edge#edge.edge_data#edge_data.comments,
+          Comms = lists:map(fun({A, B}) ->  atom_to_list(A) ++ " " ++ atom_to_list(B) end, Cons),
+          clause(Event, Act, merl:var(Var), Trans, NextState, Comms)
+    % end
+  end,
+
+  % % io:format("\nforeach:\n"),
+  % % lists:foreach(fun(Elem) -> 
+  % %                 io:format("\tedge, from: (~p==~p) and (is_silent==~p);\n", [Elem#edge.from,Id,Elem#edge.is_silent])
+  % %                 % io:format("\t(~p) edge, from: ~p;\n", [Id,Elem])
+  % %               end, Edges),
+  % % io:format("fin.\n"),
+
+
+  % % Q = list_to_atom("after_state" ++ integer_to_list(TimeoutEdge#edge.to)),
+
+  io:format("\n[branch_after_state] Edges: ~p.\n",[Edges]),
+  Edges1 = lists:filter(fun(Elem) -> not Elem#edge.is_silent end, Edges),
+  io:format("\n[branch_after_state] Edges1: ~p.\n",[Edges1]),
+  Edges2 = lists:map(Fun, Edges1),
+
+  Clauses = [EnterClause] ++ Edges2 ++ [Q_Clause],
+  % Clauses = [EnterClause] ++ Edges,
   {true, Name, Clauses}.
+
+
+send_after_state(Id, Edges, Nodes) -> 0.
+% after_recv_state(Id, Edges, Nodes) -> 0.
+% after_send_state(Id, Edges, Nodes) -> 0.
+
+
+% after_state(Id, [Edge], Nodes) -> 0.%after_state(Id, [Edge], Nodes, {"test", "tset"}).
+
+% after_state(Id, [Edge], Nodes, {Name, ParentName}) -> 
+%   io:format("\n[after_state], Id: ~p,\n\tEdge: ~p,\n\tNodes: ~p,\n\t{~p, ~p}.\n", [Id, Edge, Nodes, Name, ParentName]),
+
+%   TimeoutState = Name,
+%   Cons = Edge#edge.edge_data#edge_data.comments,
+
+%   Comms = lists:map(fun({A, B}) -> atom_to_list(A) ++ " " ++ atom_to_list(B) end, Cons),
+%   Clause = timeout_clause(TimeoutState, Comms),
+%   {true, ParentName, Clause}.
+    
+
+
+
+%% @doc generates mixed-choice states, i.e. branch-after, act-after, if-then-else
+%% TODO add mixed-choice state (timeouts)
+%% TODO add if-then-else ?
+% mixed_choice_state(Id, Edges, Nodes) ->
+%   Fun = fun(Edge) ->
+%     case maps:get(Edge#edge.to, Nodes) of 
+%       end_state -> NextState = normal,
+%                    Trans = stop;
+%       standard_state -> NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to)),
+%               Trans = next_state;
+%       choice_state -> NextState = list_to_atom("choice_state" ++ integer_to_list(Edge#edge.to)),
+%                Trans = next_state;
+%       % mixed_choice_state -> NextState = list_to_atom("mixed_choice_state" ++ integer_to_list(Edge#edge.to)),
+%       %          Trans = next_state;
+%       _Else -> NextState = list_to_atom("_state" ++ integer_to_list(Edge#edge.to)),
+%                Trans = next_state
+%     end,
+%     {Act, Var} = Edge#edge.edge_data#edge_data.event,
+%     Event = Edge#edge.edge_data#edge_data.event_type,
+%     Cons = Edge#edge.edge_data#edge_data.comments,
+%     Comms = lists:map(fun({A, B}) -> atom_to_list(A) ++ " " ++ atom_to_list(B) end, Cons),
+%     clause(Event, Act, merl:var(Var), Trans, NextState, Comms)
+%   end,
+  
+% %% TODO find way to extract the timeout and destination from Edges?
+% %% ! maybe structure choices so that thye have to be only one pair of mixed choices? 
+% %% ! or maybe represent them as a list of substates
+%   Timeout = 0,
+%   Q = 0,
+  
+%   Clauses = [enter_clause(Timeout,Q)] ++ lists:map(Fun, Edges),
+%   Name = list_to_atom("mixed_state" ++ integer_to_list(Id)),
+%   {true, Name, Clauses}.
 
 %% @doc calls the appropriate function for choice and standard states
 state_funs(K, V, Edges, Nodes) ->
+  % io:format("\n[state_funs] K: ~p,\n\tV: ~p\n\tEdges: ~p\n\tNodes: ~p.\n", [K,V,Edges,Nodes]),
   Pred = fun(Edge) -> Edge#edge.from =:= K end,
   Es = lists:filter(Pred, Edges),
   case V of
     init_state -> init_state(K, Es, Nodes);
     end_state -> end_state();
     choice_state -> choice_state(K, Es, Nodes);
-    mixed_choice_state -> mixed_choice_state(K, Es, Nodes);
-    standard_state -> std_state(K, Es, Nodes)
+    % mixed_choice_state -> mixed_choice_state(K, Es, Nodes);
+    standard_state -> std_state(K, Es, Nodes);
+    %
+    recv_after_state -> recv_after_state(K, Es, Nodes);
+    branch_after_state -> branch_after_state(K, Es, Nodes);
+    send_after_state -> send_after_state(K, Es, Nodes);
+    % after_recv_state -> after_recv_state(K, Es, Nodes);
+    % after_send_state -> after_send_state(K, Es, Nodes);
+    % after_state -> after_state(K, Es, Nodes);
+    unknown_state -> io:format("\n[unknown_state] state_funs: ~p.\n", [V]),std_state(K, Es, Nodes)
   end.
 
 %% @doc generate the callback functions
@@ -167,17 +380,32 @@ gen_module(FileName, P) ->
   %           "]),
 
   {Edges, Nodes} = build_fsm:to_fsm(P),
-  StateFuns = maps:fold(fun(K, V, AccIn) ->
-                AccIn ++ [state_funs(K, V, Edges, Nodes)] end, [], Nodes),
-  CBFuns = lists:foldl(fun(Edge,AccIn) ->
-            AccIn ++ [cb_fun(Edge#edge.edge_data, Server)] end, [], lists:delete(hd(Edges), Edges)),
+  io:format("\n------ FSM:\nNodes: ~p\nEdges: ~p\n------\n", [Nodes,Edges]),
+
+  StateFuns = maps:fold(fun(K, V, AccIn) -> 
+        io:format("\n[StateFuns] (~p, ~p):...\n\tAccIn: ~p.\n",[K,V,AccIn]),
+        StateFun=state_funs(K, V, Edges, Nodes),
+        io:format("\n\tStateFun: ~p.\n",[StateFun]),
+        AccIn ++ [StateFun] end, [], Nodes),
+
+  NonSilentEdges = lists:filter(fun(Elem) -> not Elem#edge.is_silent end, Edges),
+  io:format("\n------ FSM (filtered Edges): ~p\n------\n", [NonSilentEdges]),
+
+  CBFuns = lists:foldl(
+      fun(Edge,AccIn) -> 
+        AccIn ++ [cb_fun(Edge#edge.edge_data, Server)] 
+      end, [], lists:delete(hd(NonSilentEdges), NonSilentEdges)
+    ),
+
   Fs = [{true, start_link, [Start]},
         {true, callback_mode, [Cb]}
         % {true, init, [Init]}
         | StateFuns ] ++ lists:usort(CBFuns) ++ [{true, stop, [Stop]}],
-  Forms = merl_build:add_attribute(behaviour, [merl:term('gen_statem')],
-            merl_build:init_module(FileName)),
+
+  Forms = merl_build:add_attribute(behaviour, [merl:term('gen_statem')], merl_build:init_module(FileName)),
+
   Forms1 = merl_build:add_attribute(define, [merl:var('SERVER'), Module], Forms),
+  
   merl_build:module_forms(
           lists:foldl(fun ({X, Name, Cs}, S) ->
                               merl_build:add_function(X, Name, Cs, S)
@@ -189,6 +417,6 @@ gen_module(FileName, P) ->
 gen(P, FileName) ->
     ModuleName = list_to_atom(lists:last(lists:droplast(string:tokens(FileName, "/.")))),
     Forms = gen_module(ModuleName, P),
-    file:write_file(string:concat("tool_output/", FileName),
-                    erl_prettypr:format(erl_syntax:form_list(Forms),
-                                        [{paper,160},{ribbon,80}])).
+    Program = erl_prettypr:format(erl_syntax:form_list(Forms),[{paper,160},{ribbon,80}]),
+    io:format("\n------ Program:\n~s\n------\n", [Program]),
+    file:write_file(string:concat("tool_output/", FileName), Program).
