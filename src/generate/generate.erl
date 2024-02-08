@@ -50,8 +50,7 @@ clause(Event, Act, Var, Trans, NextState, Cons) ->
   Clause = ?Q(["('@Event@', {'@Act@', _@Var}, Data) ->",
         " {'@Trans@', '@NextState@', Data }"]),
   if
-    length(Cons) > 0 -> erl_syntax:add_precomments(lists:map(fun(Com) -> 
-                                   erl_syntax:comment([Com]) end, Cons), Clause);
+    length(Cons) > 0 -> erl_syntax:add_precomments(lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons), Clause);
     true -> Clause
   end.
 
@@ -59,9 +58,9 @@ timeout_clause(TimeoutState, Cons) ->
 % timeout_clause(Cons) -> 
     % Clause = ?Q(["(state_timeout, TimeoutState, Data) ->", " {next_state, TimeoutState, Data}"]),
     Clause = ?Q(["(state_timeout, '@TimeoutState@', Data) ->", " {next_state, '@TimeoutState@', Data}"]),
+    Cons1 = Cons ++ ["This is a timeout branch."],
     if
-      length(Cons) > 0 -> erl_syntax:add_precomments(lists:map(fun(Com) -> 
-                                     erl_syntax:comment([Com]) end, Cons), Clause);
+      length(Cons1) > 0 -> erl_syntax:add_precomments(lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons1), Clause);
       true -> Clause
     end.
 
@@ -157,7 +156,7 @@ choice_state(Id, Edges, Nodes) ->
   Name = list_to_atom("choice_state" ++ integer_to_list(Id)),
   {true, Name, Clauses}.
 
-recv_after_state(Id, [Edge], Nodes) -> 0.
+recv_after_state(Id, Edges, Nodes) -> 0.
 
 
 branch_after_state(Id, Edges, Nodes) -> 
@@ -258,19 +257,10 @@ branch_after_state(Id, Edges, Nodes) ->
     % end
   end,
 
-  % % io:format("\nforeach:\n"),
-  % % lists:foreach(fun(Elem) -> 
-  % %                 io:format("\tedge, from: (~p==~p) and (is_silent==~p);\n", [Elem#edge.from,Id,Elem#edge.is_silent])
-  % %                 % io:format("\t(~p) edge, from: ~p;\n", [Id,Elem])
-  % %               end, Edges),
-  % % io:format("fin.\n"),
-
-
-  % % Q = list_to_atom("after_state" ++ integer_to_list(TimeoutEdge#edge.to)),
-
-  io:format("\n[branch_after_state] Edges: ~p.\n",[Edges]),
+  %% remove silent edge from edges
+  % io:format("\n[branch_after_state] Edges: ~p.\n",[Edges]),
   Edges1 = lists:filter(fun(Elem) -> not Elem#edge.is_silent end, Edges),
-  io:format("\n[branch_after_state] Edges1: ~p.\n",[Edges1]),
+  % io:format("\n[branch_after_state] Edges1: ~p.\n",[Edges1]),
   Edges2 = lists:map(Fun, Edges1),
 
   Clauses = [EnterClause] ++ Edges2 ++ [Q_Clause],
@@ -278,7 +268,98 @@ branch_after_state(Id, Edges, Nodes) ->
   {true, Name, Clauses}.
 
 
-send_after_state(Id, Edges, Nodes) -> 0.
+send_after_state(Id, Edges, Nodes) -> 
+  Name = list_to_atom("send_after_state" ++ integer_to_list(Id)),
+
+  TimeoutEdge = lists:last(lists:filter(fun(Elem) -> Elem#edge.is_silent end, Edges)),
+  Timeout = TimeoutEdge#edge.edge_data#edge_data.timeout,
+
+  case maps:get(TimeoutEdge#edge.to, Nodes) of
+      end_state ->          Q_NextState = normal;
+                            % Q_Trans = stop;
+
+      standard_state ->     Q_NextState = list_to_atom("std_state" ++ integer_to_list(TimeoutEdge#edge.to));
+                            % Q_Trans = next_state;
+
+      choice_state ->       Q_NextState = list_to_atom("choice_state" ++ integer_to_list(TimeoutEdge#edge.to));
+                            % Q_Trans = next_state;
+
+      recv_after_state ->   Q_NextState = list_to_atom("recv_after_state" ++ integer_to_list(TimeoutEdge#edge.to)), 
+                            % Q_Trans = next_state,
+                            io:format("\n[Q: send_after_state -> recv_after_state] Nodes: ~p.\n", [Nodes]);
+
+      branch_after_state -> Q_NextState = list_to_atom("branch_after_state" ++ integer_to_list(TimeoutEdge#edge.to)), 
+                            % Q_Trans = next_state,
+                            io:format("\n[Q: send_after_state -> branch_after_state] Nodes: ~p.\n", [Nodes]);
+
+      send_after_state ->   Q_NextState = list_to_atom("send_after_state" ++ integer_to_list(TimeoutEdge#edge.to)), 
+                            % Q_Trans = next_state,
+                            io:format("\n[Q: send_after_state -> send_after_state] Nodes: ~p.\n", [Nodes]);
+
+      after_state ->        Q_NextState = list_to_atom("after_state" ++ integer_to_list(TimeoutEdge#edge.to)), 
+                            % Q_Trans = next_state,
+                            io:format("\n[ERROR] [Q: send_after_state -> after_state] Nodes: ~p.\n", [Nodes]);
+
+      _Else ->              Q_NextState = list_to_atom("_state" ++ integer_to_list(TimeoutEdge#edge.to))
+                            % Q_Trans = next_state
+  end,
+
+  EnterClause = enter_clause(Timeout, Q_NextState),
+  Q_Cons = TimeoutEdge#edge.edge_data#edge_data.comments,
+
+  Q_Comms = lists:map(fun({A, B}) -> atom_to_list(A) ++ " " ++ atom_to_list(B) end, Q_Cons),
+  Q_Clause = timeout_clause(Q_NextState, Q_Comms),
+
+  %% same as branch, but should only really be one other edge
+  Fun = fun(Edge) ->
+      case maps:get(Edge#edge.to, Nodes) of
+          end_state ->          NextState = normal,
+                                Trans = stop;
+
+          standard_state ->     NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to)),
+                                Trans = next_state;
+
+          choice_state ->       NextState = list_to_atom("choice_state" ++ integer_to_list(Edge#edge.to)),
+                                Trans = next_state;
+
+          recv_after_state ->   NextState = list_to_atom("recv_after_state" ++ integer_to_list(Edge#edge.to)), 
+                                Trans = next_state,
+                                io:format("\n[send_after_state -> recv_after_state] Nodes: ~p.\n", [Nodes]);
+
+          branch_after_state -> NextState = list_to_atom("branch_after_state" ++ integer_to_list(Edge#edge.to)), 
+                                Trans = next_state,
+                                io:format("\n[send_after_state -> branch_after_state] Nodes: ~p.\n", [Nodes]);
+
+          send_after_state ->   NextState = list_to_atom("send_after_state" ++ integer_to_list(Edge#edge.to)), 
+                                Trans = next_state,
+                                io:format("\n[send_after_state -> send_after_state] Nodes: ~p.\n", [Nodes]);
+
+          after_state ->        NextState = list_to_atom("after_state" ++ integer_to_list(Edge#edge.to)), 
+                                Trans = next_state,
+                                io:format("\n[ERROR] [send_after_state -> after_state] Nodes: ~p.\n", [Nodes]);
+
+          _Else1 ->              NextState = list_to_atom("_state" ++ integer_to_list(Edge#edge.to)),
+                                Trans = next_state
+      end,
+      {Act, Var} = Edge#edge.edge_data#edge_data.event,
+      Event = Edge#edge.edge_data#edge_data.event_type,
+      Cons = Edge#edge.edge_data#edge_data.comments,
+      Comms = lists:map(fun({A, B}) ->  atom_to_list(A) ++ " " ++ atom_to_list(B) end, Cons),
+      clause(Event, Act, merl:var(Var), Trans, NextState, Comms)
+  end,
+
+  %% remove silent edge from edges
+  Edges1 = lists:filter(fun(Elem) -> not Elem#edge.is_silent end, Edges),
+  Edges2 = lists:map(Fun, Edges1),
+
+  % %% create default delay
+  % DelayClause = ?Q([""]),
+
+  EnterClause1 = erl_syntax:add_postcomments(lists:map(fun(Com) -> erl_syntax:comment([Com]) end, ["default delay: ('@Timeout@')"]), EnterClause),
+
+  Clauses = [EnterClause1] ++ Edges2 ++ [Q_Clause],
+  {true, Name, Clauses}.
+
 % after_recv_state(Id, Edges, Nodes) -> 0.
 % after_send_state(Id, Edges, Nodes) -> 0.
 
@@ -354,14 +435,61 @@ state_funs(K, V, Edges, Nodes) ->
   end.
 
 %% @doc generate the callback functions
-cb_fun(Data, NameMacro) ->
+cb_fun(Edge, NameMacro) ->
+  Data = Edge#edge.edge_data,
   {Act, Var} = Data#edge_data.event,
   Event = Data#edge_data.event_type,
   Var1 = merl:var(Var),
-  Clauses = ?Q(["(_@Var1) ->",
-             " gen_statem:'@Event@'(_@NameMacro, {'@Act@',  _@Var1})"
-            ]),
-  {true, Act, [Clauses]}.
+  % FuncClause = ?Q(["(_@Var1) -> "]),
+  % ActClause = ?Q(["gen_statem:'@Event@'(_@NameMacro, {'@Act@',  _@Var1})"]),
+  if 
+      Edge#edge.is_delayable_send ->
+        Timeout = Data#edge_data.timeout,
+        % TimeDelayClause = erl_syntax:add_precomments(
+        %       [erl_syntax:comment(["default delay ('@Timeout@')"])],
+        %       ?Q([ "TimeDelay = (rand:uniform('@Timeout@' * 2))*1000" ])
+        %   ),
+      
+        % TimerClause = erl_syntax:add_precomments(
+        %       [erl_syntax:comment(["some time consuming task:"])],
+        %       ?Q([ "timer:send_after(TimeDelay, self(), {delay_stop, TimeDelay, []})" ])
+        %   ),
+      
+        % WaitClause = erl_syntax:add_precomments(
+        %       [erl_syntax:comment(["wait for time consuming task to end. if early, may still be able to send before timeout triggers"])],
+        %       ?Q([ "receive {delay_stop, TimeDelay, _MoreData} -> io:format(\"[send_accept]: delay(~p) stopped.\n\", [TimeDelay]) end" ])
+        %   ),
+
+        % Clauses = [
+        %         FuncClause,
+        %         TimeDelayClause,
+        %         TimerClause,
+        %         WaitClause,
+        %         FuncClause,
+        %         ActClause
+        %   ];
+        Clause = ?Q(["(_@Var1) -> TimeDelay = (rand:uniform('@Timeout@' * 2))*1000, timer:send_after(TimeDelay, self(), {delay_stop, TimeDelay, []}), receive {delay_stop, TimeDelay, _MoreData} -> io:format(\"[send_accept]: delay(~p) stopped.\n\", [TimeDelay]) end, gen_statem:'@Event@'(_@NameMacro, {'@Act@',  _@Var1})"]),
+        Comms = [
+                io_lib:format("% Timeout (~p)", [Timeout]),
+                "% Duration `TimeDelay` may be long enough to trigger a timeout.",
+                "% Timer represents some time consuming task that must be completed before performing send.",
+                io_lib:format("% If TimeDelay>~p then timeout will trigger.", [Timeout]),
+                "% Otherwise, send action is performed."
+            ],
+        Clauses = [erl_syntax:add_precomments(lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Comms), Clause)];
+
+      true ->
+        % Clauses = [
+        %         FuncClause,
+        %         ActClause
+        %   ]
+        Clause = ?Q(["(_@Var1) -> gen_statem:'@Event@'(_@NameMacro, {'@Act@',  _@Var1})"]),
+        Clauses = [Clause]
+  end,
+  % {true, Act, [Clause]}.
+  {true, Act, Clauses}.
+
+
 
 
 gen_module(FileName, P) ->
@@ -393,7 +521,8 @@ gen_module(FileName, P) ->
 
   CBFuns = lists:foldl(
       fun(Edge,AccIn) -> 
-        AccIn ++ [cb_fun(Edge#edge.edge_data, Server)] 
+        % AccIn ++ [cb_fun(Edge#edge.edge_data, Server)] 
+        AccIn ++ [cb_fun(Edge, Server)] 
       end, [], lists:delete(hd(NonSilentEdges), NonSilentEdges)
     ),
 
@@ -417,6 +546,7 @@ gen_module(FileName, P) ->
 gen(P, FileName) ->
     ModuleName = list_to_atom(lists:last(lists:droplast(string:tokens(FileName, "/.")))),
     Forms = gen_module(ModuleName, P),
-    Program = erl_prettypr:format(erl_syntax:form_list(Forms),[{paper,160},{ribbon,80}]),
+    % Program = erl_prettypr:format(erl_syntax:form_list(Forms),[{paper,160},{ribbon,80}]),
+    Program = erl_prettypr:format(erl_syntax:form_list(Forms),[{paper,160},{ribbon,160}]),
     io:format("\n------ Program:\n~s\n------\n", [Program]),
     file:write_file(string:concat("tool_output/", FileName), Program).

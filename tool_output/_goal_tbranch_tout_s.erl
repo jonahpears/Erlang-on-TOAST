@@ -24,8 +24,7 @@ callback_mode() -> [state_functions, state_enter].
 init([]) -> {ok, std_state1, {}}.
 
 std_state1(enter, _OldState, _Data) -> keep_state_and_data;
-std_state1(internal, {send_msg, Msg}, Data) ->
-    {next_state, mixed_choice_state2, Data}.
+std_state1(internal, {send_msg, Msg}, Data) -> {next_state, mixed_choice_state2, Data}.
 
 mixed_state2(enter, _OldState, Data) -> {keep_state, Data, [{state_timeout,10000,mixed_state2_2}]};
 mixed_state2(cast, {receive_accept, Accept}, Data) -> {stop, normal, Data};

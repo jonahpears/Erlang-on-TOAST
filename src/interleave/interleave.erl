@@ -14,10 +14,10 @@
                    | {'branch', [ {atom(), protocol()} ]}
                    | {'branch', [ {atom(), protocol()} ], 'aft', number(), protocol()}
                    | {'aft', number(), protocol()}
-                   | {'set', atom(), protocol()}
-                   | {'delay', time_region(), protocol()}
-                   | {'iff', time_constraint(), protocol()}
-                   | {'iff', time_constraint(), protocol(), 'else', protocol()}
+                  %  | {'set', atom(), protocol()}
+                  %  | {'delay', time_region(), protocol()}
+                  %  | {'iff', time_constraint(), protocol()}
+                  %  | {'iff', time_constraint(), protocol(), 'else', protocol()}
                    | {'assert', atom(), protocol()}
                    | {'require', atom(), protocol()}
                    | {'consume', atom(), protocol()}
@@ -26,19 +26,19 @@
                    | 'endP'
                    | 'error'.
 
--type time_constraint () :: {number()}
-                          | {'neg', time_constraint()}
-                          | {time_constraint(), 'land', time_constraint()}
-                          % | {'eq', number()}
-                          % | {number(), 'leq', number()}
-                          | {atom(), 'in', time_region()}
-                          | {'tt'}.
+% -type time_constraint () :: {number()}
+%                           | {'neg', time_constraint()}
+%                           | {time_constraint(), 'land', time_constraint()}
+%                           % | {'eq', number()}
+%                           % | {number(), 'leq', number()}
+%                           | {atom(), 'in', time_region()}
+%                           | {'tt'}.
 
--type time_region () :: {'neg', time_region()}
-                      | {time_region(), 'cup', time_region()}
-                      | {'eq',number()}
-                      | {'leq',number()}
-                      | {'tt'}.
+% -type time_region () :: {'neg', time_region()}
+%                       | {time_region(), 'cup', time_region()}
+%                       | {'eq',number()}
+%                       | {'leq',number()}
+%                       | {'tt'}.
 
 % # Examples
 e1() ->
