@@ -19,12 +19,21 @@ role_s() ->
 role_r(basic) -> 
     {act, r_msg,
         {act, s_accept, endP}
+    };
+
+role_r(act) ->
+    {act, r_msg,
+        {act, s_accept, endP,
+         aft, 3, {act, r_tout, endP}
+        }
     }.
 
 role_r() ->
     {act, r_msg,
-        {act, s_accept, endP,
-         aft, 3, {act, r_tout, endP}
+        {select, [
+                {s_accept, endP},
+                {s_reject, endP}
+            ], aft, 3, {act, r_tout, endP}
         }
     }.
 

@@ -13,6 +13,7 @@ end_state() -> end_state.
 recv_after_state() -> recv_after_state.
 branch_after_state() -> branch_after_state.
 send_after_state() -> send_after_state.
+select_after_state() -> select_after_state.
 % after_recv_state() -> after_recv_state.
 % after_branch_state() -> after_branch_state.
 % after_send_state() -> after_send_state.
@@ -116,7 +117,7 @@ to_fsm({act, Act, P, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis,
     case EdgeData#edge_data.trans_type of
       %% if recv, add timeout to silent transition between states ?
       recv -> 
-              Edge1 = #edge{from = PrevVis, to = Index, edge_data = EdgeData, is_silent = false, is_delayable_send = true},
+              Edge1 = #edge{from = PrevVis, to = Index, edge_data = EdgeData, is_silent = false, is_delayable_send = false},
               Edges1 = Edges ++ [Edge1],
               Nodes1 = maps:put(PrevVis, recv_after_state(), Nodes),
               {Edges2, Nodes2, RecMap2, PrevIndex2, _PrevVis2, EndIndex2, Clocks2} = to_fsm(P, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks),
@@ -126,15 +127,16 @@ to_fsm({act, Act, P, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis,
               {Edges3, Nodes3, RecMap3, PrevIndex3, PrevVis3, EndIndex3, Clocks3};  
 
       send ->
-              %% TODO implement for send
               % io:format("\n[unhandled send] act aft: ~p.", [[{act,Act,P},{aft,Timeout,Q}]]),
               %% TEMP: act as normal
-              Edge1 = #edge{from = PrevVis, to = Index, edge_data = EdgeData, is_silent = false, is_delayable_send = true},
+              Edge1 = #edge{from = PrevVis, to = Index, edge_data = EdgeData, is_silent = false, is_delayable_send = false},%!<- changing this to false
+              % Edge1 = #edge{from = PrevVis, to = Index, edge_data = EdgeData, is_silent = false, is_delayable_send = true},
               Edges1 = Edges ++ [Edge1],
               Nodes1 = maps:put(PrevVis, send_after_state(), Nodes),
               {Edges2, Nodes2, RecMap2, PrevIndex2, _PrevVis2, EndIndex2, Clocks2} = to_fsm(P, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks),
               % io:format("\n[2send {act, Act, P, aft, Timeout, Q}]:...\n\tEdges: ~p;\n\tNodes: ~p;\n\tPrevIndex: ~p;\n\tPrevVis: ~p;\n\tEndIndex: ~p.\n", [Edges2, Nodes2, PrevIndex2, PrevVis2, EndIndex2]),
               %% still pass on the current nodes index in PrevVis to after, to point back to this
+              %% TODO why PrevIndex2+1?
               {Edges3, Nodes3, RecMap3, PrevIndex3, PrevVis3, EndIndex3, Clocks3} = to_fsm({aft, Timeout, Q}, Edges2, Nodes2, RecMap2, PrevIndex2+1, PrevIndex, EndIndex2, Clocks2),
               io:format("\n[send {act, Act, P, aft, Timeout, Q}]:...\n\tEdges: ~p;\n\tNodes: ~p;\n\tPrevIndex: ~p;\n\tPrevVis: ~p;\n\tEndIndex: ~p.\n", [Edges3, Nodes3, PrevIndex3, PrevVis3, EndIndex3]),
               {Edges3, Nodes3, RecMap3, PrevIndex3, PrevVis3, EndIndex3, Clocks3};  
@@ -142,14 +144,13 @@ to_fsm({act, Act, P, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis,
       _Else ->
               io:format("\n[unhandled trans_type] act aft: ~p.", [[{act,Act,P},{aft,Timeout,Q}]]),
               %% TEMP: act as normal
-              Edge = #edge{from = PrevVis, to = Index, edge_data = data(Act), is_silent = false, is_delayable_send = true},
+              Edge = #edge{from = PrevVis, to = Index, edge_data = data(Act), is_silent = false, is_delayable_send = false},
               Edges1 = Edges ++ [Edge],
               Nodes1 = maps:put(PrevVis, unknown_state(), Nodes),
               to_fsm(P, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks)
     end;
 
     % %% check what Q is
-    % % TODO add Timeout guard to immediate action within Q and inverse to {Act, P}
     % Act1 = {Act, P, {leq,Timeout}},
     % case Q of
     %   {act, Act_Q, Next_Q} ->
@@ -202,7 +203,7 @@ to_fsm({branch, Branches}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, C
     %   {_, _} -> 
         lists:foldl(fun({Label, P1}, {E, N, R, I, _, EI, CI}) ->
           I1 = I + 1,
-          Edge = #edge{from = PrevVis, to = I1, edge_data = data(Label), is_silent = false, is_delayable_send = true},
+          Edge = #edge{from = PrevVis, to = I1, edge_data = data(Label), is_silent = false, is_delayable_send = false},
           E1 = E ++ [Edge],
           to_fsm(P1, E1, N, R, I1, I1, EI, CI) end,
           {Edges, Nodes1, RecMap, PrevIndex, Index, EndIndex, Clocks}, Branches);
@@ -224,7 +225,7 @@ to_fsm({branch, Branches, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, Pre
     {Edges2, Nodes2, RecMap2, PrevIndex2, _PrevVis2, EndIndex2, Clocks2} = lists:foldl(
       fun({Label, P1}, {E, N, R, I, _, EI, CI}) ->
         I1 = I + 1,
-        Edge = #edge{from = PrevVis, to = I1, edge_data = data(Label), is_silent = false, is_delayable_send = true},
+        Edge = #edge{from = PrevVis, to = I1, edge_data = data(Label), is_silent = false, is_delayable_send = false},
         E1 = E ++ [Edge],
         to_fsm(P1, E1, N, R, I1, I1, EI, CI) end,
         {Edges, Nodes1, RecMap, PrevIndex, Index, EndIndex, Clocks}, 
@@ -290,6 +291,45 @@ to_fsm({branch, Branches, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, Pre
     %     to_fsm(Branches1, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks)
     % end;
 
+to_fsm({select, Branches}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
+    Index = PrevIndex + 1,
+    Nodes1 = maps:put(PrevVis, choice_state(), Nodes),
+    % case lists:last(Branches) of
+    %   {_, _} -> 
+        lists:foldl(fun({Label, P1}, {E, N, R, I, _, EI, CI}) ->
+          I1 = I + 1,
+          Edge = #edge{from = PrevVis, to = I1, edge_data = data(Label), is_silent = false, is_delayable_send = false},
+          E1 = E ++ [Edge],
+          to_fsm(P1, E1, N, R, I1, I1, EI, CI) end,
+          {Edges, Nodes1, RecMap, PrevIndex, Index, EndIndex, Clocks}, Branches);
+    %   {_, _, _} ->
+    %     lists:foldl(fun({Label, P1, Constraint}, {E, N, R, I, _, EI, CI}) ->
+    %       I1 = I + 1,
+    %       EdgeData = data(Label, Constraint),
+    %       Edge = #edge{from = PrevVis, to = I1, edge_data = EdgeData, is_silent = false},
+    %       E1 = E ++ [Edge],
+    %       to_fsm(P1, E1, N, R, I1, I1, EI, CI) end,
+    %       {Edges, Nodes1, RecMap, PrevIndex, Index, EndIndex, Clocks}, Branches)
+    % end;
+
+to_fsm({select, Branches, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
+    Index = PrevIndex + 1,
+    % Nodes1 = maps:put(PrevVis, choice_state(), Nodes),
+    Nodes1 = maps:put(PrevVis, select_after_state(), Nodes),
+    %% fully explore the other branches first
+    {Edges2, Nodes2, RecMap2, PrevIndex2, _PrevVis2, EndIndex2, Clocks2} = lists:foldl(
+      fun({Label, P1}, {E, N, R, I, _, EI, CI}) ->
+        I1 = I + 1,
+        Edge = #edge{from = PrevVis, to = I1, edge_data = data(Label), is_silent = false, is_delayable_send = false},
+        E1 = E ++ [Edge],
+        to_fsm(P1, E1, N, R, I1, I1, EI, CI) end,
+        {Edges, Nodes1, RecMap, PrevIndex, Index, EndIndex, Clocks}, 
+      Branches
+    ),
+    %% still pass on the current nodes index in PrevVis to after, to point back to this
+    {Edges3, Nodes3, RecMap3, PrevIndex3, PrevVis3, EndIndex3, Clocks3} = to_fsm({aft, Timeout, Q}, Edges2, Nodes2, RecMap2, PrevIndex2, PrevIndex, EndIndex2, Clocks2),
+    io:format("\n[{select, Branches, aft, Timeout, Q}]:...\n\tEdges: ~p;\n\tNodes: ~p;\n\tPrevIndex: ~p;\n\tPrevVis: ~p;\n\tEndIndex: ~p.\n", [Edges3, Nodes3, PrevIndex3, PrevVis3, EndIndex3]),
+    {Edges3, Nodes3, RecMap3, PrevIndex3, PrevVis3, EndIndex3, Clocks3};
 % to_fsm({mixed_choice, Choice}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
 %     io:format("\n[info] mixed-choice: ~p.\n", [Choice]),
 %     Index = PrevIndex + 1,
