@@ -29,6 +29,7 @@ std_state1(internal, {send_msg, Msg}, Data) -> {next_state, branch_after_state2,
 branch_after_state2(enter, _OldState, Data) -> {keep_state, Data, [{state_timeout, 3, std_state4}]};
 branch_after_state2(cast, {receive_accept, Accept}, Data) -> {stop, normal, Data};
 branch_after_state2(cast, {receive_reject, Reject}, Data) -> {stop, normal, Data};
+%% This is a timeout branch:
 branch_after_state2(state_timeout, std_state4, Data) -> {next_state, std_state4, Data}.
 
 terminate(_Reason, _State, _Data) -> ok.
