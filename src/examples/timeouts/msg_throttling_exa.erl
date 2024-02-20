@@ -14,12 +14,12 @@ role_msger() ->
             {rec, "s2", 
                 {act, r_ack1, 
                     {rvar, "s1"}, 
-                 aft, 3, 
+                 aft, 3000, 
                     {act, s_msg2, 
                         {rec, "s2", 
                             {act, r_ack2, 
                                 {rvar, "s2"}, 
-                             aft, 3,
+                             aft, 3000,
                                 {act, s_tout, endP}
                             }
                         }
@@ -35,12 +35,12 @@ role_acker() ->
             {rec, "t2", 
                 {act, s_ack1, 
                     {rvar, "t1"}, 
-                 aft, 3, 
+                 aft, 3000, 
                     {act, r_msg2, 
                         {rec, "t2", 
                             {act, s_ack2, 
                                 {rvar, "t2"}, 
-                             aft, 3,
+                             aft, 3000,
                                 {act, r_tout, endP}
                             }
                         }

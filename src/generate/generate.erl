@@ -56,10 +56,11 @@ clause(Event, Act, Var, Trans, NextState, Cons) ->
     true -> Clause
   end.
 
-timeout_clause(TimeoutState, Cons) -> 
+timeout_clause(TimeoutState, TimeoutDuration, Cons) -> 
 % timeout_clause(Cons) -> 
     % Clause = ?Q(["(state_timeout, TimeoutState, Data) ->", " {next_state, TimeoutState, Data}"]),
-    Clause = ?Q(["(state_timeout, '@TimeoutState@', Data) ->", " {next_state, '@TimeoutState@', Data}"]),
+    % PrintStr = io_lib:format("io:format(\"(timeout[~p] -> ~p.)\n\")", [TimeoutDuration,TimeoutState]),
+    Clause = ?Q(["(state_timeout, '@TimeoutState@', Data) ->", "io:format(\"(timeout[~p] -> ~p.)\n\",['@TimeoutDuration@','@TimeoutState@']),", " {next_state, '@TimeoutState@', Data}"]),
     Cons1 = Cons ++ ["% This is a timeout branch:"],
     if
       length(Cons1) > 0 -> erl_syntax:add_precomments(lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons1), Clause);
@@ -68,7 +69,8 @@ timeout_clause(TimeoutState, Cons) ->
 
 %% @doc an extra clause for enter state
 enter_clause() -> ?Q(["(enter, _OldState, _Data) -> keep_state_and_data"]).
-enter_clause(Timeout,State) -> ?Q(["(enter, _OldState, Data) ->", "{keep_state, Data, [{state_timeout, '@Timeout@', '@State@'}]}"]).
+enter_clause(state, State) -> ?Q(["(enter, _OldState, _Data) ->", "io:format(\"(~p ->.)\n\",['@State@']),", " keep_state_and_data"]).
+enter_clause(timeout, State, Timeout, ToState) -> ?Q(["(enter, _OldState, Data) ->",  "io:format(\"(~p ->.)\n\",['@State@']),", "{keep_state, Data, [{state_timeout, '@Timeout@', '@ToState@'}]}"]).
 % enter_clause(Timeout,State) -> ?Q(["(enter, _OldState, Data) ->", "{keep_state, Data, [{state_timeout, ", Timeout, ", ", State, "}]}"]).
 % enter_clause(Timeout,State) -> ?Q(["(enter, _OldState, Data) -> {keep_state, Data, [{state_timeout,1000,init}]}"]).
 
@@ -160,8 +162,8 @@ choice_state(Id, Edges, Nodes) ->
     clause(Event, Act, merl:var(Var), Trans, NextState, Comms)
     end,
 
-  Clauses = [enter_clause()] ++ lists:map(Fun, Edges),
   Name = list_to_atom("choice_state" ++ integer_to_list(Id)),
+  Clauses = [enter_clause(state, Name)] ++ lists:map(Fun, Edges),
   {true, Name, Clauses}.
 
 recv_after_state(Id, Edges, Nodes) -> 
@@ -204,11 +206,11 @@ recv_after_state(Id, Edges, Nodes) ->
                             % Q_Trans = next_state
   end,
 
-  EnterClause = enter_clause(Timeout, Q_NextState),
+  EnterClause = enter_clause(timeout, Name, Timeout, Q_NextState),
   Q_Cons = TimeoutEdge#edge.edge_data#edge_data.comments,
 
   Q_Comms = lists:map(fun({A, B}) -> atom_to_list(A) ++ " " ++ atom_to_list(B) end, Q_Cons),
-  Q_Clause = timeout_clause(Q_NextState, Q_Comms),
+  Q_Clause = timeout_clause(Q_NextState, Timeout, Q_Comms),
 
   %% same as branch, but should only really be one other edge
   Fun = fun(Edge) ->
@@ -304,11 +306,11 @@ branch_after_state(Id, Edges, Nodes) ->
                             % Q_Trans = next_state
   end,
 
-  EnterClause = enter_clause(Timeout,Q_NextState),
+  EnterClause = enter_clause(timeout, Name, Timeout,Q_NextState),
   Q_Cons = TimeoutEdge#edge.edge_data#edge_data.comments,
         
   Q_Comms = lists:map(fun({A, B}) -> atom_to_list(A) ++ " " ++ atom_to_list(B) end, Q_Cons),
-  Q_Clause = timeout_clause(Q_NextState, Q_Comms),
+  Q_Clause = timeout_clause(Q_NextState, Timeout, Q_Comms),
 
   
   Fun = fun(Edge) ->
@@ -423,11 +425,11 @@ send_after_state(Id, Edges, Nodes) ->
                               % Q_Trans = next_state
     end,
   
-    EnterClause = enter_clause(Timeout, Q_NextState),
+    EnterClause = enter_clause(timeout, Name, Timeout, Q_NextState),
     Q_Cons = TimeoutEdge#edge.edge_data#edge_data.comments,
   
     Q_Comms = lists:map(fun({A, B}) -> atom_to_list(A) ++ " " ++ atom_to_list(B) end, Q_Cons),
-    Q_Clause = timeout_clause(Q_NextState, Q_Comms),
+    Q_Clause = timeout_clause(Q_NextState, Timeout, Q_Comms),
   
     %% same as branch, but should only really be one other edge
     Fun = fun(Edge) ->
@@ -523,11 +525,11 @@ select_after_state(Id, Edges, Nodes) ->
                               % Q_Trans = next_state
     end,
   
-    EnterClause = enter_clause(Timeout,Q_NextState),
+    EnterClause = enter_clause(timeout, Name, Timeout,Q_NextState),
     Q_Cons = TimeoutEdge#edge.edge_data#edge_data.comments,
           
     Q_Comms = lists:map(fun({A, B}) -> atom_to_list(A) ++ " " ++ atom_to_list(B) end, Q_Cons),
-    Q_Clause = timeout_clause(Q_NextState, Q_Comms),
+    Q_Clause = timeout_clause(Q_NextState, Timeout, Q_Comms),
   
     
     Fun = fun(Edge) ->

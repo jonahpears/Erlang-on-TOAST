@@ -6,6 +6,7 @@
 
 -export([callback_mode/0,
          init/1,
+         custom_init_state/3,
          receive_ack1/1,
          receive_ack2/1,
          recv_after_state2/3,
@@ -24,50 +25,43 @@ start_link() -> gen_statem:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 callback_mode() -> [state_functions, state_enter].
 
-init([]) -> {ok, std_state1, {}}.
+% init([]) -> {ok, std_state1, {}}.
+init([]) -> {ok, custom_init_state, {}}.
+
+custom_init_state(enter, _OldState, _Data) -> receive {_SupID, sup_init, AckerID} -> {next_state, std_state1, #{acker_id => AckerID}} end.
 
 std_state1(enter, _OldState, _Data) -> keep_state_and_data;
-std_state1(internal, {send_msg1, Msg1}, Data) -> {next_state, recv_after_state2, Data}.
+std_state1(internal, {send_msg1, _Msg1}, Data) -> {next_state, recv_after_state2, Data}.
 
-recv_after_state2(enter, _OldState, Data) -> {keep_state, Data, [{state_timeout, 3, std_state3}]};
-recv_after_state2(cast, {receive_ack1, Ack1}, Data) -> {next_state, std_state1, Data};
+recv_after_state2(enter, _OldState, Data) ->
+    io:format("(~p ->.)\n", [recv_after_state2]),
+    {keep_state, Data, [{state_timeout, 3000, std_state3}]};
+recv_after_state2(cast, {receive_ack1, _Ack1}, Data) -> {next_state, std_state1, Data};
 %% This is a timeout branch:
-recv_after_state2(state_timeout, std_state3, Data) -> {next_state, std_state3, Data}.
+recv_after_state2(state_timeout, std_state3, Data) ->
+    io:format("(timeout[~p] -> ~p.)\n", [3000, std_state3]),
+    {next_state, std_state3, Data}.
 
 std_state3(enter, _OldState, _Data) -> keep_state_and_data;
-std_state3(internal, {send_msg2, Msg2}, Data) -> {next_state, recv_after_state4, Data}.
+std_state3(internal, {send_msg2, _Msg2}, Data) -> {next_state, recv_after_state4, Data}.
 
-recv_after_state4(enter, _OldState, Data) -> {keep_state, Data, [{state_timeout, 3, std_state5}]};
-recv_after_state4(cast, {receive_ack2, Ack2}, Data) -> {next_state, recv_after_state4, Data};
+recv_after_state4(enter, _OldState, Data) ->
+    io:format("(~p ->.)\n", [recv_after_state4]),
+    {keep_state, Data, [{state_timeout, 3000, std_state5}]};
+recv_after_state4(cast, {receive_ack2, _Ack2}, Data) -> {next_state, recv_after_state4, Data};
 %% This is a timeout branch:
-recv_after_state4(state_timeout, std_state5, Data) -> {next_state, std_state5, Data}.
+recv_after_state4(state_timeout, std_state5, Data) ->
+    io:format("(timeout[~p] -> ~p.)\n", [3000, std_state5]),
+    {next_state, std_state5, Data}.
 
 std_state5(enter, _OldState, _Data) -> keep_state_and_data;
-std_state5(internal, {send_tout, Tout}, Data) -> {stop, normal, Data}.
+std_state5(internal, {send_tout, _Tout}, Data) -> {stop, normal, Data}.
 
 terminate(_Reason, _State, _Data) -> ok.
 
-%% Timeout (3)
-%% Duration `TimeDelay` may be long enough to trigger a timeout.
-%% Timer represents some time consuming task that must be completed before performing send.
-%% If TimeDelay>3 then timeout will trigger.
-%% Otherwise, send action is performed.
-receive_ack1(Ack1) ->
-    TimeDelay = rand:uniform(3 * 2),
-    timer:send_after(TimeDelay, self(), {delay_stop, TimeDelay, []}),
-    receive {delay_stop, TimeDelay, _MoreData} -> io:format("[send_accept]: delay(~p) stopped.\n", [TimeDelay]) end,
-    gen_statem:cast(?SERVER, {receive_ack1, Ack1}).
+receive_ack1(Ack1) -> gen_statem:cast(?SERVER, {receive_ack1, Ack1}).
 
-%% Timeout (3)
-%% Duration `TimeDelay` may be long enough to trigger a timeout.
-%% Timer represents some time consuming task that must be completed before performing send.
-%% If TimeDelay>3 then timeout will trigger.
-%% Otherwise, send action is performed.
-receive_ack2(Ack2) ->
-    TimeDelay = rand:uniform(3 * 2),
-    timer:send_after(TimeDelay, self(), {delay_stop, TimeDelay, []}),
-    receive {delay_stop, TimeDelay, _MoreData} -> io:format("[send_accept]: delay(~p) stopped.\n", [TimeDelay]) end,
-    gen_statem:cast(?SERVER, {receive_ack2, Ack2}).
+receive_ack2(Ack2) -> gen_statem:cast(?SERVER, {receive_ack2, Ack2}).
 
 send_msg1(Msg1) -> gen_statem:internal(?SERVER, {send_msg1, Msg1}).
 
