@@ -28,7 +28,11 @@ callback_mode() -> [state_functions, state_enter].
 % init([]) -> {ok, std_state1, {}}.
 init([]) -> {ok, custom_init_state, {}}.
 
-custom_init_state(enter, _OldState, _Data) -> receive {_SupID, sup_init, AckerID} -> {next_state, std_state1, #{acker_id => AckerID}} end.
+% custom_init_state(enter, _OldState, _Data) -> receive {_SupID, sup_init, AckerID} -> {next_state, std_state1, {AckerID}} end.
+% custom_init_state(enter, _OldState, _Data) -> receive {_SupID, sup_init, AckerID} -> {next_state, std_state1, #{acker_id => AckerID}} end.
+
+custom_init_state(enter, _OldState, Data) -> {keep_state, Data, [{state_timeout, 0, finish_init}]};
+custom_init_state(state_timeout, finish_init, _Data) -> receive {_SupID, sup_init, AckerID} -> {next_state, std_state1, #{acker_id => AckerID}} end.
 
 std_state1(enter, _OldState, _Data) -> keep_state_and_data;
 std_state1(internal, {send_msg1, _Msg1}, Data) -> {next_state, recv_after_state2, Data}.
