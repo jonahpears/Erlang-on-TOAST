@@ -7,7 +7,19 @@
 %% 
 %% msg_throttling_msger:send_msg1("test1").
 
+
+%% 
+%% normal + trace:
+%% c(msg_throttling_acker),c(msg_throttling_msger),c(msg_throttling_sup),c(msg_throttling),msg_throttling:start_link(),msg_throttling_msger:send_msg1("test1"),msg_throttling_acker:send_ack1("ack1").
+%% 
+%% normal + delayed + trace:
+%% c(msg_throttling_acker),c(msg_throttling_msger),c(msg_throttling_sup),c(msg_throttling),msg_throttling:start_link(delayable_sends),msg_throttling_msger:send_msg1("test1").
+%% msg_throttling_acker:send_ack1("ack1").
+%% 
+%% 
+
 %% API
+-export([start_link/1]).
 -export([start_link/0, compose/3, factorize/2, generate/2, extract/1]).
 
 -export([stop/0]).
@@ -27,12 +39,20 @@
 %%%===================================================================
 %%% API
 %%%===================================================================
+start_link(delayable_sends) -> 
+  io:format("\n\n\n\n\n-----[~p]-----\nmsg_throttling:start_link() starting...\n\n", [erlang:timestamp()]),
+  gen_server:start_link({local,?SERVER}, ?MODULE, [delayable_sends], []).
 start_link() ->
   io:format("\n\n\n\n\n-----[~p]-----\nmsg_throttling:start_link() starting...\n\n", [erlang:timestamp()]),
   gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 stop() -> exit(whereis(?MODULE), shutdown).
 
+init([delayable_sends|_T]) ->
+  msg_throttling_sup:start_link(delayable_sends),
+  msg_throttling_sup:start(),
+  io:format("\n"),
+  {ok, #state{}};
 init([]) ->
     msg_throttling_sup:start_link(),
 

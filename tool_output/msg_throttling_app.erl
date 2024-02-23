@@ -8,26 +8,61 @@
          a_send_ack1/1,
          a_send_ack2/1]).
 
--record(args, {mode = normal}).
+%% 
+%% normal + trace:
+%% c(msg_throttling_acker),c(msg_throttling_msger),c(msg_throttling_sup),c(msg_throttling),c(msg_throttling_app),msg_throttling_app:start(normal,{normal,false}),msg_throttling_msger:send_msg1("test1"),msg_throttling_acker:send_ack1("ack1").
+%% 
+%% 
+%% normal + delayable:
+%% c(msg_throttling_acker),c(msg_throttling_msger),c(msg_throttling_sup),c(msg_throttling),c(msg_throttling_app),msg_throttling_app:start(normal,{normal,true}).
+%% 
+%% 
+%% normal + delayable + trace:
+%% c(msg_throttling_acker),c(msg_throttling_msger),c(msg_throttling_sup),c(msg_throttling),c(msg_throttling_app),msg_throttling_app:start(normal,{normal,true}),msg_throttling_msger:send_msg1("test1").
+%% 
+%% 
+%% 
+%% auto:
+%% c(msg_throttling_acker),c(msg_throttling_msger),c(msg_throttling_sup),c(msg_throttling),c(msg_throttling_app),msg_throttling_app:start(normal,{auto,true}).
 
--define(SUPPORTED_MODES, [auto, manual])
+% -record(args, {mode = normal, delayable_sends = false}).
 
-start() -> start(normal, #args{mode = auto}).
-start(_StartType, #args{mode = Mode} = _StartArgs) -> 
+% -define(SUPPORTED_MODES, [auto, manual])
 
-    msg_throttling:start_link(),
+start(_StartType, {Mode, true} = _StartArgs) -> msg_throttling:start_link(delayable_sends), start_mode(Mode);
+start(_StartType, {Mode, false} = _StartArgs) -> msg_throttling:start_link(), start_mode(Mode).
+% start(_StartType, #args{mode = _Mode, delayable_sends = true} = _StartArgs) -> msg_throttling:start_link(delayable_sends);
+% start(_StartType, #args{mode = _Mode, delayable_sends = false} = _StartArgs) -> msg_throttling:start_link().
 
-    io:format("app(~p).\n", [Mode]),
+start_mode(Mode) ->
     case Mode of
         manual -> ok;
-        
-        auto ->
-            
-            ok;
-
-        _Else -> 
-            io:format("app: unexpected mode given (~p).\n", [Mode])
+        auto -> auto_run();
+        _ -> ok
     end.
+
+    % case True of
+    %     true -> msg_throttling:start_link(delayable_sends);
+    %     _ -> msg_throttling:start_link()
+    % end.
+
+    % io:format("app(~p).\n", [Mode]),
+    % case Mode of
+    %     manual -> ok;
+        
+    %     auto ->
+
+    %         ok;
+
+    %     _Else -> 
+    %         io:format("app: unexpected mode given (~p).\n", [Mode])
+    % end.
+
+% run() -> start(normal, #args{mode = auto, delayable_sends = true}).
+
+auto_run() ->
+    % MsgerID = msg_throttling
+    ok.
 
 stop(_State) -> ok.
 
