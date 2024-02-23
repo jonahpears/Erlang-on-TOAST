@@ -9,6 +9,7 @@
 % -export([attach_msger/1,attach_acker/1]).
 % -export([detach_msger/1,detach_acker/1]).
 
+% -define(SERVER,msg_throttling).
 -define(SERVER,?MODULE).
 
 % start_link() -> supervisor:start_link({local,?MODULE}, ?MODULE, []).
@@ -24,10 +25,12 @@ init([]) ->
     ChildSpecList = [child(msg_throttling_acker),
                      child(msg_throttling_msger)],
     {ok, {SupFlags, ChildSpecList}}.
+    % {ok, {SupFlags, []}}.
 
 child(Module) ->
     #{id => Module,
      start => {Module, start_link, []},
+    %  restart => temporary,
      restart => permanent,
      shutdown => 2000,
      type => worker,
@@ -35,8 +38,8 @@ child(Module) ->
 
 start() ->
 
-    io:format("\n\n\nmsg_throttling_sup:start()...\n"),
-    io:format("\n\n\nmsg_throttling_sup:self(): ~p\n", [self()]),
+    io:format("msg_throttling_sup:self(): ~p.\n", [self()]),
+
     SupChildren = supervisor:which_children(?MODULE),
 
     MsgerIDs = lists:filter(fun(Elem) ->
@@ -58,8 +61,8 @@ start() ->
     {_, MsgerID, _, _} = ElemMsgerID,
     {_, AckerID, _, _} = ElemAckerID,
 
-    io:format("msg_throttling_sup:start() MsgerID: ~p\n", [MsgerID]),
-    io:format("msg_throttling_sup:start() AckerID: ~p\n", [AckerID]),
+    io:format("msg_throttling_sup MsgerID: ~p\n", [MsgerID]),
+    io:format("msg_throttling_sup AckerID: ~p\n", [AckerID]),
 
     MsgerID ! {self(), sup_init, AckerID},
     AckerID ! {self(), sup_init, MsgerID},

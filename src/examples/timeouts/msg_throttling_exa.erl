@@ -3,8 +3,8 @@
 -compile(nowarn_export_all).
 
 %% use this
-%% generate:gen(msg_throttling_exa:role_msger(),"msg_throttling_msger.erl").
-%% generate:gen(msg_throttling_exa:role_acker(),"msg_throttling_acker.erl").
+%% generate:gen(msg_throttling_exa:role_msger(),"_msg_throttling_msger.erl").
+%% generate:gen(msg_throttling_exa:role_acker(),"_msg_throttling_acker.erl").
 
 
 %% message throttling (m=2)
@@ -16,12 +16,10 @@ role_msger() ->
                     {rvar, "s1"}, 
                  aft, 3000, 
                     {act, s_msg2, 
-                        {rec, "s2", 
-                            {act, r_ack2, 
-                                {rvar, "s2"}, 
-                             aft, 3000,
-                                {act, s_tout, endP}
-                            }
+                        {act, r_ack2, 
+                            {rvar, "s2"}, 
+                        aft, 3000,
+                            {act, s_tout, endP}
                         }
                     }
                 }
@@ -37,12 +35,10 @@ role_acker() ->
                     {rvar, "t1"}, 
                  aft, 3000, 
                     {act, r_msg2, 
-                        {rec, "t2", 
-                            {act, s_ack2, 
-                                {rvar, "t2"}, 
-                             aft, 3000,
-                                {act, r_tout, endP}
-                            }
+                        {act, s_ack2, 
+                            {rvar, "t2"}, 
+                        aft, 3000,
+                            {act, r_tout, endP}
                         }
                     }
                 }
