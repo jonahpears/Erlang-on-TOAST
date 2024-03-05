@@ -11,11 +11,35 @@ end_state() ->
   Clause = ?Q(["(_Reason, _State, _Data) -> ok"]),
   {true, terminate, [Clause]}.
 
+custom_end_state(_Id, Edges, _Nodes) ->
+  Name = 'custom_end_state',
+  NextState = 'go_to_terminate',
 
-init_state(Id, [Edge], Nodes) ->
+  EndEdge = lists:last(lists:filter(fun(Elem) -> Elem#edge.is_custom_end end, Edges)),
+  Timeout = EndEdge#edge.edge_data#edge_data.timeout,
+
+  io:format("custom_end_state: timeout: ~p.\n", [Timeout]),
+
+  EnterClause = enter_clause(timeout, Name, Timeout, NextState),
+  
+  % Q_Cons = EndEdge#edge.edge_data#edge_data.comments,
+  % Q_Comms = lists:map(fun({A, B}) -> atom_to_list(A) ++ " " ++ atom_to_list(B) end, Q_Cons),
+  % Q_Clause = timeout_clause('go_to_terminate', 0, Q_Comms),
+  
+  Q_Clause = timeout_clause('go_to_terminate', 0, [], false),
+
+  Clauses = [EnterClause] ++ [Q_Clause],
+  {true, Name, Clauses}.
+
+
+
+
+
+init_state(_Id, [Edge], Nodes) ->
   % NextState = list_to_atom("state" ++ integer_to_list(Edge#edge.to)),
   case maps:get(Edge#edge.to, Nodes) of
     end_state -> NextState = normal;
+    custom_end_state -> NextState = custom_end_state;
     standard_state -> NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to));
     choice_state -> NextState = list_to_atom("choice_state" ++ integer_to_list(Edge#edge.to));
     % mixed_choice_state -> NextState = list_to_atom("mixed_choice_state" ++ integer_to_list(Edge#edge.to));
@@ -56,21 +80,35 @@ clause(Event, Act, Var, Trans, NextState, Cons) ->
     true -> Clause
   end.
 
-timeout_clause(TimeoutState, TimeoutDuration, Cons) -> 
+timeout_clause(TimeoutState, TimeoutDuration, Cons) -> timeout_clause(TimeoutState, TimeoutDuration, Cons, true).
+timeout_clause(TimeoutState, TimeoutDuration, Cons, ShowIO) -> 
 % timeout_clause(Cons) -> 
     % Clause = ?Q(["(state_timeout, TimeoutState, Data) ->", " {next_state, TimeoutState, Data}"]),
     % PrintStr = io_lib:format("io:format(\"(timeout[~p] -> ~p.)\n\")", [TimeoutDuration,TimeoutState]),
-    Clause = ?Q(["(state_timeout, '@TimeoutState@', Data) ->", "io:format(\"(timeout[~p] -> ~p.)\n\",['@TimeoutDuration@','@TimeoutState@']),", " {next_state, '@TimeoutState@', Data}"]),
-    Cons1 = Cons ++ ["% This is a timeout branch:"],
+    if ShowIO==true ->
+            Clause = ?Q([ "(state_timeout, '@TimeoutState@', Data) ->", 
+                          "io:format(\"(timeout[~p] -> ~p.)\n\",['@TimeoutDuration@','@TimeoutState@']),", 
+                          "{next_state, '@TimeoutState@', Data}" ]),
+            Cons1 = Cons ++ ["% This is a timeout branch:"];
+      true ->
+            Clause = ?Q([ "(state_timeout, '@TimeoutState@', Data) ->", 
+                          "{next_state, '@TimeoutState@', Data}" ]),
+            Cons1 = Cons %++ ["% This is a timeout branch:"]
+    end,
+
     if
-      length(Cons1) > 0 -> erl_syntax:add_precomments(lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons1), Clause);
+      length(Cons1) > 0  -> erl_syntax:add_precomments(lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons1), Clause);
       true -> Clause
     end.
 
 %% @doc an extra clause for enter state
 enter_clause() -> ?Q(["(enter, _OldState, _Data) -> keep_state_and_data"]).
-enter_clause(state, State) -> ?Q(["(enter, _OldState, _Data) ->", "io:format(\"(~p ->.)\n\",['@State@']),", " keep_state_and_data"]).
-enter_clause(timeout, State, Timeout, ToState) -> ?Q(["(enter, _OldState, Data) ->",  "io:format(\"(~p ->.)\n\",['@State@']),", "{keep_state, Data, [{state_timeout, '@Timeout@', '@ToState@'}]}"]).
+enter_clause(state, State) -> ?Q([  "(enter, _OldState, _Data) ->", 
+                                    "io:format(\"(~p ->.)\n\",['@State@']),", 
+                                    " keep_state_and_data" ]).
+enter_clause(timeout, State, Timeout, ToState) -> ?Q([ "(enter, _OldState, Data) ->",  
+                                                       "io:format(\"(~p ->.)\n\",['@State@']),", 
+                                                       "{keep_state, Data, [{state_timeout, '@Timeout@', '@ToState@'}]}" ]).
 % enter_clause(Timeout,State) -> ?Q(["(enter, _OldState, Data) ->", "{keep_state, Data, [{state_timeout, ", Timeout, ", ", State, "}]}"]).
 % enter_clause(Timeout,State) -> ?Q(["(enter, _OldState, Data) -> {keep_state, Data, [{state_timeout,1000,init}]}"]).
 
@@ -79,6 +117,8 @@ std_state(Id, [Edge], Nodes) ->
   case maps:get(Edge#edge.to, Nodes) of
     end_state ->          NextState = normal,
                           Trans = stop;
+    custom_end_state ->   NextState = custom_end_state,
+                          Trans = next_state;
     standard_state ->     NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to)),
                           Trans = next_state;
     choice_state ->       NextState = list_to_atom("choice_state" ++ integer_to_list(Edge#edge.to)),
@@ -125,6 +165,8 @@ choice_state(Id, Edges, Nodes) ->
     case maps:get(Edge#edge.to, Nodes) of
       end_state -> NextState = normal,
                    Trans = stop;
+    custom_end_state ->   NextState = custom_end_state,
+                          Trans = next_state;
       standard_state -> NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to)),
               Trans = next_state;
       choice_state -> NextState = list_to_atom("choice_state" ++ integer_to_list(Edge#edge.to)),
@@ -175,6 +217,8 @@ recv_after_state(Id, Edges, Nodes) ->
   case maps:get(TimeoutEdge#edge.to, Nodes) of
       end_state ->          Q_NextState = normal;
                             % Q_Trans = stop;
+    custom_end_state ->   Q_NextState = 'custom_end_state';
+                          % Trans = next_state;
 
       standard_state ->     Q_NextState = list_to_atom("std_state" ++ integer_to_list(TimeoutEdge#edge.to));
                             % Q_Trans = next_state;
@@ -217,6 +261,8 @@ recv_after_state(Id, Edges, Nodes) ->
       case maps:get(Edge#edge.to, Nodes) of
           end_state ->          NextState = normal,
                                 Trans = stop;
+    custom_end_state ->   NextState = custom_end_state,
+                          Trans = next_state;
 
           standard_state ->     NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to)),
                                 Trans = next_state;
@@ -275,6 +321,7 @@ branch_after_state(Id, Edges, Nodes) ->
   case maps:get(TimeoutEdge#edge.to, Nodes) of
       end_state ->          Q_NextState = normal;
                             % Q_Trans = stop;
+    custom_end_state ->   Q_NextState = 'custom_end_state';
 
       standard_state ->     Q_NextState = list_to_atom("std_state" ++ integer_to_list(TimeoutEdge#edge.to));
                             % Q_Trans = next_state;
@@ -334,6 +381,8 @@ branch_after_state(Id, Edges, Nodes) ->
           case maps:get(Edge#edge.to, Nodes) of
               end_state ->          NextState = normal,
                                     Trans = stop;
+    custom_end_state ->   NextState = custom_end_state,
+                          Trans = next_state;
 
               standard_state ->     NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to)),
                                     Trans = next_state;
@@ -394,6 +443,7 @@ send_after_state(Id, Edges, Nodes) ->
     case maps:get(TimeoutEdge#edge.to, Nodes) of
         end_state ->          Q_NextState = normal;
                               % Q_Trans = stop;
+    custom_end_state ->   Q_NextState = 'custom_end_state';
   
         standard_state ->     Q_NextState = list_to_atom("std_state" ++ integer_to_list(TimeoutEdge#edge.to));
                               % Q_Trans = next_state;
@@ -436,6 +486,8 @@ send_after_state(Id, Edges, Nodes) ->
         case maps:get(Edge#edge.to, Nodes) of
             end_state ->          NextState = normal,
                                   Trans = stop;
+    custom_end_state ->   NextState = custom_end_state,
+                          Trans = next_state;
   
             standard_state ->     NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to)),
                                   Trans = next_state;
@@ -494,6 +546,7 @@ select_after_state(Id, Edges, Nodes) ->
     case maps:get(TimeoutEdge#edge.to, Nodes) of
         end_state ->          Q_NextState = normal;
                               % Q_Trans = stop;
+    custom_end_state ->   Q_NextState = 'custom_end_state';
   
         standard_state ->     Q_NextState = list_to_atom("std_state" ++ integer_to_list(TimeoutEdge#edge.to));
                               % Q_Trans = next_state;
@@ -553,6 +606,8 @@ select_after_state(Id, Edges, Nodes) ->
             case maps:get(Edge#edge.to, Nodes) of
                 end_state ->          NextState = normal,
                                       Trans = stop;
+    custom_end_state ->   NextState = custom_end_state,
+                          Trans = next_state;
   
                 standard_state ->     NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to)),
                                       Trans = next_state;
@@ -580,7 +635,7 @@ select_after_state(Id, Edges, Nodes) ->
                                       Trans = next_state,
                                       io:format("\n[ERROR] [select_after_state -> after_state] Nodes: ~p.\n", [Nodes]);
   
-                _Else1 ->              NextState = list_to_atom("_state" ++ integer_to_list(Edge#edge.to)),
+                _Else1 ->             NextState = list_to_atom("_state" ++ integer_to_list(Edge#edge.to)),
                                       Trans = next_state
             end,
             {Act, Var} = Edge#edge.edge_data#edge_data.event,
@@ -758,6 +813,7 @@ state_funs(K, V, Edges, Nodes) ->
   case V of
     init_state -> init_state(K, Es, Nodes);
     end_state -> end_state();
+    custom_end_state -> custom_end_state(K, Es, Nodes);
     choice_state -> choice_state(K, Es, Nodes);
     % mixed_choice_state -> mixed_choice_state(K, Es, Nodes);
     standard_state -> std_state(K, Es, Nodes);
@@ -847,7 +903,12 @@ gen_module(FileName, P) ->
   %           "]),
 
   {Edges, Nodes} = build_fsm:to_fsm(P),
+
   io:format("\n------ FSM:\nNodes: ~p\nEdges: ~p\n------\n", [Nodes,Edges]),
+
+  NonEndEdges = lists:filter(fun(Elem) -> not Elem#edge.is_custom_end end, Edges),
+
+  io:format("\n------ FSM (filtered NonEndEdges): ~p\n------\n", [NonEndEdges]),
 
   StateFuns = maps:fold(fun(K, V, AccIn) -> 
         % io:format("\n[StateFuns] (~p, ~p):...\n\tAccIn: ~p.\n",[K,V,AccIn]),
@@ -855,8 +916,8 @@ gen_module(FileName, P) ->
         % io:format("\n\tStateFun: ~p.\n",[StateFun]),
         AccIn ++ [StateFun] end, [], Nodes),
 
-  NonSilentEdges = lists:filter(fun(Elem) -> not Elem#edge.is_silent end, Edges),
-  io:format("\n------ FSM (filtered Edges): ~p\n------\n", [NonSilentEdges]),
+  NonSilentEdges = lists:filter(fun(Elem) -> not Elem#edge.is_silent end, NonEndEdges),
+  io:format("\n------ FSM (filtered NonSilentEdges): ~p\n------\n", [NonSilentEdges]),
 
   CBFuns = lists:foldl(
       fun(Edge,AccIn) -> 
@@ -864,28 +925,43 @@ gen_module(FileName, P) ->
         AccIn ++ [cb_fun(Edge, Server)] 
       end, [], lists:delete(hd(NonSilentEdges), NonSilentEdges)
     ),
+    
+  io:format("--- success: CBFuns: ~p\n-----\n",[CBFuns]),
 
   Fs = [{true, start_link, [Start]},
         {true, callback_mode, [Cb]}
         % {true, init, [Init]}
         | StateFuns ] ++ lists:usort(CBFuns) ++ [{true, stop, [Stop]}],
 
+  io:format("--- success: Fs: ~p\n------\n",[Fs]),
+
   Forms = merl_build:add_attribute(behaviour, [merl:term('gen_statem')], merl_build:init_module(FileName)),
 
   Forms1 = merl_build:add_attribute(define, [merl:var('SERVER'), Module], Forms),
+
+  Forms2 = merl_build:add_record(statem_data, [ {'coparty_id',      merl:term('undefined')},
+                                                {'trace',           merl:var('[]')},
+                                                {'msgs',            merl:var('[]')},
+                                                {'state_map',       merl:var('{}')},
+                                                {'delayable_sends', merl:term('false')}
+                                              ], Forms1),
+
+  io:format("--- success: Forms.\n"),
   
   merl_build:module_forms(
           lists:foldl(fun ({X, Name, Cs}, S) ->
                               merl_build:add_function(X, Name, Cs, S)
                       end,
-                      Forms1,
+                      Forms2,
                       Fs)).
 
 -spec gen(interleave:protocol(), string()) -> none().
 gen(P, FileName) ->
     ModuleName = list_to_atom(lists:last(lists:droplast(string:tokens(FileName, "/.")))),
     Forms = gen_module(ModuleName, P),
-    % Program = erl_prettypr:format(erl_syntax:form_list(Forms),[{paper,160},{ribbon,80}]),
+    io:format("--- success: gen_module.\n"),
+  % Program = erl_prettypr:format(erl_syntax:form_list(Forms),[{paper,160},{ribbon,80}]),
     Program = erl_prettypr:format(erl_syntax:form_list(Forms),[{paper,160},{ribbon,160}]),
+    io:format("--- success: Program.\n"),
     io:format("\n------ Program:\n~s\n------\n", [Program]),
     file:write_file(string:concat("tool_output/", FileName), Program).

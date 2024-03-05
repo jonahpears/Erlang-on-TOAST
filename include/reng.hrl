@@ -1,7 +1,7 @@
 -record(graph, {graph_ref, name, type}).
 
 -record(edge_data, {event_type, event, trans_type, timeout, pattern, args, guard, code, attributes, comments = []}).
--record(edge, {from, to, edge_data, is_silent, is_delayable_send}).
+-record(edge, {from, to, edge_data, is_silent, is_delayable_send, is_custom_end }).
 
 -record(trans, {from, to, data}).
 -record(data, {action, var, event, cons = []}).

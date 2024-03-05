@@ -9,6 +9,7 @@ standard_state() -> standard_state.
 choice_state() -> choice_state.
 % mixed_choice_state() -> mixed_choice_state.
 end_state() -> end_state.
+custom_end_state() -> custom_end_state.
 
 recv_after_state() -> recv_after_state.
 branch_after_state() -> branch_after_state.
@@ -25,12 +26,24 @@ unknown_state() -> unknown_state.
 %% takes a protocol and returns a list of transitions/edges and nodes/states
 -spec to_fsm(interleave:protocol()) -> {list(), map()}.
 to_fsm(P) ->
-  Edge = #edge{from = 0, to = 1, edge_data = #edge_data{event = init, event_type = init}, is_silent = false, is_delayable_send = false},
-  {Edges, Nodes, _, _, _, _, _} = to_fsm(P, 
-                                      [Edge], 
-                                      maps:put(0, init_state, maps:new()), 
-                                      maps:new(), 1, 1, -1, 
-                                      maps:put(0, #clock{label = "g", is_global = true, value = #clock_value{is_abs = true, upper_bound = 0}}, maps:new())),
+  Edge = #edge{ from = 0, 
+                to = 1, 
+                edge_data = #edge_data{ event = init, 
+                                        event_type = init }, 
+                is_silent = false, 
+                is_delayable_send = false,
+                is_custom_end = false },
+
+  {Edges, Nodes, _, _, _, _, _} = to_fsm( P, 
+                                          [Edge], 
+                                          maps:put( 0, init_state, maps:new() ), 
+                                          maps:new(), 1, 1, -1, 
+                                          maps:put( 0, #clock{ label = "g", 
+                                                              is_global = true, 
+                                                              value = #clock_value{ is_abs = true, 
+                                                                                    upper_bound = 0 } }, 
+                                                    maps:new() ) ),
+
   {Edges, Nodes}.
 
 %% @doc processes the actions and labels names and sets the event,
@@ -82,7 +95,7 @@ data(Param, Constraint) ->
 
 to_fsm({act, Act, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
     Index = PrevIndex + 1,
-    Edge = #edge{from = PrevVis, to = Index, edge_data = data(Act), is_silent = false, is_delayable_send = false},
+    Edge = #edge{from = PrevVis, to = Index, edge_data = data(Act), is_silent = false, is_delayable_send = false, is_custom_end = false},
     Edges1 = Edges ++ [Edge],
     Nodes1 = maps:put(PrevVis, standard_state(), Nodes),
     to_fsm(P, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks);
@@ -92,7 +105,7 @@ to_fsm({act, Act, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks
 to_fsm({aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
     Index = PrevIndex, % +1,
     %% PrevVis contains index of node to transition from
-    Edge = #edge{from = PrevVis, to = Index, edge_data = #edge_data{timeout = Timeout, comments = []}, is_silent = true, is_delayable_send = false},
+    Edge = #edge{from = PrevVis, to = Index, edge_data = #edge_data{timeout = Timeout, comments = []}, is_silent = true, is_delayable_send = false, is_custom_end = false},
     % Edge = #edge{from = PrevVis, to = Index, edge_data = #edge_data{timeout = Timeout, comments = [] ++ [{aft, Timeout}]}, is_silent = true},
     Edges1 = Edges ++ [Edge],
     %% TODO figure out why we do the below:
@@ -117,7 +130,7 @@ to_fsm({act, Act, P, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis,
     case EdgeData#edge_data.trans_type of
       %% if recv, add timeout to silent transition between states ?
       recv -> 
-              Edge1 = #edge{from = PrevVis, to = Index, edge_data = EdgeData, is_silent = false, is_delayable_send = false},
+              Edge1 = #edge{from = PrevVis, to = Index, edge_data = EdgeData, is_silent = false, is_delayable_send = false, is_custom_end = false},
               Edges1 = Edges ++ [Edge1],
               Nodes1 = maps:put(PrevVis, recv_after_state(), Nodes),
               {Edges2, Nodes2, RecMap2, PrevIndex2, _PrevVis2, EndIndex2, Clocks2} = to_fsm(P, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks),
@@ -129,7 +142,7 @@ to_fsm({act, Act, P, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis,
       send ->
               % io:format("\n[unhandled send] act aft: ~p.", [[{act,Act,P},{aft,Timeout,Q}]]),
               %% TEMP: act as normal
-              Edge1 = #edge{from = PrevVis, to = Index, edge_data = EdgeData, is_silent = false, is_delayable_send = false},%!<- changing this to false
+              Edge1 = #edge{from = PrevVis, to = Index, edge_data = EdgeData, is_silent = false, is_delayable_send = false, is_custom_end = false},%!<- changing this to false
               % Edge1 = #edge{from = PrevVis, to = Index, edge_data = EdgeData, is_silent = false, is_delayable_send = true},
               Edges1 = Edges ++ [Edge1],
               Nodes1 = maps:put(PrevVis, send_after_state(), Nodes),
@@ -144,7 +157,7 @@ to_fsm({act, Act, P, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis,
       _Else ->
               io:format("\n[unhandled trans_type] act aft: ~p.", [[{act,Act,P},{aft,Timeout,Q}]]),
               %% TEMP: act as normal
-              Edge = #edge{from = PrevVis, to = Index, edge_data = data(Act), is_silent = false, is_delayable_send = false},
+              Edge = #edge{from = PrevVis, to = Index, edge_data = data(Act), is_silent = false, is_delayable_send = false,is_custom_end = false},
               Edges1 = Edges ++ [Edge],
               Nodes1 = maps:put(PrevVis, unknown_state(), Nodes),
               to_fsm(P, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks)
@@ -203,7 +216,7 @@ to_fsm({branch, Branches}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, C
     %   {_, _} -> 
         lists:foldl(fun({Label, P1}, {E, N, R, I, _, EI, CI}) ->
           I1 = I + 1,
-          Edge = #edge{from = PrevVis, to = I1, edge_data = data(Label), is_silent = false, is_delayable_send = false},
+          Edge = #edge{from = PrevVis, to = I1, edge_data = data(Label), is_silent = false, is_delayable_send = false, is_custom_end = false},
           E1 = E ++ [Edge],
           to_fsm(P1, E1, N, R, I1, I1, EI, CI) end,
           {Edges, Nodes1, RecMap, PrevIndex, Index, EndIndex, Clocks}, Branches);
@@ -225,7 +238,7 @@ to_fsm({branch, Branches, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, Pre
     {Edges2, Nodes2, RecMap2, PrevIndex2, _PrevVis2, EndIndex2, Clocks2} = lists:foldl(
       fun({Label, P1}, {E, N, R, I, _, EI, CI}) ->
         I1 = I + 1,
-        Edge = #edge{from = PrevVis, to = I1, edge_data = data(Label), is_silent = false, is_delayable_send = false},
+        Edge = #edge{from = PrevVis, to = I1, edge_data = data(Label), is_silent = false, is_delayable_send = false, is_custom_end = false},
         E1 = E ++ [Edge],
         to_fsm(P1, E1, N, R, I1, I1, EI, CI) end,
         {Edges, Nodes1, RecMap, PrevIndex, Index, EndIndex, Clocks}, 
@@ -298,7 +311,7 @@ to_fsm({select, Branches}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, C
     %   {_, _} -> 
         lists:foldl(fun({Label, P1}, {E, N, R, I, _, EI, CI}) ->
           I1 = I + 1,
-          Edge = #edge{from = PrevVis, to = I1, edge_data = data(Label), is_silent = false, is_delayable_send = false},
+          Edge = #edge{from = PrevVis, to = I1, edge_data = data(Label), is_silent = false, is_delayable_send = false, is_custom_end = false},
           E1 = E ++ [Edge],
           to_fsm(P1, E1, N, R, I1, I1, EI, CI) end,
           {Edges, Nodes1, RecMap, PrevIndex, Index, EndIndex, Clocks}, Branches);
@@ -320,7 +333,7 @@ to_fsm({select, Branches, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, Pre
     {Edges2, Nodes2, RecMap2, PrevIndex2, _PrevVis2, EndIndex2, Clocks2} = lists:foldl(
       fun({Label, P1}, {E, N, R, I, _, EI, CI}) ->
         I1 = I + 1,
-        Edge = #edge{from = PrevVis, to = I1, edge_data = data(Label), is_silent = false, is_delayable_send = false},
+        Edge = #edge{from = PrevVis, to = I1, edge_data = data(Label), is_silent = false, is_delayable_send = false, is_custom_end = false},
         E1 = E ++ [Edge],
         to_fsm(P1, E1, N, R, I1, I1, EI, CI) end,
         {Edges, Nodes1, RecMap, PrevIndex, Index, EndIndex, Clocks}, 
@@ -362,8 +375,11 @@ to_fsm({rvar, Var}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) 
 to_fsm(endP, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
     if
       EndIndex =:= -1 ->
-         Nodes1 = maps:put(PrevVis, end_state(), Nodes),
-        {Edges, Nodes1, RecMap, PrevIndex, PrevVis, PrevVis, Clocks};
+         Nodes1 = maps:put(PrevVis, custom_end_state(), Nodes),
+         Index = PrevIndex+1,
+         Nodes2 = maps:put(Index, end_state(), Nodes1),
+         Edges1 = Edges ++ [#edge{from = PrevVis, to = Index, edge_data = #edge_data{timeout = 0, comments = ["% is end"]}, is_silent = true, is_delayable_send = false, is_custom_end = true}],
+        {Edges1, Nodes2, RecMap, PrevIndex, PrevVis, PrevVis, Clocks};
       EndIndex =/= -1 ->
          LastEdge = lists:last(Edges),
          Edge = LastEdge#edge{to = EndIndex},

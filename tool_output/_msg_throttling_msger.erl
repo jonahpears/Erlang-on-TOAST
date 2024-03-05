@@ -5,6 +5,7 @@
 -define(SERVER, ?MODULE).
 
 -export([callback_mode/0,
+         custom_end_state/3,
          init/1,
          receive_ack1/1,
          receive_ack2/1,
@@ -19,6 +20,10 @@
          std_state5/3,
          stop/0,
          terminate/3]).
+
+-file("_msg_throttling_msger", 1).
+
+-record(statem_data, {coparty_id = undefined, trace = [], msgs = [], state_map = {}, delayable_sends = false}).
 
 start_link() -> gen_statem:start_link({local, ?SERVER}, ?MODULE, [], []).
 
@@ -51,7 +56,12 @@ recv_after_state4(state_timeout, std_state5, Data) ->
     {next_state, std_state5, Data}.
 
 std_state5(enter, _OldState, _Data) -> keep_state_and_data;
-std_state5(internal, {send_tout, Tout}, Data) -> {stop, normal, Data}.
+std_state5(internal, {send_tout, Tout}, Data) -> {next_state, custom_end_state, Data}.
+
+custom_end_state(enter, _OldState, Data) ->
+    io:format("(~p ->.)\n", [custom_end_state]),
+    {keep_state, Data, [{state_timeout, 0, go_to_terminate}]};
+custom_end_state(state_timeout, go_to_terminate, Data) -> {next_state, go_to_terminate, Data}.
 
 terminate(_Reason, _State, _Data) -> ok.
 
