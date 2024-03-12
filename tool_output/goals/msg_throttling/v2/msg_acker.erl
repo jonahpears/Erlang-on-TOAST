@@ -1,4 +1,4 @@
--module(acker).
+-module(msg_acker).
 
 -behaviour(gen_statem).
 
@@ -6,13 +6,14 @@
 
 %% gen_statem
 -export([ start_link/0,
-          start_link/1, 
           callback_mode/0,
           init/1,
+          stop/0,
           terminate/3 ]).
 
 %% custom wrappers for gen_statem
--export([ init/2,
+-export([ start_link/1, 
+          init/2,
           init_setup_state/3,
           stop_state/3 ]).
 
@@ -31,12 +32,16 @@
 
 -define(NAME, ?MODULE).
 
-printout(Str, Params) -> io:format("[~p|~p]: ~p\n", [?NAME,self(), Str] ++ Params).
+printout(Str, Params) -> io:format("[~p|~p]: " ++ Str ++ "\n", [?NAME, self()] ++ Params).
 
 %% gen_statem
-start_link() -> gen_statem:start_link({local, ?NAME}, ?MODULE, [], []).
+start_link(Params) -> 
+    % printout("~p, Params: ~p.", [?FUNCTION_NAME, Params]),
+    {ok, Pid} = gen_statem:start_link({local, ?NAME}, ?MODULE, Params, []),
+    % printout("~p, Pid: ~p.", [?FUNCTION_NAME, Pid]),
+    {ok, Pid}.
+start_link() -> msg_acker:start_link([]).
 
-start_link(Params) -> gen_statem:start_link({local, ?NAME}, ?MODULE, Params, []).
 
 callback_mode() -> [state_functions, state_enter].
 
@@ -49,8 +54,13 @@ init([]) -> {ok, init_setup_state, #statem_data{}}.
 -spec init([{atom(),any()}|[]], map()) -> {atom(), atom(), map()}.
 init([{HKey,HVal}|T], #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, options = Options} = StatemData) 
     when is_atom(HKey) and is_map_key(HKey, Options) -> init(T, maps:put(options, maps:put(HKey, HVal, Options), StatemData));
-init([_H|T], StatemData) -> init(T, StatemData);
-init([], StatemData) -> {ok, init_setup_state, StatemData}.
+init([_H|T], #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, options = _Options} = StatemData) -> init(T, StatemData);
+init([], #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, options = _Options} = StatemData) -> {ok, init_setup_state, StatemData}.
+
+
+stop() -> 
+    printout("~p.", [?FUNCTION_NAME]),
+    gen_statem:stop(?NAME).
 
 
 terminate(Reason, State, StatemData) -> 
@@ -62,18 +72,22 @@ terminate(Reason, State, StatemData) ->
 
 %% custom init/stop wrappers
 init_setup_state(enter, _OldState, #statem_data{coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, options = _Options} = StatemData) -> {keep_state, StatemData, [{state_timeout, 0, wait_to_finish}]};
-init_setup_state(state_timeout, wait_to_finish, StatemData) ->
+init_setup_state(state_timeout, wait_to_finish, #statem_data{coparty_id = _CoPartyID, state_stack = States, msg_stack = Msgs, options = Options} = _StatemData) ->
     % io:format("[~p|~p]: init_setup_state, waiting to finish setup.", [?NAME,self()]),
     printout("~p, waiting to finish setup.", [?FUNCTION_NAME]),
     receive
         {_SupID, sup_init, CoID} ->
             printout("~p, received coparty ID (~p).", [?FUNCTION_NAME,CoID]),
             % io:format("[~p|~p]: init_setup_state, received coparty ID (~p).", [?NAME,self(),CoID]),
-            {next_state, state_send_msg1, maps:put(coparty_id, CoID, StatemData)}
+            % {next_state, state1_recv_msg1, maps:put(coparty_id, CoID, StatemData)}
+            {next_state, state1_recv_msg1, #statem_data{ coparty_id = CoID, 
+                                                         state_stack = States,
+                                                         msg_stack = Msgs,
+                                                         options = Options }}
     end.
 
 stop_state(enter, _OldState, #stop_data{reason = _Reason, statem_data = _StatemData} = Data) -> {keep_state, Data, [{state_timeout, 0, exit_deferral}]};
-stop_state(state_timeout, exit_deferral, #stop_data{reason = Reason, statem_data = StatemData} = Data) -> 
+stop_state(state_timeout, exit_deferral, #stop_data{reason = Reason, statem_data = #statem_data{coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, options = _Options} = StatemData} = Data) -> 
     printout("~p, ~p, StatemData: \n\t~p.", [?FUNCTION_NAME, Reason, StatemData]),
     {stop, Reason, Data}.
 
@@ -123,15 +137,15 @@ non_deterministic_delay(MaxDelay) ->
 state1_recv_msg1(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, options = _Options} = _StatemData) ->
     printout("(->) ~p.", [?FUNCTION_NAME]),
     keep_state_and_data;
-state1_recv_msg1(info, {CoPartyID, Msg1}, #statem_data{ coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, options = Options} = StatemData) ->
+state1_recv_msg1(info, {CoPartyID, Msg1}, #statem_data{ coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, options = #statem_options{ allow_delayable_sends = _AllowDelayableSends, printout_enabled = _PrintoutEnabled } = Options} = _StatemData) ->
     % recv
     printout("~p, recv (~p).", [?FUNCTION_NAME, Msg1]),
     % set up next configuration
     NextState = state2a_send_ack1,
-    StatemData1 = StatemData#statem_data{ coparty_id = CoPartyID,
-                                          state_stack = [NextState] ++ States,
-                                          msg_stack = [{"recv", Msg1}] ++ Msgs,
-                                          options = Options },
+    StatemData1 = #statem_data{ coparty_id = CoPartyID,
+                                state_stack = [NextState] ++ States,
+                                msg_stack = [{"recv", Msg1}] ++ Msgs,
+                                options = Options },
     % move to next state
     {next_state, NextState, StatemData1}.
 
@@ -140,9 +154,9 @@ state1_recv_msg1(info, {CoPartyID, Msg1}, #statem_data{ coparty_id = CoPartyID, 
 state2a_send_ack1(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, options = _Options} = StatemData) ->
     printout("(->) ~p.", [?FUNCTION_NAME]),
     {keep_state, StatemData, [{state_timeout, 3000, state2b_recv_msg2}]};
-state2a_send_ack1(cast, {send_ack1, Ack}, #statem_data{ coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, options = Options} = StatemData) ->
+state2a_send_ack1(cast, {send_ack1, Ack}, #statem_data{ coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, options = #statem_options{ allow_delayable_sends = AllowDelayableSends, printout_enabled = _PrintoutEnabled } = Options} = _StatemData) ->
     % add delay (iff, option set)
-    case maps:get(allow_delayable_sends, Options, false) of
+    case AllowDelayableSends of
         true -> {ok, _} = non_deterministic_delay(3000 * 2);
         _ -> ok
     end,
@@ -151,10 +165,10 @@ state2a_send_ack1(cast, {send_ack1, Ack}, #statem_data{ coparty_id = CoPartyID, 
     printout("~p, sent (~p).", [?FUNCTION_NAME, Ack]),
     % set up next configuration
     NextState = state1_recv_msg1,
-    StatemData1 = StatemData#statem_data{ coparty_id = CoPartyID,
-                                          state_stack = [NextState] ++ States,
-                                          msg_stack = [{"send", Ack}] ++ Msgs,
-                                          options = Options },
+    StatemData1 = #statem_data{ coparty_id = CoPartyID,
+                                state_stack = [NextState] ++ States,
+                                msg_stack = [{"send", Ack}] ++ Msgs,
+                                options = Options },
     % move to next state
     {next_state, NextState, StatemData1};
 state2a_send_ack1(state_timeout, state2b_recv_msg2, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, options = _Options} = StatemData) ->
@@ -166,15 +180,15 @@ state2a_send_ack1(state_timeout, state2b_recv_msg2, #statem_data{ coparty_id = _
 state2b_recv_msg2(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, options = _Options} = _StatemData) ->
     printout("(->) ~p.", [?FUNCTION_NAME]),
     keep_state_and_data;
-state2b_recv_msg2(info, {CoPartyID, Msg2}, #statem_data{ coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, options = Options} = StatemData) ->
+state2b_recv_msg2(info, {CoPartyID, Msg2}, #statem_data{ coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, options = #statem_options{ allow_delayable_sends = _AllowDelayableSends, printout_enabled = _PrintoutEnabled } = Options} = _StatemData) ->
     % recv
     printout("~p, recv (~p).", [?FUNCTION_NAME, Msg2]),
     % set up next configuration
     NextState = state3a_send_ack2,
-    StatemData1 = StatemData#statem_data{ coparty_id = CoPartyID,
-                                          state_stack = [NextState] ++ States,
-                                          msg_stack = [{"recv", Msg2}] ++ Msgs,
-                                          options = Options },
+    StatemData1 = #statem_data{ coparty_id = CoPartyID,
+                                state_stack = [NextState] ++ States,
+                                msg_stack = [{"recv", Msg2}] ++ Msgs,
+                                options = Options },
     % move to next state
     {next_state, NextState, StatemData1}.
 
@@ -183,9 +197,9 @@ state3a_send_ack2(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state
     printout("(->) ~p.", [?FUNCTION_NAME]),
     % {keep_state, StatemData, [{state_timeout, 3000, state3b_issue_timeout}]};
     keep_state_and_data;
-state3a_send_ack2(cast, {send_ack1, Ack}, #statem_data{ coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, options = Options} = StatemData) ->
+state3a_send_ack2(cast, {send_ack2, Ack}, #statem_data{ coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, options = #statem_options{ allow_delayable_sends = AllowDelayableSends, printout_enabled = _PrintoutEnabled } = Options} = _StatemData) ->
     % add delay (iff, option set)
-    case maps:get(allow_delayable_sends, Options, false) of
+    case AllowDelayableSends of
         true -> {ok, _} = non_deterministic_delay(3000 * 2);
         _ -> ok
     end,
@@ -194,10 +208,10 @@ state3a_send_ack2(cast, {send_ack1, Ack}, #statem_data{ coparty_id = CoPartyID, 
     printout("~p, sent (~p).", [?FUNCTION_NAME, Ack]),
     % set up next configuration
     NextState = state2a_send_ack1,
-    StatemData1 = StatemData#statem_data{ coparty_id = CoPartyID,
-                                          state_stack = [NextState] ++ States,
-                                          msg_stack = [{"send", Ack}] ++ Msgs,
-                                          options = Options },
+    StatemData1 = #statem_data{ coparty_id = CoPartyID,
+                                state_stack = [NextState] ++ States,
+                                msg_stack = [{"send", Ack}] ++ Msgs,
+                                options = Options },
     % move to next state
     {next_state, NextState, StatemData1}.
 

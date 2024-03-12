@@ -1,4 +1,4 @@
--module(msg_throttling_exa).
+-module(msg_protocol).
 -compile(export_all).
 -compile(nowarn_export_all).
 
@@ -10,10 +10,10 @@ role_server() ->
         {rec, "s1", 
             {act, {msger, acker}, msg1, 
                 {rec, "s2", 
-                    { act, {acker, msger}, ack1, {rvar, "s1"}, 
+                    { act_del, {acker, msger}, ack1, {rvar, "s1"}, 
                       aft, 3000, 
                         { act, {msger, acker}, msg2, 
-                            { act, {acker, msger}, ack2, {rvar, "s2"}, 
+                            { act_del, {acker, msger}, ack2, {rvar, "s2"}, 
                               aft, 3000, {error, msger}
                             }
                         }

@@ -23,7 +23,7 @@ stop() -> exit(whereis(?MODULE), shutdown).
 init([delayable_sends|_T]) ->
     SupFlags = #{strategy => rest_for_one,
                  intensity => 2,
-                 perior => 3600},
+                 period => 3600},
     ChildSpecList = [child(msg_throttling_acker, [{delayable_sends, true}]),
                      child(msg_throttling_msger, [{delayable_sends, true}])],
     {ok, {SupFlags, ChildSpecList}};
@@ -32,7 +32,7 @@ init([]) ->
     % hlr:new(),
     SupFlags = #{strategy => rest_for_one,
                  intensity => 2,
-                 perior => 3600},
+                 period => 3600},
     ChildSpecList = [child(msg_throttling_acker, [{delayable_sends, false}]),
                      child(msg_throttling_msger, [{delayable_sends, false}])],
     {ok, {SupFlags, ChildSpecList}}.
