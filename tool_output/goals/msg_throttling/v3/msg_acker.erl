@@ -78,13 +78,10 @@ terminate(Reason, State, StatemData) ->
 %% custom init/stop wrappers
 init_setup_state(enter, _OldState, #statem_data{coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = _Queue, options = _Options} = StatemData) -> {keep_state, StatemData, [{state_timeout, 0, wait_to_finish}]};
 init_setup_state(state_timeout, wait_to_finish, #statem_data{coparty_id = _CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = Queue, options = Options} = _StatemData) ->
-    % io:format("[~p|~p]: init_setup_state, waiting to finish setup.", [?NAME,self()]),
     printout("~p, waiting to finish setup.", [?FUNCTION_NAME]),
     receive
         {_SupID, sup_init, CoID} ->
             printout("~p, received coparty ID (~p).", [?FUNCTION_NAME,CoID]),
-            % io:format("[~p|~p]: init_setup_state, received coparty ID (~p).", [?NAME,self(),CoID]),
-            % {next_state, state1_recv_msg1, maps:put(coparty_id, CoID, StatemData)}
             {next_state, state1_recv_msg1, #statem_data{ coparty_id = CoID, 
                                                          state_stack = States,
                                                          msg_stack = Msgs,

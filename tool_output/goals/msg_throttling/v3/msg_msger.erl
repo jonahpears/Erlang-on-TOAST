@@ -84,8 +84,6 @@ init_setup_state(state_timeout, wait_to_finish, #statem_data{coparty_id = _CoPar
     receive
         {_SupID, sup_init, CoID} ->
             printout("~p, received coparty ID (~p).", [?FUNCTION_NAME,CoID]),
-            % io:format("[~p|~p]: init_setup_state, received coparty ID (~p).", [?NAME,self(),CoID]),
-            % {next_state, state1_send_msg1, maps:put(coparty_id, CoID, StatemData)}
             {next_state, state1_send_msg1, #statem_data{ coparty_id = CoID, 
                                                          state_stack = States,
                                                          msg_stack = Msgs,
@@ -145,13 +143,6 @@ recv_ack2() -> cb_recv({?FUNCTION_NAME}).
 state1_send_msg1(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = [_H], options = _Options} = _StatemData) ->
     printout("(->) ~p, queued actions.", [?FUNCTION_NAME]),
     {keep_state_and_data, [{state_timeout,0,process_queue}]};
-    % % empty queued actions
-    % StatemData1 = #statem_data{ coparty_id = CoPartyID,
-    %                             state_stack = States,
-    %                             msg_stack = Msgs,
-    %                             queued_actions = [],
-    %                             options = Options },
-    % {keep_state, StatemData1};
 %% state1, no queued actions
 state1_send_msg1(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = [], options = _Options} = _StatemData) ->
     printout("(->) ~p.", [?FUNCTION_NAME]),
@@ -210,7 +201,6 @@ state2a_recv_ack1(info, {CoPartyID, Ack1}, #statem_data{ coparty_id = CoPartyID,
 %% queue later sending action in mixed-choice
 state2a_recv_ack1(cast, {send_msg2, Msg}, #statem_data{ coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = Queue, options = Options} = _StatemData) ->
     printout("~p, too early to act,\n\tadding to queue: ~p.", [?FUNCTION_NAME, {send_msg2, Msg}]),
-    % {keep_state_and_data, [{state_timeout, update, {send_msg2, Msg}}]};
     StatemData1 = #statem_data{ coparty_id = CoPartyID,
                                 state_stack = States,
                                 msg_stack = Msgs,
