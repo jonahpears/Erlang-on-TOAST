@@ -14,6 +14,9 @@
                    | {'branch', [ {atom(), protocol()} ]}
                    | {'branch', [ {atom(), protocol()} ], 'aft', number(), protocol()}
                    | {'aft', number(), protocol()}
+                   | {'roles', [ atom() ], protocol()}
+                   | {'error', atom()}
+                   | {'from', atom(), 'to', atom()}
                   %  | {'set', atom(), protocol()}
                   %  | {'delay', time_region(), protocol()}
                   %  | {'iff', time_constraint(), protocol()}
@@ -23,8 +26,8 @@
                    | {'consume', atom(), protocol()}
                    | {'rec', string(), protocol()}
                    | {'rvar', string()}
-                   | 'endP'
-                   | 'error'.
+                   | 'endP'.
+                  %  | 'error'.
 
 % -type time_constraint () :: {number()}
 %                           | {'neg', time_constraint()}
