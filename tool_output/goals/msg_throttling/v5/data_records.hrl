@@ -16,9 +16,9 @@
 
 -record(statem_data, { coparty_id, 
                        states = [], 
-                       msgs = {},
-                       timeouts = {}, 
-                       state_map = {},
+                       msgs = #{},
+                       timeouts = #{}, 
+                       state_map = #{},
                        queued_actions = [],
                        options = #statem_options{} }).
 
