@@ -12,10 +12,6 @@
           terminate/3 ]).
 
 %% custom wrappers for gen_statem
-% -export([ start_link/1, 
-%           init/2,
-%           init_setup_state/3,
-%           stop_state/3 ]).
 -export([ start_link/1, 
           init/2 ]).
 
@@ -29,17 +25,6 @@
 
 %% generic callbacks
 -export([ send/2, recv/1 ]).
-
-% %% states
-% -export([ state1_send_msg1/3, 
-%           state2a_recv_ack1/3,
-%           state2b_send_msg2/3,
-%           state3a_recv_ack2/3,
-%           state3b_issue_timeout/3 ]).
-
-% %% mixed-choice + timeout timing constraints
-% -define(ACK1_TIME, 3000).
-% -define(ACK2_TIME, 3000).
 
 
 -define(NAME, ?MODULE).
@@ -56,10 +41,7 @@ start_link(Params) ->
                   state3a_recv_ack2 => #{recv => #{ack2 => state2a_recv_ack1} } },
     % add timeout + statemap parameters 
     Params1 = [{timeouts, Timeouts}, {state_map, StateMap}] ++ Params,
-    % printout("~p, Params: ~p.", [?FUNCTION_NAME, Params1]),
-    {ok, Pid} = gen_statem:start_link({local, ?NAME}, ?MODULE, Params1, []),
-    % printout("~p, Pid: ~p.", [?FUNCTION_NAME, Pid]),
-    {ok, Pid}.
+    gen_statem:start_link({local, ?NAME}, ?MODULE, Params1, []).
 
 start_link() -> msg_msger:start_link([]).
 
@@ -72,7 +54,6 @@ init(Params) -> init(Params, #statem_data{}).
 init([{HKey,HVal}|T], #statem_data{ coparty_id = undefined=_CoPartyID, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = Options} = StatemData) 
     when is_atom(HKey) and is_map_key(HKey, Options) -> init(T, maps:put(options, maps:put(HKey, HVal, Options), StatemData));
 init([{timeouts,HVal}|T], #statem_data{ coparty_id = undefined=CoPartyID, states = States, msgs = Msgs, timeouts = Timeouts, state_map = StateMap, queued_actions = Queue, options = Options} = _StatemData) -> 
-    % printout("timeouts, HVal: ~p.", [HVal]),
     Timeouts1 = maps:merge(Timeouts, HVal),
     StatemData1 = #statem_data{ coparty_id = CoPartyID,
                                 states = States,
@@ -83,7 +64,6 @@ init([{timeouts,HVal}|T], #statem_data{ coparty_id = undefined=CoPartyID, states
                                 options = Options },
     init(T, StatemData1);
 init([{state_map,HVal}|T], #statem_data{ coparty_id = undefined=CoPartyID, states = States, msgs = Msgs, timeouts = Timeouts, state_map = StateMap, queued_actions = Queue, options = Options} = _StatemData) -> 
-    % printout("state_map, HVal: ~p.", [HVal]),
     StateMap1 = maps:merge(StateMap, HVal),
     StatemData1 = #statem_data{ coparty_id = CoPartyID,
                                 states = States,
@@ -95,7 +75,6 @@ init([{state_map,HVal}|T], #statem_data{ coparty_id = undefined=CoPartyID, state
     init(T, StatemData1);
 init([_H|T], #statem_data{ coparty_id = undefined=_CoPartyID, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = _Options} = StatemData) -> init(T, StatemData);
 init([], #statem_data{ coparty_id = undefined=_CoPartyID, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = _Options} = StatemData) -> 
-    % printout("~p, StateMap: ~p.", [?FUNCTION_NAME, StateMap]),
     {ok, init_setup_state, StatemData}.
 
 
@@ -109,7 +88,6 @@ terminate(Reason, state3b_issue_timeout, StatemData) ->
 terminate(Reason, State, StatemData) -> 
     printout("~p, {Reason: ~p},\n\t{State: ~p},\n\t{StatemData: ~p}.", [?FUNCTION_NAME,Reason,State,StatemData]),
     ok.
-
 
 
 
@@ -255,11 +233,6 @@ handle_event(cast, {send, Label, Msg}, State, #statem_data{ coparty_id = CoParty
 %% % % % % % %
 handle_event(cast, {send, Label, Msg}, State, #statem_data{ coparty_id = CoPartyID, states = States, msgs = Msgs, timeouts = Timeouts, state_map = StateMap, queued_actions = Queue, options = Options} = _StatemData) ->
     printout("~p, wrong state to send (~p: ~p), adding to queue.", [State, Label, Msg]),
-    % printout("~p, StateMap: ~p.", [State, StateMap]),
-    % printout("~p, is_map_key => ~p", [State, is_map_key(State, StateMap)]),
-    % printout("~p, map_get(State, StateMap) => ~p", [State, map_get(State, StateMap)]),
-    % printout("~p, map_get(send, ...) => ~p", [State, map_get(send, map_get(State, StateMap))]),
-    % printout("~p, map_get(Label, ...) => ~p", [State, map_get(Label, map_get(send, map_get(State, StateMap)))]),
     StatemData1 = #statem_data{ coparty_id = CoPartyID,
                                 states = States,
                                 msgs = Msgs,
@@ -320,7 +293,6 @@ handle_event(state_timeout, NextState, State, #statem_data{ coparty_id = _CoPart
 %% % % % % % %
 handle_event({call, From}, {recv, Label}, State, #statem_data{ coparty_id = _CoPartyID, states = _States, msgs = Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = _Options} = _StatemData) -> 
     printout("~p, ~p, looking for msg with label (~p).", [?FUNCTION_NAME, State, Label]),
-    % printout("~p, Msgs: ~p.", [?FUNCTION_NAME, Msgs]),
     case maps:find(Label, Msgs) of
         {ok, [H]} -> 
             printout("~p, ~p, found msg (~p: ~p) out of 1.", [?FUNCTION_NAME, State, Label, H]),
