@@ -17,6 +17,8 @@
 -export([ start_link/1,
           init/2 ]).
 
+-export([ act/2 ]).
+
 -record(state, {}).
 
 -define(SERVER,?MODULE).
@@ -109,9 +111,24 @@ init([], #server_options{ supervisor_options = #supervisor_options{ strategy = S
     {ok, #state{}}.
 
 
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
+
+handle_call({WorkerID, send, Label, Payload}, _From, State) ->
+  % {_, WorkerID} = msg_supervisor:get_child(WorkerName, msg_worker),
+  
+  Reply = gen_server:call(WorkerID, {send, Label, Payload}),
+
+  {reply, Reply, State};
+
+handle_call({WorkerID, recv, Label}, _From, State) ->
+  % {_, WorkerID} = msg_supervisor:get_child(WorkerName, msg_worker),
+  
+  Reply = gen_server:call(WorkerID, {recv, Label}),
+
+  {reply, Reply, State};
 
 handle_call(_Request, _From, State) ->
   Reply = ok,
@@ -130,4 +147,17 @@ code_change(_OldVsn, State, _Extra) ->
   {ok, State}.
 
 
+%% % % % % % %
+%% handle external action calls
+%% % % % % % %
+act(WorkerName, {send, Label, Payload}) ->
+  {_, WorkerID} = msg_supervisor:get_child(WorkerName, msg_worker),
+
+  % handle_call(WorkerID, Action).
+  gen_server:call(WorkerID, {send, Label, Payload});
+act(WorkerName, {recv, Label}) ->
+  {_, WorkerID} = msg_supervisor:get_child(WorkerName, msg_worker),
+
+  % handle_call(WorkerID, Action).
+  gen_server:call(WorkerID, {recv, Label}).
 

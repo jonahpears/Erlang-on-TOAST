@@ -345,6 +345,13 @@ handle_event({call, From}, {recv, Label}, State, #statem_data{ name=Name, copart
     {keep_state_and_data, [{reply, From, ReplyMsg}]};
 
 
+%% % % % % % %
+%% handle external action calls
+%% % % % % % %
+handle_event({call, From}, {send, Label, Payload}, _State, #statem_data{ name=_Name, coparty_id = _CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = _Options} = _StatemData) -> 
+    % printout(Name, "~p, ~p, el (~p).", [?FUNCTION_NAME, State, Label]),
+    ReplyMsg = send(Label, Payload),
+    {keep_state_and_data, [{reply, From, ReplyMsg}]};
 
 %% % % % % % %
 %% anything else

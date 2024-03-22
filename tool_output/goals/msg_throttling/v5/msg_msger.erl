@@ -298,7 +298,7 @@ handle_event({call, From}, {recv, Label}, State, #statem_data{ coparty_id = _CoP
             printout("~p, ~p, found msg (~p: ~p) out of 1.", [?FUNCTION_NAME, State, Label, H]),
             ReplyMsg = {ok, #{  label => Label, msg => H, total => 1 }};
         {ok, [H|T]} -> 
-            NumMsgs = lists:length(T)+1,
+            NumMsgs = length(T)+1,
             printout("~p, ~p, found msg (~p: ~p) out of ~p.", [?FUNCTION_NAME, State, Label, H, NumMsgs]),
             ReplyMsg = {ok, #{  label => Label, msg => H, total => NumMsgs }};
          error -> 
