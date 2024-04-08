@@ -107,7 +107,9 @@ init([], #server_options{ supervisor_options = #supervisor_options{ strategy = S
                                               child_spec => ChildSpec })),
     msg_supervisor:run_setup(),
     % msg_supervisor:run_setup(ChildOptions, StatemOptions, ChildSpec),
+    % register(mserver, self()),
     printout("~p, finished setup.\n", [?FUNCTION_NAME]),
+    % printout("~p, registered processes: ~p.\n", [?FUNCTION_NAME, registered()]),
     {ok, #state{}}.
 
 
@@ -121,12 +123,16 @@ handle_call({WorkerID, send, Label, Payload}, _From, State) ->
   
   Reply = gen_server:call(WorkerID, {send, Label, Payload}),
 
+  printout("~p, {~p, send, ~p, ~p} => ~p.", [?FUNCTION_NAME, WorkerID, Label, Payload, Reply]),
+
   {reply, Reply, State};
 
 handle_call({WorkerID, recv, Label}, _From, State) ->
   % {_, WorkerID} = msg_supervisor:get_child(WorkerName, msg_worker),
   
   Reply = gen_server:call(WorkerID, {recv, Label}),
+
+  printout("~p, {~p, recv, ~p} => ~p.", [?FUNCTION_NAME, WorkerID, Label, Reply]),
 
   {reply, Reply, State};
 

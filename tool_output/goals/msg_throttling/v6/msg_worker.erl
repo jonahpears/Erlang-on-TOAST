@@ -16,12 +16,10 @@
           init/2 ]).
 
 %% callbacks
--export([ send_msg1/1,
-          send_msg2/1,
-          recv_ack1/1,
-          recv_ack2/1,
-          issue_timeout/1,
-          handle_event/4 ]).
+-export([ handle_event/4 ]).
+
+%% better printing
+% -export([ format_status/1 ]).
 
 %% generic callbacks
 -export([ send/2, recv/1 ]).
@@ -116,42 +114,37 @@ terminate(Reason, State, #statem_data{name=Name, coparty_id = _CoPartyID, init_s
 
 
 
-
-%% callback wrappers
--spec cb_send({atom(), any()}) -> ok.
-cb_send({Label, Msg}) ->
-    printout("~p, (~p: ~p).", [?FUNCTION_NAME, Label, Msg]),
-    gen_statem:cast(?NAME, {send, Label, Msg}).
-
--spec cb_recv({atom()}) -> ok.
-cb_recv({Label}) ->
-    printout("~p, (~p).", [?FUNCTION_NAME, Label]),
-    gen_statem:call(?NAME, {recv, Label}).
-
--spec cb_timeout({atom(), any()}) -> ok.
-cb_timeout({Label, Msg}) ->
-    printout("~p, (~p: ~p).", [?FUNCTION_NAME, Label, Msg]),
-    gen_statem:cast(?NAME, {Label, Msg}).
-
-
-%% event callbacks
-send_msg1({Label, Msg}) -> cb_send({Label, Msg}).
-send_msg2({Label, Msg}) -> cb_send({Label, Msg}).
-
-issue_timeout({Label, Msg}) -> cb_timeout({Label, Msg}).
-
-recv_ack1({Label}) -> cb_recv({Label}).
-recv_ack2({Label}) -> cb_recv({Label}).
-
-
-
 %% generic callbacks
 send(Label, Msg) -> gen_statem:cast(?NAME, {send, Label, Msg}).
 recv(Label) -> gen_statem:call(?NAME, {recv, Label}).
 
 
 
+
+
+
+%% % % % % % %
+%% handling instructions from user/implementation/controller
+%% % % % % % %
+handle_event(info, {act, send, Label, Msg}, _State, #statem_data{ name=Name, coparty_id = _CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = _Options} = _StatemData) ->
+    % printout(Name, "~p, wrong state to recv (~p: ~p), postponing.", [State, Label, Msg]),
+    io:format("\n"),
+    printout(Name, "~p, {act, send, ~p, ~p}...", [?FUNCTION_NAME, Label, Msg]),
+    {keep_state_and_data, [{next_event, cast, {send, Label, Msg}}]};
+
+handle_event(info, {act, recv, Label}, _State, #statem_data{ name=Name, coparty_id = _CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = _Options} = _StatemData) ->
+    % printout(Name, "~p, wrong state to recv (~p: ~p), postponing.", [State, Label, Msg]),
+    io:format("\n"),
+    printout(Name, "~p, {act, recv, ~p}.", [?FUNCTION_NAME, Label]),
+    {keep_state_and_data, [{next_event, cast, {recv, Label}}]};
+
+
+
+
+
+%% % % % % % %
 %% custom init/stop wrappers
+%% % % % % % %
 
 %% catch before start (to receive the CoPartyID)
 handle_event(enter, _OldState, init_setup_state=State, #statem_data{name=Name, coparty_id = undefined, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = _Options} = StatemData) -> 
@@ -211,7 +204,7 @@ handle_event(enter, _OldState, State, #statem_data{ name=Name, coparty_id = _CoP
 %% state enter, no queued actions and no mixed-choice
 handle_event(enter, _OldState, State, #statem_data{ name=Name, coparty_id = _CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = StateMap, queued_actions = [], options = _Options} = _StatemData) ->
     Actions = maps:get(State, StateMap, none),
-    printout(Name, "(->) ~p, available actions: ~p.", [State, Actions]),
+    printout(Name, "(->) ~p: ~p.", [State, Actions]),
     if Actions=:=none -> printout(Name, "~p, StateMap: ~p.", [State, StateMap]); true-> ok end,
     keep_state_and_data;
 
@@ -348,15 +341,19 @@ handle_event({call, From}, {recv, Label}, State, #statem_data{ name=Name, copart
 %% % % % % % %
 %% handle external action calls
 %% % % % % % %
-handle_event({call, From}, {send, Label, Payload}, _State, #statem_data{ name=_Name, coparty_id = _CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = _Options} = _StatemData) -> 
-    % printout(Name, "~p, ~p, el (~p).", [?FUNCTION_NAME, State, Label]),
-    ReplyMsg = send(Label, Payload),
-    {keep_state_and_data, [{reply, From, ReplyMsg}]};
+% handle_event({call, From}, {send, Label, Payload}, _State, #statem_data{ name=Name, coparty_id = _CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = _Options} = _StatemData) -> 
+%     % printout(Name, "~p, ~p, el (~p).", [?FUNCTION_NAME, State, Label]),
+%     printout(Name, "~p, {send, ~p, ~p}.", [?FUNCTION_NAME, Label, Payload]),
+%     ReplyMsg = send(Label, Payload),
+%     {keep_state_and_data, [{reply, From, ReplyMsg}]};
 
 %% % % % % % %
 %% anything else
 %% % % % % % %
 handle_event(EventType, EventContent, State, Data) ->
-    printout(self(), "error, reached unknown event:\n\tEventType: ~p,\n\tEventContent: ~p,\n\tState: ~p,\n\tData: ~p.", [EventType, EventContent, State, Data]),
+    printout(Data#statem_data.name, "error, reached unknown event:\n\tEventType: ~p,\n\tEventContent: ~p,\n\tState: ~p,\n\tData: ~p.", [EventType, EventContent, State, Data]),
     {next_state, state_stop, #stop_data{ reason = unknown_event_to_handle, statem_data = Data}}.
+
+
+
 

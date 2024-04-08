@@ -93,6 +93,7 @@ init([], #supervisor_options{ strategy = Strategy, intensity = Intensity, period
     % ChildSpecList = [],
 
     % printout("~p,\n\tSupFlags: ~p\n\tChildSpecList: ~p.", [?FUNCTION_NAME, SupFlags, ChildSpecList]),
+    % register(msup, self()),
     {ok, {SupFlags, ChildSpecList}}.
 
 
@@ -128,6 +129,13 @@ run_setup() ->
 
     MsgerID ! {self(), sup_init, AckerID},
     AckerID ! {self(), sup_init, MsgerID},
+
+    %% register pid to name
+    register(msger, MsgerID),
+    register(acker, AckerID),
+
+    
+
     printout("~p, complete.", [?FUNCTION_NAME]).
 
 
