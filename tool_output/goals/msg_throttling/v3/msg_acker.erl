@@ -174,7 +174,7 @@ state2a_send_ack1(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state
 %% state2a, no queued actions
 state2a_send_ack1(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = [], options = _Options} = _StatemData) ->
     printout("(->) ~p.", [?FUNCTION_NAME]),
-    keep_state_and_data;
+    keep_state_and_data, [{state_timeout,?ACK1_TIME,state2b_recv_msg2}];
 %% state2a, process queue contents
 state2a_send_ack1(state_timeout, process_queue, #statem_data{ coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = [H|T], options = Options} = _StatemData) ->
     printout("(->) ~p, queued action: ~p.", [?FUNCTION_NAME, H]),
@@ -211,6 +211,10 @@ state2a_send_ack1(cast, {send_ack2, Msg}, #statem_data{ coparty_id = CoPartyID, 
                                 queued_actions = Queue ++ [{send_ack2, Msg}],
                                 options = Options },
     {keep_state, StatemData1};
+%% default timeout in mixed-choice
+state2a_send_ack1(state_timeout, state2b_recv_msg2, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = _Queue, options = _Options} = StatemData) ->
+    printout("~p, internal timeout (~p).", [?FUNCTION_NAME, ?ACK1_TIME]),
+    {next_state, state2b_recv_msg2, StatemData};
 state2a_send_ack1(info, {CoPartyID, Ack}, #statem_data{ coparty_id = CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = _Queue, options = #statem_options{ allow_delayable_sends = _AllowDelayableSends, printout_enabled = _PrintoutEnabled } = _Options} = _StatemData) ->
     % recv
     printout("~p, recv (~p) too early! postponing.", [?FUNCTION_NAME, Ack]),
