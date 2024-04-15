@@ -46,6 +46,7 @@ init_module(Name) when is_atom(Name) ->
 module_forms(#module{name=Name,
                      exports=Xs,
                      imports=Is,
+                    %  files=Fs,
                      records=Rs,
                      attributes=As,
                      functions=Fs})
@@ -62,15 +63,22 @@ module_forms(#module{name=Name,
     Attrs = [?Q("'@_Ts'() -> [].")
              || {_File, N, T} <- lists:reverse(As),
              Ts <- [erl_syntax:attribute(term(N), T)]],
-    Records = [?Q("-file(\"'@File@\",1). -record('@N@',{'@_RFs'=[]}).")
-               || {File, N, Es} <- lists:reverse(Rs),
+    [{Fl, _N, _Es}|_T] = lists:reverse(Rs),
+    File = [?Q("-file(\"'@Fl@\",1).")],
+    Records = [?Q("-record('@N@',{'@_RFs'=[]}).")
+               || {_File, N, Es} <- lists:reverse(Rs),
                   RFs <- [[erl_syntax:record_field(term(F), V)
                            || {F,V} <- Es]]
               ],
+    % Records = [?Q("-file(\"'@File@\",1). -record('@N@',{'@_RFs'=[]}).")
+    %            || {File, N, Es} <- lists:reverse(Rs),
+    %               RFs <- [[erl_syntax:record_field(term(F), V)
+    %                        || {F,V} <- Es]]
+    %           ],
     Functions = [?Q("'@_F'() -> [].")
                  || {_File, N, Cs} <- lists:reverse(Fs),
                   F <- [erl_syntax:function(term(N), Cs)]],
-    lists:flatten([Module, Attrs, Export, Imports, Records, Functions]).
+    lists:flatten([Module, File, Attrs, Export, Imports, Records, Functions]).
 
 %% @doc Set the source file name for all subsequently added functions,
 %% records, and attributes.
