@@ -8,12 +8,17 @@
 
 %% @doc represent endP as the special terminate function
 end_state() ->
-    Clause = ?Q(["(_Reason, _State, _Data) -> ok"]),
+    Func = get_merl_func_name(),
+    Clause = ?Q([
+                    "(_Reason, _State, _Data) ->",
+                    "printout(\"(->) ~p, Reason: ~p,\nStatemData: \n\t~p.\", [_@Func, Reason, StatemData]),",
+                    "ok"
+                ]),
     {true, terminate, [Clause]}.
 
 custom_end_state(_Id, Edges, _Nodes) ->
     Name = 'custom_end_state',
-    NextState = 'go_to_terminate',
+    % NextState = 'go_to_terminate',
 
     EndEdge = lists:last(lists:filter(fun(Elem) -> Elem#edge.is_custom_end end, Edges)),
     Timeout = EndEdge#edge.edge_data#edge_data.timeout,
@@ -21,18 +26,21 @@ custom_end_state(_Id, Edges, _Nodes) ->
     io:format("custom_end_state: timeout: ~p.\n", [Timeout]),
 
     % EnterClause = enter_clause(timeout, Name, Timeout, NextState),
-    EnterClause = enter_clause(timeout, Timeout, NextState),
+    % EnterClause = enter_clause(timeout, Timeout, NextState),
+    EnterClause = enter_clause(stop),
 
     % Q_Cons = EndEdge#edge.edge_data#edge_data.comments,
     % Q_Comms = lists:map(fun({A, B}) -> atom_to_list(A) ++ " " ++ atom_to_list(B) end, Q_Cons),
     % Q_Clause = timeout_clause('go_to_terminate', 0, Q_Comms),
 
-    Q_Clause = timeout_clause(NextState, 0, [], false),
+    % Q_Clause = timeout_clause(NextState, 0, [], false),
+    Q_Clause = custom_stop_clause(),
 
     Clauses = [EnterClause] ++ [Q_Clause],
     {true, Name, Clauses}.
 
 get_merl_func_name() -> merl:var(list_to_atom("?FUNCTION_NAME")).
+get_merl_name_name() -> merl:var(list_to_atom("?NAME")).
 
 init_state(_Id, [Edge], Nodes) ->
     % NextState = list_to_atom("state" ++ integer_to_list(Edge#edge.to)),
@@ -170,19 +178,37 @@ enter_clause(state) ->
         "printout(\"(->) ~p.\", [_@Func]),",
         %  "io:format(\"(~p ->.)\n\",['@State@']),",
         " keep_state_and_data"
+    ]);
+enter_clause(stop) ->
+    ?Q([
+        "(enter, _OldState, #stop_data{ reason = _Reason, statem_data = _StatemData } = _Data) ->",
+        " {keep_state_and_data, [{state_timeut, 0, go_to_terminate}]}"
     ]).
 enter_clause(timeout, Timeout, ToState) ->
     Func = get_merl_func_name(),
     [
         enter_clause(queue_process),
         ?Q([
-            "(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = [], options = _Options } = _Data) ->",
+            "(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = [], options = _Options } = Data) ->",
             "io:format(\"(~p ->.)\n\",[_@Func]),",
             "{keep_state, Data, [{state_timeout, '@Timeout@', '@ToState@'}]}"
         ])
     ].
 % enter_clause(Timeout,State) -> ?Q(["(enter, _OldState, Data) ->", "{keep_state, Data, [{state_timeout, ", Timeout, ", ", State, "}]}"]).
 % enter_clause(Timeout,State) -> ?Q(["(enter, _OldState, Data) -> {keep_state, Data, [{state_timeout,1000,init}]}"]).
+custom_stop_clause() ->
+    Func = get_merl_func_name(),
+    ?Q([
+        "(state_timeout, go_to_terminate, #stop_data{ reason = Reason, statem_data = StatemData } = _Data) ->",
+        "printout(\"(->) ~p, Reason: ~p,\nStatemData: \n\t~p.\", [_@Func, Reason, StatemData]),",
+        " {stop, Reason, Data}"
+    ]).
+stop_clause() ->
+    Func = get_merl_func_name(),
+    Name = get_merl_name_name(),
+    ?Q([
+        "() -> printout(\"~p.\", [_@Func]), gen_statem:stop(_@Name)"
+    ]).
 
 %% @doc generates standard states, i.e. act x
 std_state(Id, [Edge], Nodes) ->
@@ -1105,16 +1131,33 @@ gen_module(FileName, P) ->
     Forms1 = merl_build:add_attribute(define, [merl:var('SERVER'), Module], Forms),
 
     Forms2 = merl_build:add_record(
-        statem_data,
+        statem_options,
         [
-            {'coparty_id', merl:term('undefined')},
-            {'trace', merl:var('[]')},
-            {'msgs', merl:var('[]')},
-            {'state_map', merl:var('{}')},
-            {'delayable_sends', merl:term('false')}
+            {'allow_delayable_sends', merl:term('false')},
+            {'printout_enabled', merl:term('true')}
         ],
         Forms1
     ),
+
+    Forms3 = merl_build:add_record(
+        statem_data,
+        [
+            {'coparty_id', merl:term('undefined')},
+            {'state_stack', merl:var('[]')},
+            {'msg_stack', merl:var('[]')},
+            {'queued_actions', merl:var('[]')},
+            {'options', merl:var('#statem_options{}')}
+            % {'trace', merl:var('[]')},
+            % {'msgs', merl:var('[]')},
+            % {'state_map', merl:var('{}')},
+            % {'delayable_sends', merl:term('false')}
+        ],
+        Forms2
+    ),
+
+    Forms4 = merl_build:add_function(false, printout, [
+        ?Q(["(Str, Params) -> io:format(\"[~p|~p]: \" ++ Str ++ \"\n\", [_@Module, self()] ++ Params)"])
+    ], Forms3),
 
     io:format("--- success: Forms.\n"),
 
@@ -1123,7 +1166,7 @@ gen_module(FileName, P) ->
             fun({X, Name, Cs}, S) ->
                 merl_build:add_function(X, Name, Cs, S)
             end,
-            Forms2,
+            Forms4,
             Fs
         )
     ).
