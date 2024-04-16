@@ -10,8 +10,8 @@
 end_state() ->
     Func = get_merl_func_name(),
     Clause = ?Q([
-                    "(_Reason, _State, _Data) ->",
-                    "printout(\"(->) ~p, Reason: ~p,\nStatemData: \n\t~p.\", [_@Func, Reason, StatemData]),",
+                    "(Reason, State, Data) ->",
+                    "printout(\"(->) ~p, ~p, Reason: ~p,\nData: \n\t~p.\", [_@Func, State, Reason, Data]),",
                     "ok"
                 ]),
     {true, terminate, [Clause]}.
@@ -102,6 +102,41 @@ init_state(_Id, [Edge], Nodes) ->
         end,
     {true, init, [Clause]}.
 
+clause(send, Act, Var, Trans, NextState, Cons) ->
+    Func = get_merl_func_name(),
+    Clause = ?Q([
+        "(cast, {'@Act@', _@Var}, #statem_data{ coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = Queue, options = #statem_options{ allow_delayable_sends = _AllowDelayableSends, printout_enabled = _PrintoutEnabled } = Options } = _Data) ->",
+        "CoPartyID ! {self(), _@Var},",
+        "printout(\"~p, send (~p) to ~p.\", [_@Func, _@Var, CoPartyID]),",
+        "NextState = '@NextState@',",
+        "Data1 = #statem_data{ coparty_id = CoPartyID, state_stack = [NextState] ++ States, msg_stack = [{send, _@Var}] ++ Msgs, queued_actions = Queue, options = Options },",
+        " {'@Trans@', NextState, Data1 }"
+    ]),
+    if
+        length(Cons) > 0 ->
+            erl_syntax:add_precomments(
+                lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons), Clause
+            );
+        true ->
+            Clause
+    end;
+clause(recv, Act, Var, Trans, NextState, Cons) ->
+    Func = get_merl_func_name(),
+    Clause = ?Q([
+        "(info, {CoPartyID, _@Var}, #statem_data{ coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = Queue, options = #statem_options{ allow_delayable_sends = _AllowDelayableSends, printout_enabled = _PrintoutEnabled } = Options } = _Data) ->",
+        "printout(\"~p, send (~p) to ~p.\", [_@Func, _@Var, CoPartyID]),",
+        "NextState = '@NextState@',",
+        "Data1 = #statem_data{ coparty_id = CoPartyID, state_stack = [NextState] ++ States, msg_stack = [{recv, _@Var}] ++ Msgs, queued_actions = Queue, options = Options },",
+        " {'@Trans@', NextState, Data1 }"
+    ]),
+    if
+        length(Cons) > 0 ->
+            erl_syntax:add_precomments(
+                lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons), Clause
+            );
+        true ->
+            Clause
+    end;
 %% @doc construct the clauses for the standard and choice states
 clause(Event, Act, Var, Trans, NextState, Cons) ->
     Clause = ?Q([
@@ -116,7 +151,65 @@ clause(Event, Act, Var, Trans, NextState, Cons) ->
         true ->
             Clause
     end.
-
+clause(recv_msg, Cons) ->
+    Func = get_merl_func_name(),
+    Clause = ?Q([
+        "({call, From}, {recv, Label}, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msg_stack = Msgs, queued_actions = _Queue, options = _Options } = _Data) ->",
+        "printout(\"~p, looking for msg with label (~p).\", [_@Func, Label]),",
+        "case maps:find(Label, Msgs) of",
+        "{ok, [H]} -> ",
+        "printout(\"~p, found msg (~p: ~p) out of 1.\", [_@Func, Label, H]),",
+        "ReplyMsg = {ok, #{ label => Label, msg => H, total => 1 }};",
+        "{ok, [H|T]} -> ",
+        "NumMsgs = lists:length(T)+1,",
+        "printout(\"~p, found msg (~p: ~p) out of ~p.\", [_@Func, Label, H, NumMsgs]),",
+        "ReplyMsg = {ok, #{ label => Label, msg => H, total => NumMsgs }};",
+        "error -> ",
+        "printout(\"~p, no msgs with label (~p) found.\", [_@Func, Label]), ",
+        "ReplyMsg = {error, no_msg_found_under_label}",
+        "end,",
+        " { keep_state_and_data, [{reply, From, ReplyMsg}] }"
+    ]),
+    if
+        length(Cons) > 0 ->
+            erl_syntax:add_precomments(
+                lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons), Clause
+            );
+        true ->
+            Clause
+    end;
+clause(postpone_send, Cons) ->
+    Func = get_merl_func_name(),
+    Clause = ?Q([
+        "(cast, {Label, Msg}, #statem_data{ coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = Queue, options = #statem_options{ allow_delayable_sends = _AllowDelayableSends, printout_enabled = _PrintoutEnabled } = Options } = _Data) ->",
+        "printout(\"~p, too early to send,\n\tadding to queue: ~p.\", [_@Func, {Label, Msg}]),",
+        "Data1 = #statem_data{ coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = Queue ++ [{Label, Msg}], options = Options },",
+        " {keep_state, Data1 }"
+    ]),
+    if
+        length(Cons) > 0 ->
+            erl_syntax:add_precomments(
+                lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons), Clause
+            );
+        true ->
+            Clause
+    end;
+clause(postpone_recv, Cons) ->
+    Func = get_merl_func_name(),
+    Clause = ?Q([
+        "(info, {Label, Msg}, #statem_data{ coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = Queue, options = #statem_options{ allow_delayable_sends = _AllowDelayableSends, printout_enabled = _PrintoutEnabled } = Options } = _Data) ->",
+        "printout(\"~p, too early to recv,\n\tadding to queue: ~p.\", [_@Func, {Label, Msg}]),",
+        "Data1 = #statem_data{ coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = Queue ++ [{Label, Msg}], options = Options },",
+        " {keep_state, Data1 }"
+    ]),
+    if
+        length(Cons) > 0 ->
+            erl_syntax:add_precomments(
+                lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons), Clause
+            );
+        true ->
+            Clause
+    end.
 queue_clause() ->
     Func = get_merl_func_name(),
     Clause = ?Q([
@@ -214,7 +307,7 @@ enter_clause(timeout, Timeout, ToState) ->
 custom_stop_clause() ->
     Func = get_merl_func_name(),
     ?Q([
-        "(state_timeout, go_to_terminate, #stop_data{ reason = Reason, statem_data = StatemData } = _Data) ->",
+        "(state_timeout, go_to_terminate, #stop_data{ reason = Reason, statem_data = StatemData } = Data) ->",
         "printout(\"(->) ~p, Reason: ~p,\nStatemData: \n\t~p.\", [_@Func, Reason, StatemData]),",
         " {stop, Reason, Data}"
     ]).
@@ -276,6 +369,8 @@ std_state(Id, [Edge], Nodes) ->
     Event = Edge#edge.edge_data#edge_data.event_type,
     Cons = Edge#edge.edge_data#edge_data.comments,
 
+    Dir = Edge#edge.edge_data#edge_data.trans_type,
+
     Comms = lists:map(
         fun({A, B}) ->
             atom_to_list(A) ++ " " ++
@@ -283,11 +378,20 @@ std_state(Id, [Edge], Nodes) ->
         end,
         Cons
     ),
-    Clause = clause(Event, Act, merl:var(Var), Trans, NextState, Comms),
+
+    if 
+        (Dir == recv) or (Dir == send) ->
+            Clause = clause(Dir, Act, merl:var(Var), Trans, NextState, Comms);
+        true ->
+            Clause = clause(Event, Act, merl:var(Var), Trans, NextState, Comms)
+    end,
+
+    AuxClauses = [clause(recv_msg, []), clause(postpone_send, []), clause(postpone_recv, [])],
+
     % Name = list_to_atom("std_state" ++ integer_to_list(Id)),
     Name = list_to_atom("state" ++ integer_to_list(Id) ++ "_std"),
     % {true, Name, [enter_clause(), Clause]}.
-    {true, Name, enter_clause(queues) ++ [queue_clause(), Clause]}.
+    {true, Name, enter_clause(queues) ++ [queue_clause(), Clause] ++ AuxClauses}.
 
 %% @doc generates choice states, i.e. branch
 choice_state(Id, Edges, Nodes) ->
@@ -341,7 +445,27 @@ choice_state(Id, Edges, Nodes) ->
         Event = Edge#edge.edge_data#edge_data.event_type,
         Cons = Edge#edge.edge_data#edge_data.comments,
         Comms = lists:map(fun({A, B}) -> atom_to_list(A) ++ " " ++ atom_to_list(B) end, Cons),
-        clause(Event, Act, merl:var(Var), Trans, NextState, Comms)
+        % clause(Event, Act, merl:var(Var), Trans, NextState, Comms)
+
+
+    
+        Dir = Edge#edge.edge_data#edge_data.trans_type,
+    
+        Comms = lists:map(
+            fun({A, B}) ->
+                atom_to_list(A) ++ " " ++
+                    atom_to_list(B)
+            end,
+            Cons
+        ),
+    
+        if 
+            (Dir == recv) or (Dir == send) ->
+                Clause = clause(Dir, Act, merl:var(Var), Trans, NextState, Comms);
+            true ->
+                Clause = clause(Event, Act, merl:var(Var), Trans, NextState, Comms)
+        end,
+        Clause
     end,
 
     % Name = list_to_atom("choice_state" ++ integer_to_list(Id)),
@@ -453,7 +577,24 @@ recv_after_state(Id, Edges, Nodes) ->
         Event = Edge#edge.edge_data#edge_data.event_type,
         Cons = Edge#edge.edge_data#edge_data.comments,
         Comms = lists:map(fun({A, B}) -> atom_to_list(A) ++ " " ++ atom_to_list(B) end, Cons),
-        clause(Event, Act, merl:var(Var), Trans, NextState, Comms)
+        % clause(Event, Act, merl:var(Var), Trans, NextState, Comms)
+        Dir = Edge#edge.edge_data#edge_data.trans_type,
+    
+        Comms = lists:map(
+            fun({A, B}) ->
+                atom_to_list(A) ++ " " ++
+                    atom_to_list(B)
+            end,
+            Cons
+        ),
+    
+        if 
+            (Dir == recv) or (Dir == send) ->
+                Clause = clause(Dir, Act, merl:var(Var), Trans, NextState, Comms);
+            true ->
+                Clause = clause(Event, Act, merl:var(Var), Trans, NextState, Comms)
+        end,
+        Clause
     end,
 
     %% remove silent edge from edges
@@ -585,7 +726,24 @@ branch_after_state(Id, Edges, Nodes) ->
         Event = Edge#edge.edge_data#edge_data.event_type,
         Cons = Edge#edge.edge_data#edge_data.comments,
         Comms = lists:map(fun({A, B}) -> atom_to_list(A) ++ " " ++ atom_to_list(B) end, Cons),
-        clause(Event, Act, merl:var(Var), Trans, NextState, Comms)
+        % clause(Event, Act, merl:var(Var), Trans, NextState, Comms)
+        Dir = Edge#edge.edge_data#edge_data.trans_type,
+    
+        Comms = lists:map(
+            fun({A, B}) ->
+                atom_to_list(A) ++ " " ++
+                    atom_to_list(B)
+            end,
+            Cons
+        ),
+    
+        if 
+            (Dir == recv) or (Dir == send) ->
+                Clause = clause(Dir, Act, merl:var(Var), Trans, NextState, Comms);
+            true ->
+                Clause = clause(Event, Act, merl:var(Var), Trans, NextState, Comms)
+        end,
+        Clause
     % end
     end,
 
@@ -700,7 +858,24 @@ send_after_state(Id, Edges, Nodes) ->
         Event = Edge#edge.edge_data#edge_data.event_type,
         Cons = Edge#edge.edge_data#edge_data.comments,
         Comms = lists:map(fun({A, B}) -> atom_to_list(A) ++ " " ++ atom_to_list(B) end, Cons),
-        clause(Event, Act, merl:var(Var), Trans, NextState, Comms)
+        % clause(Event, Act, merl:var(Var), Trans, NextState, Comms)
+        Dir = Edge#edge.edge_data#edge_data.trans_type,
+    
+        Comms = lists:map(
+            fun({A, B}) ->
+                atom_to_list(A) ++ " " ++
+                    atom_to_list(B)
+            end,
+            Cons
+        ),
+    
+        if 
+            (Dir == recv) or (Dir == send) ->
+                Clause = clause(Dir, Act, merl:var(Var), Trans, NextState, Comms);
+            true ->
+                Clause = clause(Event, Act, merl:var(Var), Trans, NextState, Comms)
+        end,
+        Clause
     end,
 
     %% remove silent edge from edges
@@ -831,7 +1006,24 @@ select_after_state(Id, Edges, Nodes) ->
         Event = Edge#edge.edge_data#edge_data.event_type,
         Cons = Edge#edge.edge_data#edge_data.comments,
         Comms = lists:map(fun({A, B}) -> atom_to_list(A) ++ " " ++ atom_to_list(B) end, Cons),
-        clause(Event, Act, merl:var(Var), Trans, NextState, Comms)
+        % clause(Event, Act, merl:var(Var), Trans, NextState, Comms)
+        Dir = Edge#edge.edge_data#edge_data.trans_type,
+    
+        Comms = lists:map(
+            fun({A, B}) ->
+                atom_to_list(A) ++ " " ++
+                    atom_to_list(B)
+            end,
+            Cons
+        ),
+    
+        if 
+            (Dir == recv) or (Dir == send) ->
+                Clause = clause(Dir, Act, merl:var(Var), Trans, NextState, Comms);
+            true ->
+                Clause = clause(Event, Act, merl:var(Var), Trans, NextState, Comms)
+        end,
+        Clause
     % end
     end,
 
@@ -1099,6 +1291,9 @@ gen_module(FileName, P) ->
 
     {Edges, Nodes} = build_fsm:to_fsm(P),
 
+%     ok.
+
+% blah(FileName, P, Nodes, Edges, Start, Stop, Cb, Server, Module) ->
     io:format("\n------ FSM:\nNodes: ~p\nEdges: ~p\n------\n", [Nodes, Edges]),
 
     NonEndEdges = lists:filter(fun(Elem) -> not Elem#edge.is_custom_end end, Edges),
@@ -1171,9 +1366,18 @@ gen_module(FileName, P) ->
         Forms2
     ),
 
-    Forms4 = merl_build:add_function(false, printout, [
+    Forms4 = merl_build:add_record(
+        stop_data,
+        [
+            {'reason', merl:term('undefined')},
+            {'statem_data', merl:var('#statem_data{}')}
+        ],
+        Forms3
+    ),
+
+    Forms5 = merl_build:add_function(false, printout, [
         ?Q(["(Str, Params) -> io:format(\"[~p|~p]: \" ++ Str ++ \"\n\", [_@Module, self()] ++ Params)"])
-    ], Forms3),
+    ], Forms4),
 
     io:format("--- success: Forms.\n"),
 
@@ -1182,7 +1386,7 @@ gen_module(FileName, P) ->
             fun({X, Name, Cs}, S) ->
                 merl_build:add_function(X, Name, Cs, S)
             end,
-            Forms4,
+            Forms5,
             Fs
         )
     ).

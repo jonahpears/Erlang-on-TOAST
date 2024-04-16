@@ -54,6 +54,9 @@ args(Param) ->
   Str = atom_to_list(Param),
   Recv = string:find(Str, "r_"),
   Send = string:find(Str, "s_"),
+
+  io:format("\n\n\nparam: ~p\nstr: ~p\nrecv: ~p\nsend: ~p\n\n\n", [Param, Str, Recv, Send]),
+
   if
     Recv =:= Str ->
       Event = cast,
@@ -77,6 +80,7 @@ args(Param) ->
 %% calls args.
 -spec data(atom()) -> {atom(), string(), atom()}.
 data(Param) ->
+  io:format("param: ~p.", [Param]),
   {Act, Var, Event, TransType} = args(Param),
   #edge_data{event = {Act, list_to_atom(Var)}, event_type = Event, trans_type = TransType}.
 
@@ -84,6 +88,7 @@ data(Param) ->
 %% calls args.
 -spec data(atom(), interleave:time_constraint()) -> {atom(), string(), atom()}.
 data(Param, Constraint) ->
+  io:format("time constraint, param: ~p; constraint: ~p.", [Param, Constraint]),
   {Act, Var, Event, TransType} = args(Param),
   #edge_data{event = {Act, list_to_atom(Var)}, event_type = Event, trans_type = TransType, timeout = Constraint}.
 
