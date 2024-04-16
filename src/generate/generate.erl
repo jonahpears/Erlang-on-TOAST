@@ -117,6 +117,21 @@ clause(Event, Act, Var, Trans, NextState, Cons) ->
             Clause
     end.
 
+queue_clause() ->
+    Func = get_merl_func_name(),
+    Clause = ?Q([
+        "(state_timeout, process_queue, #statem_data{ coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = [H|T], options = Options } = _Data) ->",
+        "printout(\"(->) ~p, queued action: ~p.\", [_@Func, H]),",
+        "Data1 = #statem_data{ coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = T, options = Options },",
+        "{repeat_state, Data1, [{next_event, cast, H}]}"
+    ]),
+    
+    % erl_syntax:add_precomments(
+    %     erl_syntax:comment(list_to_atom("% process queued actions")), Clause
+    % ).
+    Clause.
+
+
 timeout_clause(TimeoutState, TimeoutDuration, Cons) ->
     timeout_clause(TimeoutState, TimeoutDuration, Cons, true).
 timeout_clause(TimeoutState, TimeoutDuration, Cons, ShowIO) ->
@@ -271,7 +286,8 @@ std_state(Id, [Edge], Nodes) ->
     Clause = clause(Event, Act, merl:var(Var), Trans, NextState, Comms),
     % Name = list_to_atom("std_state" ++ integer_to_list(Id)),
     Name = list_to_atom("state" ++ integer_to_list(Id) ++ "_std"),
-    {true, Name, [enter_clause(), Clause]}.
+    % {true, Name, [enter_clause(), Clause]}.
+    {true, Name, enter_clause(queues) ++ [queue_clause(), Clause]}.
 
 %% @doc generates choice states, i.e. branch
 choice_state(Id, Edges, Nodes) ->
@@ -331,7 +347,7 @@ choice_state(Id, Edges, Nodes) ->
     % Name = list_to_atom("choice_state" ++ integer_to_list(Id)),
     Name = list_to_atom("state" ++ integer_to_list(Id) ++ "_choice"),
     % Clauses = [enter_clause(state, Name)] ++ lists:map(Fun, Edges),
-    Clauses = enter_clause(queues) ++ lists:map(Fun, Edges),
+    Clauses = enter_clause(queues) ++ [queue_clause()] ++lists:map(Fun, Edges),
     {true, Name, Clauses}.
 
 recv_after_state(Id, Edges, Nodes) ->
@@ -451,7 +467,7 @@ recv_after_state(Id, Edges, Nodes) ->
 
     % Clauses = [EnterClause] ++ Edges2 ++ [Q_Clause],
     % Clauses = [EnterClause] ++ ProcessQueueClauses ++ Edges2 ++ [Q_Clause],
-    Clauses = EnterClause ++ Edges2 ++ [Q_Clause],
+    Clauses = EnterClause ++ [queue_clause()] ++ Edges2 ++ [Q_Clause],
     {true, Name, Clauses}.
 
 branch_after_state(Id, Edges, Nodes) ->
@@ -580,7 +596,7 @@ branch_after_state(Id, Edges, Nodes) ->
     Edges2 = lists:map(Fun, Edges1),
 
     % Clauses = [EnterClause] ++ Edges2 ++ [Q_Clause],
-    Clauses = EnterClause ++ Edges2 ++ [Q_Clause],
+    Clauses = EnterClause ++ [queue_clause()] ++ Edges2 ++ [Q_Clause],
     % Clauses = [EnterClause] ++ Edges,
     {true, Name, Clauses}.
 
@@ -697,7 +713,7 @@ send_after_state(Id, Edges, Nodes) ->
     % EnterClause1 = erl_syntax:add_postcomments(lists:map(fun(Com) -> erl_syntax:comment([Com]) end, ["default delay: ('@Timeout@')"]), EnterClause),
 
     % Clauses = [EnterClause] ++ Edges2 ++ [Q_Clause],
-    Clauses = EnterClause ++ Edges2 ++ [Q_Clause],
+    Clauses = EnterClause ++ [queue_clause()] ++ Edges2 ++ [Q_Clause],
     {true, Name, Clauses}.
 
 select_after_state(Id, Edges, Nodes) ->
@@ -826,7 +842,7 @@ select_after_state(Id, Edges, Nodes) ->
     Edges2 = lists:map(Fun, Edges1),
 
     % Clauses = [EnterClause] ++ Edges2 ++ [Q_Clause],
-    Clauses = EnterClause ++ Edges2 ++ [Q_Clause],
+    Clauses = EnterClause ++ [queue_clause()] ++ Edges2 ++ [Q_Clause],
     % Clauses = [EnterClause] ++ Edges,
     {true, Name, Clauses}.
 

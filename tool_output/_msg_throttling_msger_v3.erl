@@ -36,8 +36,18 @@ callback_mode() -> [state_functions, state_enter].
 init([]) -> {ok, std_state1, {}}.
 
 state1_std(enter, _OldState,
-           #statem_data{coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = _Queue, options = _Options} = _Data) ->
+           #statem_data{coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = [_H], options = _Options} = _Data) ->
+    printout("(->) ~p, queued actions.", [?FUNCTION_NAME]),
+    {keep_state_and_data, [{state_timeout, 0, process_queue}]};
+state1_std(enter, _OldState,
+           #statem_data{coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = [], options = _Options} = _Data) ->
+    printout("(->) ~p.", [?FUNCTION_NAME]),
     keep_state_and_data;
+state1_std(state_timeout, process_queue,
+           #statem_data{coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = [H | T], options = Options} = _Data) ->
+    printout("(->) ~p, queued action: ~p.", [?FUNCTION_NAME, H]),
+    Data1 = #statem_data{coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = T, options = Options},
+    {repeat_state, Data1, [{next_event, cast, H}]};
 state1_std(internal, {send_msg1, Msg1}, Data) -> {next_state, recv_after_state2, Data}.
 
 state2_recv_after(enter, _OldState,
@@ -48,6 +58,11 @@ state2_recv_after(enter, _OldState,
                   #statem_data{coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = [], options = _Options} = Data) ->
     io:format("(~p ->.)\n", [?FUNCTION_NAME]),
     {keep_state, Data, [{state_timeout, 3000, std_state3}]};
+state2_recv_after(state_timeout, process_queue,
+                  #statem_data{coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = [H | T], options = Options} = _Data) ->
+    printout("(->) ~p, queued action: ~p.", [?FUNCTION_NAME, H]),
+    Data1 = #statem_data{coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = T, options = Options},
+    {repeat_state, Data1, [{next_event, cast, H}]};
 state2_recv_after(cast, {receive_ack1, Ack1}, Data) -> {next_state, std_state1, Data};
 %% This is a timeout branch:
 state2_recv_after(state_timeout, std_state3, Data) ->
@@ -55,8 +70,18 @@ state2_recv_after(state_timeout, std_state3, Data) ->
     {next_state, std_state3, Data}.
 
 state3_std(enter, _OldState,
-           #statem_data{coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = _Queue, options = _Options} = _Data) ->
+           #statem_data{coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = [_H], options = _Options} = _Data) ->
+    printout("(->) ~p, queued actions.", [?FUNCTION_NAME]),
+    {keep_state_and_data, [{state_timeout, 0, process_queue}]};
+state3_std(enter, _OldState,
+           #statem_data{coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = [], options = _Options} = _Data) ->
+    printout("(->) ~p.", [?FUNCTION_NAME]),
     keep_state_and_data;
+state3_std(state_timeout, process_queue,
+           #statem_data{coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = [H | T], options = Options} = _Data) ->
+    printout("(->) ~p, queued action: ~p.", [?FUNCTION_NAME, H]),
+    Data1 = #statem_data{coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = T, options = Options},
+    {repeat_state, Data1, [{next_event, cast, H}]};
 state3_std(internal, {send_msg2, Msg2}, Data) -> {next_state, recv_after_state4, Data}.
 
 state4_recv_after(enter, _OldState,
@@ -67,6 +92,11 @@ state4_recv_after(enter, _OldState,
                   #statem_data{coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = [], options = _Options} = Data) ->
     io:format("(~p ->.)\n", [?FUNCTION_NAME]),
     {keep_state, Data, [{state_timeout, 3000, std_state5}]};
+state4_recv_after(state_timeout, process_queue,
+                  #statem_data{coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = [H | T], options = Options} = _Data) ->
+    printout("(->) ~p, queued action: ~p.", [?FUNCTION_NAME, H]),
+    Data1 = #statem_data{coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = T, options = Options},
+    {repeat_state, Data1, [{next_event, cast, H}]};
 state4_recv_after(cast, {receive_ack2, Ack2}, Data) -> {next_state, recv_after_state2, Data};
 %% This is a timeout branch:
 state4_recv_after(state_timeout, std_state5, Data) ->
@@ -74,8 +104,18 @@ state4_recv_after(state_timeout, std_state5, Data) ->
     {next_state, std_state5, Data}.
 
 state5_std(enter, _OldState,
-           #statem_data{coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = _Queue, options = _Options} = _Data) ->
+           #statem_data{coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = [_H], options = _Options} = _Data) ->
+    printout("(->) ~p, queued actions.", [?FUNCTION_NAME]),
+    {keep_state_and_data, [{state_timeout, 0, process_queue}]};
+state5_std(enter, _OldState,
+           #statem_data{coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = [], options = _Options} = _Data) ->
+    printout("(->) ~p.", [?FUNCTION_NAME]),
     keep_state_and_data;
+state5_std(state_timeout, process_queue,
+           #statem_data{coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = [H | T], options = Options} = _Data) ->
+    printout("(->) ~p, queued action: ~p.", [?FUNCTION_NAME, H]),
+    Data1 = #statem_data{coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = T, options = Options},
+    {repeat_state, Data1, [{next_event, cast, H}]};
 state5_std(internal, {send_tout, Tout}, Data) -> {next_state, custom_end_state, Data}.
 
 custom_end_state(enter, _OldState, #stop_data{reason = _Reason, statem_data = _StatemData} = _Data) ->
