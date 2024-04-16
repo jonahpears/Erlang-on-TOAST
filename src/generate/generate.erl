@@ -6,14 +6,64 @@
 -include_lib("syntax_tools/include/merl.hrl").
 -include("reng.hrl").
 
+get_next_state_and_trans(To, Num) ->
+    case To of
+        end_state ->
+            Trans = stop,
+            NextState = normal;
+        custom_end_state ->
+            Trans = next_state,
+            NextState = custom_end_state;
+        standard_state ->
+            Trans = next_state,
+            NextState = list_to_atom("state" ++ Num ++ "_std");
+        choice_state ->
+            Trans = next_state,
+            NextState = list_to_atom("state" ++ Num ++ "_choice");
+        % mixed_choice_state -> NextState = list_to_atom("mixed_choice_state" ++ Num);
+        recv_after_state ->
+            % io:format("\n[init_state -> recv_after_state] Nodes: ~p.\n", [Nodes]),
+            Trans = next_state,
+            NextState = list_to_atom("state" ++ Num ++ "_recv_after");
+        branch_after_state ->
+            % io:format("\n[init_state -> branch_after_state] Nodes: ~p.\n", [Nodes]),
+            Trans = next_state,
+            NextState = list_to_atom("state" ++ Num ++ "_branch_after");
+        send_after_state ->
+            % io:format("\n[init_state -> send_after_state] Nodes: ~p.\n", [Nodes]),
+            Trans = next_state,
+            NextState = list_to_atom("state" ++ Num ++ "_send_after");
+        select_after_state ->
+            % io:format("\n[init_state -> select_after_state] Nodes: ~p.\n", [Nodes]),
+            Trans = next_state,
+            NextState = list_to_atom("state" ++ Num ++ "_select_after");
+        % after_recv_state ->   NextState = list_to_atom("after_recv_state" ++ Num),
+        %                       io:format("\n[init_state -> after_recv_state] Nodes: ~p.\n", [Nodes]);
+        % after_send_state ->   NextState = list_to_atom("after_send_state" ++ Num),
+        %                       io:format("\n[init_state -> after_send_state] Nodes: ~p.\n", [Nodes]);
+        after_state ->
+            % io:format("\n[init_state -> after_state] Nodes: ~p.\n", [Nodes]),
+            Trans = next_state,
+            NextState = list_to_atom("state" ++ Num ++ "_after");
+        _Else ->
+            % io:format("\n[unhandled NextState] init_state, Nodes: ~p.\n", [Nodes]),
+            Trans = next_state,
+            NextState = list_to_atom("state" ++ Num ++ "_unexpected")
+    end,
+    {NextState, Trans}.
+
+get_next_state(To, Num) ->
+    {NextState, _Trans} = get_next_state_and_trans(To, Num),
+    NextState.
+
 %% @doc represent endP as the special terminate function
 end_state() ->
     Func = get_merl_func_name(),
     Clause = ?Q([
-                    "(Reason, State, Data) ->",
-                    "printout(\"(->) ~p, ~p, Reason: ~p,\nData: \n\t~p.\", [_@Func, State, Reason, Data]),",
-                    "ok"
-                ]),
+        "(Reason, State, Data) ->",
+        "printout(\"(->) ~p, ~p, Reason: ~p,\nData: \n\t~p.\", [_@Func, State, Reason, Data]),",
+        "ok"
+    ]),
     {true, terminate, [Clause]}.
 
 custom_end_state(_Id, Edges, _Nodes) ->
@@ -42,70 +92,129 @@ custom_end_state(_Id, Edges, _Nodes) ->
 get_merl_func_name() -> merl:var(list_to_atom("?FUNCTION_NAME")).
 get_merl_name_name() -> merl:var(list_to_atom("?NAME")).
 
-init_state(_Id, [Edge], Nodes) ->
+init_setup_state(_Id, [Edge], Nodes) ->
     % NextState = list_to_atom("state" ++ integer_to_list(Edge#edge.to)),
-    case maps:get(Edge#edge.to, Nodes) of
-        end_state ->
-            NextState = normal;
-        custom_end_state ->
-            NextState = custom_end_state;
-        standard_state ->
-            NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to));
-        choice_state ->
-            NextState = list_to_atom("choice_state" ++ integer_to_list(Edge#edge.to));
-        % mixed_choice_state -> NextState = list_to_atom("mixed_choice_state" ++ integer_to_list(Edge#edge.to));
-        recv_after_state ->
-            NextState = list_to_atom("recv_after_state" ++ integer_to_list(Edge#edge.to)),
-            io:format("\n[init_state -> recv_after_state] Nodes: ~p.\n", [Nodes]);
-        branch_after_state ->
-            NextState = list_to_atom("branch_after_state" ++ integer_to_list(Edge#edge.to)),
-            io:format("\n[init_state -> branch_after_state] Nodes: ~p.\n", [Nodes]);
-        send_after_state ->
-            NextState = list_to_atom("send_after_state" ++ integer_to_list(Edge#edge.to)),
-            io:format("\n[init_state -> send_after_state] Nodes: ~p.\n", [Nodes]);
-        select_after_state ->
-            NextState = list_to_atom("select_after_state" ++ integer_to_list(Edge#edge.to)),
-            io:format("\n[init_state -> select_after_state] Nodes: ~p.\n", [Nodes]);
-        % after_recv_state ->   NextState = list_to_atom("after_recv_state" ++ integer_to_list(Edge#edge.to)),
-        %                       io:format("\n[init_state -> after_recv_state] Nodes: ~p.\n", [Nodes]);
-        % after_send_state ->   NextState = list_to_atom("after_send_state" ++ integer_to_list(Edge#edge.to)),
-        %                       io:format("\n[init_state -> after_send_state] Nodes: ~p.\n", [Nodes]);
-        after_state ->
-            NextState = list_to_atom("after_state" ++ integer_to_list(Edge#edge.to)),
-            io:format("\n[init_state -> after_state] Nodes: ~p.\n", [Nodes]);
-        _Else ->
-            NextState = list_to_atom("_state" ++ integer_to_list(Edge#edge.to)),
-            io:format("\n[unhandled NextState] init_state, Nodes: ~p.\n", [Nodes])
-    end,
-    Comms = lists:map(
-        fun({A, B}) ->
-            atom_to_list(A) ++ " " ++
-                atom_to_list(B)
-        end,
-        Edge#edge.edge_data#edge_data.comments
-    ),
-    Cl = ?Q(["([]) -> {ok, '@NextState@', {} }"]),
-    Clause =
-        if
-            length(Comms) > 0 ->
-                erl_syntax:add_precomments(
-                    lists:map(
-                        fun(Com) ->
-                            erl_syntax:comment([Com])
-                        end,
-                        Comms
-                    ),
-                    Cl
-                );
-            true ->
-                Cl
-        end,
-    {true, init, [Clause]}.
+    NextState = get_next_state(maps:get(Edge#edge.to, Nodes), integer_to_list(Edge#edge.to)),
+    % case maps:get(Edge#edge.to, Nodes) of
+    %     end_state ->
+    %         NextState = normal;
+    %     custom_end_state ->
+    %         NextState = custom_end_state;
+    %     standard_state ->
+    %         NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to));
+    %     choice_state ->
+    %         NextState = list_to_atom("choice_state" ++ integer_to_list(Edge#edge.to));
+    %     % mixed_choice_state -> NextState = list_to_atom("mixed_choice_state" ++ integer_to_list(Edge#edge.to));
+    %     recv_after_state ->
+    %         NextState = list_to_atom("recv_after_state" ++ integer_to_list(Edge#edge.to)),
+    %         io:format("\n[init_state -> recv_after_state] Nodes: ~p.\n", [Nodes]);
+    %     branch_after_state ->
+    %         NextState = list_to_atom("branch_after_state" ++ integer_to_list(Edge#edge.to)),
+    %         io:format("\n[init_state -> branch_after_state] Nodes: ~p.\n", [Nodes]);
+    %     send_after_state ->
+    %         NextState = list_to_atom("send_after_state" ++ integer_to_list(Edge#edge.to)),
+    %         io:format("\n[init_state -> send_after_state] Nodes: ~p.\n", [Nodes]);
+    %     select_after_state ->
+    %         NextState = list_to_atom("select_after_state" ++ integer_to_list(Edge#edge.to)),
+    %         io:format("\n[init_state -> select_after_state] Nodes: ~p.\n", [Nodes]);
+    %     % after_recv_state ->   NextState = list_to_atom("after_recv_state" ++ integer_to_list(Edge#edge.to)),
+    %     %                       io:format("\n[init_state -> after_recv_state] Nodes: ~p.\n", [Nodes]);
+    %     % after_send_state ->   NextState = list_to_atom("after_send_state" ++ integer_to_list(Edge#edge.to)),
+    %     %                       io:format("\n[init_state -> after_send_state] Nodes: ~p.\n", [Nodes]);
+    %     after_state ->
+    %         NextState = list_to_atom("after_state" ++ integer_to_list(Edge#edge.to)),
+    %         io:format("\n[init_state -> after_state] Nodes: ~p.\n", [Nodes]);
+    %     _Else ->
+    %         NextState = list_to_atom("_state" ++ integer_to_list(Edge#edge.to)),
+    %         io:format("\n[unhandled NextState] init_state, Nodes: ~p.\n", [Nodes])
+    % end,
+    % Comms = lists:map(
+    %     fun({A, B}) ->
+    %         atom_to_list(A) ++ " " ++
+    %             atom_to_list(B)
+    %     end,
+    %     Edge#edge.edge_data#edge_data.comments
+    % ),
+
+    Clause = ?Q([
+        "(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = _Queue, options = _Options } = _Data) ->",
+        "{keep_state_and_data, [{state_timeout, 0, wait_to_finish_setup}]}"
+    ]),
+
+    % ?Q(["ok, '@NextState@', #statem_data{} }"]),
+    % Clause1 =
+    %     if
+    %         length(Comms) > 0 ->
+    %             erl_syntax:add_precomments(
+    %                 lists:map(
+    %                     fun(Com) ->
+    %                         erl_syntax:comment([Com])
+    %                     end,
+    %                     Comms
+    %                 ),
+    %                 Clause
+    %             );
+    %         true ->
+    %             Clause
+    %     end,
+
+    Func = get_merl_func_name(),
+
+    Clause2 = ?Q([
+        "(state_timeout, wait_to_finish_setup, #statem_data{ coparty_id = _CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = Queue, options = Options } = _Data) -> ",
+        "printout(\"~p, waiting to finish setup.\", [_@Func]), ",
+        "receive {_SupervisorID, sup_init, CoPartyID} -> ",
+        "printout(\"~p, received coparty ID (~p).\", [_@Func, CoPartyID]), ",
+        "{next_state, '@NextState@', #statem_data{ coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = Queue, options = Options }} ",
+        "end"
+    ]),
+
+    {true, init_setup_state, [Clause, Clause2]}.
+
+init_state(no_data) ->
+    Clauses = [
+        ?Q([
+            "([{HKey,HVal}|T])",
+            "when is_atom(HKey) and is_map_key(HKey, #statem_options{}) ->",
+            "init(T, #statem_data{options = maps:put(HKey, HVal, #statem_options{})})"
+        ]),
+        ?Q(["([_H|T]) -> init(T, #statem_data{})"]),
+        ?Q(["([]) -> {ok, init_setup_state, #statem_data{}}"])
+    ],
+
+    % {true, init, Clauses};
+    Clauses;
+init_state(with_data) ->
+    Clauses = [
+        ?Q([
+            "([{HKey,HVal}|T], #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = _Queue, options = Options} = Data) ",
+            "when is_atom(HKey) and is_map_key(HKey, Options) -> ",
+            "init(T, maps:put(options, maps:put(HKey, HVal, Options), Data))"
+        ]),
+        ?Q([
+            "([_H|T], ",
+            "#statem_data{ coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = _Queue, options = _Options} = Data) -> ",
+            "init(T, Data)"
+        ]),
+        ?Q([
+            "([_H|T], ",
+            "#statem_data{ coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = _Queue, options = _Options} = Data) -> ",
+            "init(T, Data)"
+        ]),
+        ?Q([
+            "([], ",
+            "#statem_data{ coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = _Queue, options = _Options} = Data) -> ",
+            "{ok, init_setup_state, Data}"
+        ])
+    ],
+
+    % {true, init, Clauses}.
+    Clauses.
 
 clause(send, Act, Var, Trans, NextState, Cons) ->
     Func = get_merl_func_name(),
     Clause = ?Q([
-        "(cast, {'@Act@', _@Var}, #statem_data{ coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = Queue, options = #statem_options{ allow_delayable_sends = _AllowDelayableSends, printout_enabled = _PrintoutEnabled } = Options } = _Data) ->",
+        "(cast, {send, {'@Act@', _@Var}}, #statem_data{ coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = Queue, options = #statem_options{ allow_delayable_sends = _AllowDelayableSends, printout_enabled = _PrintoutEnabled } = Options } = _Data) ->",
         "CoPartyID ! {self(), _@Var},",
         "printout(\"~p, send (~p) to ~p.\", [_@Func, _@Var, CoPartyID]),",
         "NextState = '@NextState@',",
@@ -120,7 +229,7 @@ clause(send, Act, Var, Trans, NextState, Cons) ->
         true ->
             Clause
     end;
-clause(recv, Act, Var, Trans, NextState, Cons) ->
+clause(recv, _Act, Var, Trans, NextState, Cons) ->
     Func = get_merl_func_name(),
     Clause = ?Q([
         "(info, {CoPartyID, _@Var}, #statem_data{ coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = Queue, options = #statem_options{ allow_delayable_sends = _AllowDelayableSends, printout_enabled = _PrintoutEnabled } = Options } = _Data) ->",
@@ -218,12 +327,11 @@ queue_clause() ->
         "Data1 = #statem_data{ coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = T, options = Options },",
         "{repeat_state, Data1, [{next_event, cast, H}]}"
     ]),
-    
+
     % erl_syntax:add_precomments(
     %     erl_syntax:comment(list_to_atom("% process queued actions")), Clause
     % ).
     Clause.
-
 
 timeout_clause(TimeoutState, TimeoutDuration, Cons) ->
     timeout_clause(TimeoutState, TimeoutDuration, Cons, true).
@@ -320,51 +428,54 @@ stop_clause() ->
 
 %% @doc generates standard states, i.e. act x
 std_state(Id, [Edge], Nodes) ->
-    case maps:get(Edge#edge.to, Nodes) of
-        end_state ->
-            NextState = normal,
-            Trans = stop;
-        custom_end_state ->
-            NextState = custom_end_state,
-            Trans = next_state;
-        standard_state ->
-            NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to)),
-            Trans = next_state;
-        choice_state ->
-            NextState = list_to_atom("choice_state" ++ integer_to_list(Edge#edge.to)),
-            Trans = next_state;
-        % mixed_choice_state -> NextState = list_to_atom("mixed_choice_state" ++ integer_to_list(Edge#edge.to)),
-        %            Trans = next_state;
-        recv_after_state ->
-            NextState = list_to_atom("recv_after_state" ++ integer_to_list(Edge#edge.to)),
-            Trans = next_state,
-            io:format("\n[std_state -> recv_after_state] Nodes: ~p.\n", [Nodes]);
-        branch_after_state ->
-            NextState = list_to_atom("branch_after_state" ++ integer_to_list(Edge#edge.to)),
-            Trans = next_state,
-            io:format("\n[std_state -> branch_after_state] Nodes: ~p.\n", [Nodes]);
-        send_after_state ->
-            NextState = list_to_atom("send_after_state" ++ integer_to_list(Edge#edge.to)),
-            Trans = next_state,
-            io:format("\n[std_state -> send_after_state] Nodes: ~p.\n", [Nodes]);
-        select_after_state ->
-            NextState = list_to_atom("select_after_state" ++ integer_to_list(Edge#edge.to)),
-            Trans = next_state,
-            io:format("\n[std_state -> select_after_state] Nodes: ~p.\n", [Nodes]);
-        % after_recv_state ->   NextState = list_to_atom("after_recv_state" ++ integer_to_list(Edge#edge.to)),
-        %                       Trans = next_state,
-        %                       io:format("\n[std_state -> after_recv_state] Nodes: ~p.\n", [Nodes]);
-        % after_send_state ->   NextState = list_to_atom("after_send_state" ++ integer_to_list(Edge#edge.to)),
-        %                       Trans = next_state,
-        %                       io:format("\n[std_state -> after_send_state] Nodes: ~p.\n", [Nodes]);
-        after_state ->
-            NextState = list_to_atom("after_state" ++ integer_to_list(Edge#edge.to)),
-            Trans = next_state,
-            io:format("\n[std_state -> after_state] Nodes: ~p.\n", [Nodes]);
-        _Else ->
-            NextState = list_to_atom("_state" ++ integer_to_list(Edge#edge.to)),
-            Trans = next_state
-    end,
+    {NextState, Trans} = get_next_state_and_trans(
+        maps:get(Edge#edge.to, Nodes), integer_to_list(Edge#edge.to)
+    ),
+    % case maps:get(Edge#edge.to, Nodes) of
+    %     end_state ->
+    %         NextState = normal,
+    %         Trans = stop;
+    %     custom_end_state ->
+    %         NextState = custom_end_state,
+    %         Trans = next_state;
+    %     standard_state ->
+    %         NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to)),
+    %         Trans = next_state;
+    %     choice_state ->
+    %         NextState = list_to_atom("choice_state" ++ integer_to_list(Edge#edge.to)),
+    %         Trans = next_state;
+    %     % mixed_choice_state -> NextState = list_to_atom("mixed_choice_state" ++ integer_to_list(Edge#edge.to)),
+    %     %            Trans = next_state;
+    %     recv_after_state ->
+    %         NextState = list_to_atom("recv_after_state" ++ integer_to_list(Edge#edge.to)),
+    %         Trans = next_state,
+    %         io:format("\n[std_state -> recv_after_state] Nodes: ~p.\n", [Nodes]);
+    %     branch_after_state ->
+    %         NextState = list_to_atom("branch_after_state" ++ integer_to_list(Edge#edge.to)),
+    %         Trans = next_state,
+    %         io:format("\n[std_state -> branch_after_state] Nodes: ~p.\n", [Nodes]);
+    %     send_after_state ->
+    %         NextState = list_to_atom("send_after_state" ++ integer_to_list(Edge#edge.to)),
+    %         Trans = next_state,
+    %         io:format("\n[std_state -> send_after_state] Nodes: ~p.\n", [Nodes]);
+    %     select_after_state ->
+    %         NextState = list_to_atom("select_after_state" ++ integer_to_list(Edge#edge.to)),
+    %         Trans = next_state,
+    %         io:format("\n[std_state -> select_after_state] Nodes: ~p.\n", [Nodes]);
+    %     % after_recv_state ->   NextState = list_to_atom("after_recv_state" ++ integer_to_list(Edge#edge.to)),
+    %     %                       Trans = next_state,
+    %     %                       io:format("\n[std_state -> after_recv_state] Nodes: ~p.\n", [Nodes]);
+    %     % after_send_state ->   NextState = list_to_atom("after_send_state" ++ integer_to_list(Edge#edge.to)),
+    %     %                       Trans = next_state,
+    %     %                       io:format("\n[std_state -> after_send_state] Nodes: ~p.\n", [Nodes]);
+    %     after_state ->
+    %         NextState = list_to_atom("after_state" ++ integer_to_list(Edge#edge.to)),
+    %         Trans = next_state,
+    %         io:format("\n[std_state -> after_state] Nodes: ~p.\n", [Nodes]);
+    %     _Else ->
+    %         NextState = list_to_atom("_state" ++ integer_to_list(Edge#edge.to)),
+    %         Trans = next_state
+    % end,
     {Act, Var} = Edge#edge.edge_data#edge_data.event,
     Event = Edge#edge.edge_data#edge_data.event_type,
     Cons = Edge#edge.edge_data#edge_data.comments,
@@ -379,9 +490,36 @@ std_state(Id, [Edge], Nodes) ->
         Cons
     ),
 
-    if 
+    if
         (Dir == recv) or (Dir == send) ->
-            Clause = clause(Dir, Act, merl:var(Var), Trans, NextState, Comms);
+            % io:format("act: ~p.\n", [Act]),
+            % io:format("dir: ~p.", [Dir]),
+            % Prefix = string:concat("_", hd(atom_to_list(Dir))),
+            % io:format("pre1: _~p.\n\n", [Dir]),
+            % Prefix = io_lib:format("_~p",[atom_to_list(Dir)]),
+            % io:format("pre2: ~p.\n\n", [Prefix]),
+            % case Dir of
+            %     recv -> Prefix = "recv_";
+            %     send -> Prefix = "send_";
+            %     _ -> Prefix = ""
+            % end,
+            StrAct = atom_to_list(Act),
+            StrActNotLongReceive = string:is_empty(string:find(StrAct, "receive")),
+            io:format("\n\nStrActNotLongReceive: ~p\n\n\n", [StrActNotLongReceive]),
+            if
+                ((Dir == recv) and (StrActNotLongReceive == false)) ->
+                    Act1 = recv;
+                true -> Act1 = Act
+            end,
+            Label = string:prefix(atom_to_list(Act1), atom_to_list(Dir) ++ "_"),
+            case Label of
+                nomatch ->
+                    io:format("\n\n\nlabel no match, act: ~p, dir: ~p.\n\n\n\n", [Act1, Dir]),
+                    Label1 = Label;
+                _ ->
+                    Label1 = list_to_atom(lists:flatten(Label))
+            end,
+            Clause = clause(Dir, Label1, merl:var(Var), Trans, NextState, Comms);
         true ->
             Clause = clause(Event, Act, merl:var(Var), Trans, NextState, Comms)
     end,
@@ -396,61 +534,62 @@ std_state(Id, [Edge], Nodes) ->
 %% @doc generates choice states, i.e. branch
 choice_state(Id, Edges, Nodes) ->
     Fun = fun(Edge) ->
-        case maps:get(Edge#edge.to, Nodes) of
-            end_state ->
-                NextState = normal,
-                Trans = stop;
-            custom_end_state ->
-                NextState = custom_end_state,
-                Trans = next_state;
-            standard_state ->
-                NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state;
-            choice_state ->
-                NextState = list_to_atom("choice_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state;
-            % mixed_choice_state -> NextState = list_to_atom("mixed_choice_state" ++ integer_to_list(Edge#edge.to)),
-            %          Trans = next_state;
-            recv_after_state ->
-                NextState = list_to_atom("recv_after_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state,
-                io:format("\n[choice_state -> recv_after_state] Nodes: ~p.\n", [Nodes]);
-            branch_after_state ->
-                NextState = list_to_atom("branch_after_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state,
-                io:format("\n[choice_state -> branch_after_state] Nodes: ~p.\n", [Nodes]);
-            send_after_state ->
-                NextState = list_to_atom("send_after_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state,
-                io:format("\n[choice_state -> send_after_state] Nodes: ~p.\n", [Nodes]);
-            select_after_state ->
-                NextState = list_to_atom("select_after_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state,
-                io:format("\n[choice_state -> select_after_state] Nodes: ~p.\n", [Nodes]);
-            % after_recv_state ->   NextState = list_to_atom("after_recv_state" ++ integer_to_list(Edge#edge.to)),
-            %                       Trans = next_state,
-            %                       io:format("\n[choice_state -> after_recv_state] Nodes: ~p.\n", [Nodes]);
-            % after_send_state ->   NextState = list_to_atom("after_send_state" ++ integer_to_list(Edge#edge.to)),
-            %                       Trans = next_state,
-            %                       io:format("\n[choice_state -> after_send_state] Nodes: ~p.\n", [Nodes]);
-            after_state ->
-                NextState = list_to_atom("after_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state,
-                io:format("\n[choice_state -> after_state] Nodes: ~p.\n", [Nodes]);
-            _Else ->
-                NextState = list_to_atom("_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state
-        end,
+        {NextState, Trans} = get_next_state_and_trans(
+            maps:get(Edge#edge.to, Nodes), integer_to_list(Edge#edge.to)
+        ),
+        % case maps:get(Edge#edge.to, Nodes) of
+        %     end_state ->
+        %         NextState = normal,
+        %         Trans = stop;
+        %     custom_end_state ->
+        %         NextState = custom_end_state,
+        %         Trans = next_state;
+        %     standard_state ->
+        %         NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state;
+        %     choice_state ->
+        %         NextState = list_to_atom("choice_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state;
+        %     % mixed_choice_state -> NextState = list_to_atom("mixed_choice_state" ++ integer_to_list(Edge#edge.to)),
+        %     %          Trans = next_state;
+        %     recv_after_state ->
+        %         NextState = list_to_atom("recv_after_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state,
+        %         io:format("\n[choice_state -> recv_after_state] Nodes: ~p.\n", [Nodes]);
+        %     branch_after_state ->
+        %         NextState = list_to_atom("branch_after_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state,
+        %         io:format("\n[choice_state -> branch_after_state] Nodes: ~p.\n", [Nodes]);
+        %     send_after_state ->
+        %         NextState = list_to_atom("send_after_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state,
+        %         io:format("\n[choice_state -> send_after_state] Nodes: ~p.\n", [Nodes]);
+        %     select_after_state ->
+        %         NextState = list_to_atom("select_after_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state,
+        %         io:format("\n[choice_state -> select_after_state] Nodes: ~p.\n", [Nodes]);
+        %     % after_recv_state ->   NextState = list_to_atom("after_recv_state" ++ integer_to_list(Edge#edge.to)),
+        %     %                       Trans = next_state,
+        %     %                       io:format("\n[choice_state -> after_recv_state] Nodes: ~p.\n", [Nodes]);
+        %     % after_send_state ->   NextState = list_to_atom("after_send_state" ++ integer_to_list(Edge#edge.to)),
+        %     %                       Trans = next_state,
+        %     %                       io:format("\n[choice_state -> after_send_state] Nodes: ~p.\n", [Nodes]);
+        %     after_state ->
+        %         NextState = list_to_atom("after_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state,
+        %         io:format("\n[choice_state -> after_state] Nodes: ~p.\n", [Nodes]);
+        %     _Else ->
+        %         NextState = list_to_atom("_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state
+        % end,
         {Act, Var} = Edge#edge.edge_data#edge_data.event,
         Event = Edge#edge.edge_data#edge_data.event_type,
         Cons = Edge#edge.edge_data#edge_data.comments,
         Comms = lists:map(fun({A, B}) -> atom_to_list(A) ++ " " ++ atom_to_list(B) end, Cons),
         % clause(Event, Act, merl:var(Var), Trans, NextState, Comms)
 
-
-    
         Dir = Edge#edge.edge_data#edge_data.trans_type,
-    
+
         Comms = lists:map(
             fun({A, B}) ->
                 atom_to_list(A) ++ " " ++
@@ -458,8 +597,8 @@ choice_state(Id, Edges, Nodes) ->
             end,
             Cons
         ),
-    
-        if 
+
+        if
             (Dir == recv) or (Dir == send) ->
                 Clause = clause(Dir, Act, merl:var(Var), Trans, NextState, Comms);
             true ->
@@ -471,7 +610,7 @@ choice_state(Id, Edges, Nodes) ->
     % Name = list_to_atom("choice_state" ++ integer_to_list(Id)),
     Name = list_to_atom("state" ++ integer_to_list(Id) ++ "_choice"),
     % Clauses = [enter_clause(state, Name)] ++ lists:map(Fun, Edges),
-    Clauses = enter_clause(queues) ++ [queue_clause()] ++lists:map(Fun, Edges),
+    Clauses = enter_clause(queues) ++ [queue_clause()] ++ lists:map(Fun, Edges),
     {true, Name, Clauses}.
 
 recv_after_state(Id, Edges, Nodes) ->
@@ -481,50 +620,53 @@ recv_after_state(Id, Edges, Nodes) ->
     TimeoutEdge = lists:last(lists:filter(fun(Elem) -> Elem#edge.is_silent end, Edges)),
     Timeout = TimeoutEdge#edge.edge_data#edge_data.timeout,
 
-    case maps:get(TimeoutEdge#edge.to, Nodes) of
-        end_state ->
-            Q_NextState = normal;
-        % Q_Trans = stop;
-        custom_end_state ->
-            Q_NextState = 'custom_end_state';
-        % Trans = next_state;
+    Q_NextState = get_next_state(
+        maps:get(TimeoutEdge#edge.to, Nodes), integer_to_list(TimeoutEdge#edge.to)
+    ),
+    % case maps:get(TimeoutEdge#edge.to, Nodes) of
+    %     end_state ->
+    %         Q_NextState = normal;
+    %     % Q_Trans = stop;
+    %     custom_end_state ->
+    %         Q_NextState = 'custom_end_state';
+    %     % Trans = next_state;
 
-        standard_state ->
-            Q_NextState = list_to_atom("std_state" ++ integer_to_list(TimeoutEdge#edge.to));
-        % Q_Trans = next_state;
+    %     standard_state ->
+    %         Q_NextState = list_to_atom("std_state" ++ integer_to_list(TimeoutEdge#edge.to));
+    %     % Q_Trans = next_state;
 
-        choice_state ->
-            Q_NextState = list_to_atom("choice_state" ++ integer_to_list(TimeoutEdge#edge.to));
-        % Q_Trans = next_state;
+    %     choice_state ->
+    %         Q_NextState = list_to_atom("choice_state" ++ integer_to_list(TimeoutEdge#edge.to));
+    %     % Q_Trans = next_state;
 
-        recv_after_state ->
-            Q_NextState = list_to_atom("recv_after_state" ++ integer_to_list(TimeoutEdge#edge.to)),
-            % Q_Trans = next_state,
-            io:format("\n[Q: recv_after_state -> recv_after_state] Nodes: ~p.\n", [Nodes]);
-        branch_after_state ->
-            Q_NextState = list_to_atom(
-                "branch_after_state" ++ integer_to_list(TimeoutEdge#edge.to)
-            ),
-            % Q_Trans = next_state,
-            io:format("\n[Q: recv_after_state -> branch_after_state] Nodes: ~p.\n", [Nodes]);
-        send_after_state ->
-            Q_NextState = list_to_atom("send_after_state" ++ integer_to_list(TimeoutEdge#edge.to)),
-            % Q_Trans = next_state,
-            io:format("\n[Q: recv_after_state -> send_after_state] Nodes: ~p.\n", [Nodes]);
-        select_after_state ->
-            Q_NextState = list_to_atom(
-                "select_after_state" ++ integer_to_list(TimeoutEdge#edge.to)
-            ),
-            % Q_Trans = next_state,
-            io:format("\n[Q: recv_after_state -> select_after_state] Nodes: ~p.\n", [Nodes]);
-        after_state ->
-            Q_NextState = list_to_atom("after_state" ++ integer_to_list(TimeoutEdge#edge.to)),
-            % Q_Trans = next_state,
-            io:format("\n[ERROR] [Q: recv_after_state -> after_state] Nodes: ~p.\n", [Nodes]);
-        _Else ->
-            Q_NextState = list_to_atom("_state" ++ integer_to_list(TimeoutEdge#edge.to))
-        % Q_Trans = next_state
-    end,
+    %     recv_after_state ->
+    %         Q_NextState = list_to_atom("recv_after_state" ++ integer_to_list(TimeoutEdge#edge.to)),
+    %         % Q_Trans = next_state,
+    %         io:format("\n[Q: recv_after_state -> recv_after_state] Nodes: ~p.\n", [Nodes]);
+    %     branch_after_state ->
+    %         Q_NextState = list_to_atom(
+    %             "branch_after_state" ++ integer_to_list(TimeoutEdge#edge.to)
+    %         ),
+    %         % Q_Trans = next_state,
+    %         io:format("\n[Q: recv_after_state -> branch_after_state] Nodes: ~p.\n", [Nodes]);
+    %     send_after_state ->
+    %         Q_NextState = list_to_atom("send_after_state" ++ integer_to_list(TimeoutEdge#edge.to)),
+    %         % Q_Trans = next_state,
+    %         io:format("\n[Q: recv_after_state -> send_after_state] Nodes: ~p.\n", [Nodes]);
+    %     select_after_state ->
+    %         Q_NextState = list_to_atom(
+    %             "select_after_state" ++ integer_to_list(TimeoutEdge#edge.to)
+    %         ),
+    %         % Q_Trans = next_state,
+    %         io:format("\n[Q: recv_after_state -> select_after_state] Nodes: ~p.\n", [Nodes]);
+    %     after_state ->
+    %         Q_NextState = list_to_atom("after_state" ++ integer_to_list(TimeoutEdge#edge.to)),
+    %         % Q_Trans = next_state,
+    %         io:format("\n[ERROR] [Q: recv_after_state -> after_state] Nodes: ~p.\n", [Nodes]);
+    %     _Else ->
+    %         Q_NextState = list_to_atom("_state" ++ integer_to_list(TimeoutEdge#edge.to))
+    %     % Q_Trans = next_state
+    % end,
 
     % EnterClause = enter_clause(timeout, Name, Timeout, Q_NextState),
     EnterClause = enter_clause(timeout, Timeout, Q_NextState),
@@ -536,50 +678,53 @@ recv_after_state(Id, Edges, Nodes) ->
 
     %% same as branch, but should only really be one other edge
     Fun = fun(Edge) ->
-        case maps:get(Edge#edge.to, Nodes) of
-            end_state ->
-                NextState = normal,
-                Trans = stop;
-            custom_end_state ->
-                NextState = custom_end_state,
-                Trans = next_state;
-            standard_state ->
-                NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state;
-            choice_state ->
-                NextState = list_to_atom("choice_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state;
-            recv_after_state ->
-                NextState = list_to_atom("recv_after_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state,
-                io:format("\n[recv_after_state -> recv_after_state] Nodes: ~p.\n", [Nodes]);
-            branch_after_state ->
-                NextState = list_to_atom("branch_after_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state,
-                io:format("\n[recv_after_state -> branch_after_state] Nodes: ~p.\n", [Nodes]);
-            send_after_state ->
-                NextState = list_to_atom("send_after_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state,
-                io:format("\n[recv_after_state -> send_after_state] Nodes: ~p.\n", [Nodes]);
-            select_after_state ->
-                NextState = list_to_atom("select_after_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state,
-                io:format("\n[recv_after_state -> select_after_state] Nodes: ~p.\n", [Nodes]);
-            after_state ->
-                NextState = list_to_atom("after_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state,
-                io:format("\n[ERROR] [recv_after_state -> after_state] Nodes: ~p.\n", [Nodes]);
-            _Else1 ->
-                NextState = list_to_atom("_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state
-        end,
+        {NextState, Trans} = get_next_state_and_trans(
+            maps:get(Edge#edge.to, Nodes), integer_to_list(Edge#edge.to)
+        ),
+        % case maps:get(Edge#edge.to, Nodes) of
+        %     end_state ->
+        %         NextState = normal,
+        %         Trans = stop;
+        %     custom_end_state ->
+        %         NextState = custom_end_state,
+        %         Trans = next_state;
+        %     standard_state ->
+        %         NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state;
+        %     choice_state ->
+        %         NextState = list_to_atom("choice_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state;
+        %     recv_after_state ->
+        %         NextState = list_to_atom("recv_after_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state,
+        %         io:format("\n[recv_after_state -> recv_after_state] Nodes: ~p.\n", [Nodes]);
+        %     branch_after_state ->
+        %         NextState = list_to_atom("branch_after_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state,
+        %         io:format("\n[recv_after_state -> branch_after_state] Nodes: ~p.\n", [Nodes]);
+        %     send_after_state ->
+        %         NextState = list_to_atom("send_after_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state,
+        %         io:format("\n[recv_after_state -> send_after_state] Nodes: ~p.\n", [Nodes]);
+        %     select_after_state ->
+        %         NextState = list_to_atom("select_after_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state,
+        %         io:format("\n[recv_after_state -> select_after_state] Nodes: ~p.\n", [Nodes]);
+        %     after_state ->
+        %         NextState = list_to_atom("after_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state,
+        %         io:format("\n[ERROR] [recv_after_state -> after_state] Nodes: ~p.\n", [Nodes]);
+        %     _Else1 ->
+        %         NextState = list_to_atom("_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state
+        % end,
         {Act, Var} = Edge#edge.edge_data#edge_data.event,
         Event = Edge#edge.edge_data#edge_data.event_type,
         Cons = Edge#edge.edge_data#edge_data.comments,
         Comms = lists:map(fun({A, B}) -> atom_to_list(A) ++ " " ++ atom_to_list(B) end, Cons),
         % clause(Event, Act, merl:var(Var), Trans, NextState, Comms)
         Dir = Edge#edge.edge_data#edge_data.trans_type,
-    
+
         Comms = lists:map(
             fun({A, B}) ->
                 atom_to_list(A) ++ " " ++
@@ -587,8 +732,8 @@ recv_after_state(Id, Edges, Nodes) ->
             end,
             Cons
         ),
-    
-        if 
+
+        if
             (Dir == recv) or (Dir == send) ->
                 Clause = clause(Dir, Act, merl:var(Var), Trans, NextState, Comms);
             true ->
@@ -618,48 +763,51 @@ branch_after_state(Id, Edges, Nodes) ->
     TimeoutEdge = lists:last(lists:filter(fun(Elem) -> Elem#edge.is_silent end, Edges)),
     Timeout = TimeoutEdge#edge.edge_data#edge_data.timeout,
 
-    case maps:get(TimeoutEdge#edge.to, Nodes) of
-        end_state ->
-            Q_NextState = normal;
-        % Q_Trans = stop;
-        custom_end_state ->
-            Q_NextState = 'custom_end_state';
-        standard_state ->
-            Q_NextState = list_to_atom("std_state" ++ integer_to_list(TimeoutEdge#edge.to));
-        % Q_Trans = next_state;
+    Q_NextState = get_next_state(
+        maps:get(TimeoutEdge#edge.to, Nodes), integer_to_list(TimeoutEdge#edge.to)
+    ),
+    % case maps:get(TimeoutEdge#edge.to, Nodes) of
+    %     end_state ->
+    %         Q_NextState = normal;
+    %     % Q_Trans = stop;
+    %     custom_end_state ->
+    %         Q_NextState = 'custom_end_state';
+    %     standard_state ->
+    %         Q_NextState = list_to_atom("std_state" ++ integer_to_list(TimeoutEdge#edge.to));
+    %     % Q_Trans = next_state;
 
-        choice_state ->
-            Q_NextState = list_to_atom("choice_state" ++ integer_to_list(TimeoutEdge#edge.to));
-        % Q_Trans = next_state;
+    %     choice_state ->
+    %         Q_NextState = list_to_atom("choice_state" ++ integer_to_list(TimeoutEdge#edge.to));
+    %     % Q_Trans = next_state;
 
-        recv_after_state ->
-            Q_NextState = list_to_atom("recv_after_state" ++ integer_to_list(TimeoutEdge#edge.to)),
-            % Q_Trans = next_state,
-            io:format("\n[Q: branch_after_state -> recv_after_state] Nodes: ~p.\n", [Nodes]);
-        branch_after_state ->
-            Q_NextState = list_to_atom(
-                "branch_after_state" ++ integer_to_list(TimeoutEdge#edge.to)
-            ),
-            % Q_Trans = next_state,
-            io:format("\n[Q: branch_after_state -> branch_after_state] Nodes: ~p.\n", [Nodes]);
-        send_after_state ->
-            Q_NextState = list_to_atom("send_after_state" ++ integer_to_list(TimeoutEdge#edge.to)),
-            % Q_Trans = next_state,
-            io:format("\n[Q: branch_after_state -> send_after_state] Nodes: ~p.\n", [Nodes]);
-        select_after_state ->
-            Q_NextState = list_to_atom(
-                "select_after_state" ++ integer_to_list(TimeoutEdge#edge.to)
-            ),
-            % Q_Trans = next_state,
-            io:format("\n[Q: branch_after_state -> select_after_state] Nodes: ~p.\n", [Nodes]);
-        after_state ->
-            Q_NextState = list_to_atom("after_state" ++ integer_to_list(TimeoutEdge#edge.to)),
-            % Q_Trans = next_state,
-            io:format("\n[ERROR] [Q: branch_after_state -> after_state] Nodes: ~p.\n", [Nodes]);
-        _Else ->
-            Q_NextState = list_to_atom("_state" ++ integer_to_list(TimeoutEdge#edge.to))
-        % Q_Trans = next_state
-    end,
+    %     recv_after_state ->
+    %         Q_NextState = list_to_atom("recv_after_state" ++ integer_to_list(TimeoutEdge#edge.to)),
+    %         % Q_Trans = next_state,
+    %         io:format("\n[Q: branch_after_state -> recv_after_state] Nodes: ~p.\n", [Nodes]);
+    %     branch_after_state ->
+    %         Q_NextState = list_to_atom(
+    %             "branch_after_state" ++ integer_to_list(TimeoutEdge#edge.to)
+    %         ),
+    %         % Q_Trans = next_state,
+    %         io:format("\n[Q: branch_after_state -> branch_after_state] Nodes: ~p.\n", [Nodes]);
+    %     send_after_state ->
+    %         Q_NextState = list_to_atom("send_after_state" ++ integer_to_list(TimeoutEdge#edge.to)),
+    %         % Q_Trans = next_state,
+    %         io:format("\n[Q: branch_after_state -> send_after_state] Nodes: ~p.\n", [Nodes]);
+    %     select_after_state ->
+    %         Q_NextState = list_to_atom(
+    %             "select_after_state" ++ integer_to_list(TimeoutEdge#edge.to)
+    %         ),
+    %         % Q_Trans = next_state,
+    %         io:format("\n[Q: branch_after_state -> select_after_state] Nodes: ~p.\n", [Nodes]);
+    %     after_state ->
+    %         Q_NextState = list_to_atom("after_state" ++ integer_to_list(TimeoutEdge#edge.to)),
+    %         % Q_Trans = next_state,
+    %         io:format("\n[ERROR] [Q: branch_after_state -> after_state] Nodes: ~p.\n", [Nodes]);
+    %     _Else ->
+    %         Q_NextState = list_to_atom("_state" ++ integer_to_list(TimeoutEdge#edge.to))
+    %     % Q_Trans = next_state
+    % end,
 
     % EnterClause = enter_clause(timeout, Name, Timeout,Q_NextState),
     EnterClause = enter_clause(timeout, Timeout, Q_NextState),
@@ -685,50 +833,53 @@ branch_after_state(Id, Edges, Nodes) ->
         %       Clause;
 
         %   true ->
-        case maps:get(Edge#edge.to, Nodes) of
-            end_state ->
-                NextState = normal,
-                Trans = stop;
-            custom_end_state ->
-                NextState = custom_end_state,
-                Trans = next_state;
-            standard_state ->
-                NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state;
-            choice_state ->
-                NextState = list_to_atom("choice_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state;
-            recv_after_state ->
-                NextState = list_to_atom("recv_after_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state,
-                io:format("\n[branch_after_state -> recv_after_state] Nodes: ~p.\n", [Nodes]);
-            branch_after_state ->
-                NextState = list_to_atom("branch_after_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state,
-                io:format("\n[branch_after_state -> branch_after_state] Nodes: ~p.\n", [Nodes]);
-            send_after_state ->
-                NextState = list_to_atom("send_after_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state,
-                io:format("\n[branch_after_state -> send_after_state] Nodes: ~p.\n", [Nodes]);
-            select_after_state ->
-                NextState = list_to_atom("select_after_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state,
-                io:format("\n[branch_after_state -> select_after_state] Nodes: ~p.\n", [Nodes]);
-            after_state ->
-                NextState = list_to_atom("after_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state,
-                io:format("\n[ERROR] [branch_after_state -> after_state] Nodes: ~p.\n", [Nodes]);
-            _Else1 ->
-                NextState = list_to_atom("_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state
-        end,
+        {NextState, Trans} = get_next_state_and_trans(
+            maps:get(Edge#edge.to, Nodes), integer_to_list(Edge#edge.to)
+        ),
+        % case maps:get(Edge#edge.to, Nodes) of
+        %     end_state ->
+        %         NextState = normal,
+        %         Trans = stop;
+        %     custom_end_state ->
+        %         NextState = custom_end_state,
+        %         Trans = next_state;
+        %     standard_state ->
+        %         NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state;
+        %     choice_state ->
+        %         NextState = list_to_atom("choice_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state;
+        %     recv_after_state ->
+        %         NextState = list_to_atom("recv_after_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state,
+        %         io:format("\n[branch_after_state -> recv_after_state] Nodes: ~p.\n", [Nodes]);
+        %     branch_after_state ->
+        %         NextState = list_to_atom("branch_after_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state,
+        %         io:format("\n[branch_after_state -> branch_after_state] Nodes: ~p.\n", [Nodes]);
+        %     send_after_state ->
+        %         NextState = list_to_atom("send_after_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state,
+        %         io:format("\n[branch_after_state -> send_after_state] Nodes: ~p.\n", [Nodes]);
+        %     select_after_state ->
+        %         NextState = list_to_atom("select_after_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state,
+        %         io:format("\n[branch_after_state -> select_after_state] Nodes: ~p.\n", [Nodes]);
+        %     after_state ->
+        %         NextState = list_to_atom("after_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state,
+        %         io:format("\n[ERROR] [branch_after_state -> after_state] Nodes: ~p.\n", [Nodes]);
+        %     _Else1 ->
+        %         NextState = list_to_atom("_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state
+        % end,
         {Act, Var} = Edge#edge.edge_data#edge_data.event,
         Event = Edge#edge.edge_data#edge_data.event_type,
         Cons = Edge#edge.edge_data#edge_data.comments,
         Comms = lists:map(fun({A, B}) -> atom_to_list(A) ++ " " ++ atom_to_list(B) end, Cons),
         % clause(Event, Act, merl:var(Var), Trans, NextState, Comms)
         Dir = Edge#edge.edge_data#edge_data.trans_type,
-    
+
         Comms = lists:map(
             fun({A, B}) ->
                 atom_to_list(A) ++ " " ++
@@ -736,8 +887,8 @@ branch_after_state(Id, Edges, Nodes) ->
             end,
             Cons
         ),
-    
-        if 
+
+        if
             (Dir == recv) or (Dir == send) ->
                 Clause = clause(Dir, Act, merl:var(Var), Trans, NextState, Comms);
             true ->
@@ -765,48 +916,51 @@ send_after_state(Id, Edges, Nodes) ->
     TimeoutEdge = lists:last(lists:filter(fun(Elem) -> Elem#edge.is_silent end, Edges)),
     Timeout = TimeoutEdge#edge.edge_data#edge_data.timeout,
 
-    case maps:get(TimeoutEdge#edge.to, Nodes) of
-        end_state ->
-            Q_NextState = normal;
-        % Q_Trans = stop;
-        custom_end_state ->
-            Q_NextState = 'custom_end_state';
-        standard_state ->
-            Q_NextState = list_to_atom("std_state" ++ integer_to_list(TimeoutEdge#edge.to));
-        % Q_Trans = next_state;
+    Q_NextState = get_next_state(
+        maps:get(TimeoutEdge#edge.to, Nodes), integer_to_list(TimeoutEdge#edge.to)
+    ),
+    % case maps:get(TimeoutEdge#edge.to, Nodes) of
+    %     end_state ->
+    %         Q_NextState = normal;
+    %     % Q_Trans = stop;
+    %     custom_end_state ->
+    %         Q_NextState = 'custom_end_state';
+    %     standard_state ->
+    %         Q_NextState = list_to_atom("std_state" ++ integer_to_list(TimeoutEdge#edge.to));
+    %     % Q_Trans = next_state;
 
-        choice_state ->
-            Q_NextState = list_to_atom("choice_state" ++ integer_to_list(TimeoutEdge#edge.to));
-        % Q_Trans = next_state;
+    %     choice_state ->
+    %         Q_NextState = list_to_atom("choice_state" ++ integer_to_list(TimeoutEdge#edge.to));
+    %     % Q_Trans = next_state;
 
-        recv_after_state ->
-            Q_NextState = list_to_atom("recv_after_state" ++ integer_to_list(TimeoutEdge#edge.to)),
-            % Q_Trans = next_state,
-            io:format("\n[Q: send_after_state -> recv_after_state] Nodes: ~p.\n", [Nodes]);
-        branch_after_state ->
-            Q_NextState = list_to_atom(
-                "branch_after_state" ++ integer_to_list(TimeoutEdge#edge.to)
-            ),
-            % Q_Trans = next_state,
-            io:format("\n[Q: send_after_state -> branch_after_state] Nodes: ~p.\n", [Nodes]);
-        send_after_state ->
-            Q_NextState = list_to_atom("send_after_state" ++ integer_to_list(TimeoutEdge#edge.to)),
-            % Q_Trans = next_state,
-            io:format("\n[Q: send_after_state -> send_after_state] Nodes: ~p.\n", [Nodes]);
-        select_after_state ->
-            Q_NextState = list_to_atom(
-                "select_after_state" ++ integer_to_list(TimeoutEdge#edge.to)
-            ),
-            % Q_Trans = next_state,
-            io:format("\n[Q: send_after_state -> select_after_state] Nodes: ~p.\n", [Nodes]);
-        after_state ->
-            Q_NextState = list_to_atom("after_state" ++ integer_to_list(TimeoutEdge#edge.to)),
-            % Q_Trans = next_state,
-            io:format("\n[ERROR] [Q: send_after_state -> after_state] Nodes: ~p.\n", [Nodes]);
-        _Else ->
-            Q_NextState = list_to_atom("_state" ++ integer_to_list(TimeoutEdge#edge.to))
-        % Q_Trans = next_state
-    end,
+    %     recv_after_state ->
+    %         Q_NextState = list_to_atom("recv_after_state" ++ integer_to_list(TimeoutEdge#edge.to)),
+    %         % Q_Trans = next_state,
+    %         io:format("\n[Q: send_after_state -> recv_after_state] Nodes: ~p.\n", [Nodes]);
+    %     branch_after_state ->
+    %         Q_NextState = list_to_atom(
+    %             "branch_after_state" ++ integer_to_list(TimeoutEdge#edge.to)
+    %         ),
+    %         % Q_Trans = next_state,
+    %         io:format("\n[Q: send_after_state -> branch_after_state] Nodes: ~p.\n", [Nodes]);
+    %     send_after_state ->
+    %         Q_NextState = list_to_atom("send_after_state" ++ integer_to_list(TimeoutEdge#edge.to)),
+    %         % Q_Trans = next_state,
+    %         io:format("\n[Q: send_after_state -> send_after_state] Nodes: ~p.\n", [Nodes]);
+    %     select_after_state ->
+    %         Q_NextState = list_to_atom(
+    %             "select_after_state" ++ integer_to_list(TimeoutEdge#edge.to)
+    %         ),
+    %         % Q_Trans = next_state,
+    %         io:format("\n[Q: send_after_state -> select_after_state] Nodes: ~p.\n", [Nodes]);
+    %     after_state ->
+    %         Q_NextState = list_to_atom("after_state" ++ integer_to_list(TimeoutEdge#edge.to)),
+    %         % Q_Trans = next_state,
+    %         io:format("\n[ERROR] [Q: send_after_state -> after_state] Nodes: ~p.\n", [Nodes]);
+    %     _Else ->
+    %         Q_NextState = list_to_atom("_state" ++ integer_to_list(TimeoutEdge#edge.to))
+    %     % Q_Trans = next_state
+    % end,
 
     % EnterClause = enter_clause(timeout, Name, Timeout, Q_NextState),
     EnterClause = enter_clause(timeout, Timeout, Q_NextState),
@@ -817,50 +971,53 @@ send_after_state(Id, Edges, Nodes) ->
 
     %% same as branch, but should only really be one other edge
     Fun = fun(Edge) ->
-        case maps:get(Edge#edge.to, Nodes) of
-            end_state ->
-                NextState = normal,
-                Trans = stop;
-            custom_end_state ->
-                NextState = custom_end_state,
-                Trans = next_state;
-            standard_state ->
-                NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state;
-            choice_state ->
-                NextState = list_to_atom("choice_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state;
-            recv_after_state ->
-                NextState = list_to_atom("recv_after_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state,
-                io:format("\n[send_after_state -> recv_after_state] Nodes: ~p.\n", [Nodes]);
-            branch_after_state ->
-                NextState = list_to_atom("branch_after_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state,
-                io:format("\n[send_after_state -> branch_after_state] Nodes: ~p.\n", [Nodes]);
-            send_after_state ->
-                NextState = list_to_atom("send_after_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state,
-                io:format("\n[send_after_state -> send_after_state] Nodes: ~p.\n", [Nodes]);
-            select_after_state ->
-                NextState = list_to_atom("select_after_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state,
-                io:format("\n[send_after_state -> select_after_state] Nodes: ~p.\n", [Nodes]);
-            after_state ->
-                NextState = list_to_atom("after_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state,
-                io:format("\n[ERROR] [send_after_state -> after_state] Nodes: ~p.\n", [Nodes]);
-            _Else1 ->
-                NextState = list_to_atom("_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state
-        end,
+        {NextState, Trans} = get_next_state_and_trans(
+            maps:get(Edge#edge.to, Nodes), integer_to_list(Edge#edge.to)
+        ),
+        % case maps:get(Edge#edge.to, Nodes) of
+        %     end_state ->
+        %         NextState = normal,
+        %         Trans = stop;
+        %     custom_end_state ->
+        %         NextState = custom_end_state,
+        %         Trans = next_state;
+        %     standard_state ->
+        %         NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state;
+        %     choice_state ->
+        %         NextState = list_to_atom("choice_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state;
+        %     recv_after_state ->
+        %         NextState = list_to_atom("recv_after_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state,
+        %         io:format("\n[send_after_state -> recv_after_state] Nodes: ~p.\n", [Nodes]);
+        %     branch_after_state ->
+        %         NextState = list_to_atom("branch_after_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state,
+        %         io:format("\n[send_after_state -> branch_after_state] Nodes: ~p.\n", [Nodes]);
+        %     send_after_state ->
+        %         NextState = list_to_atom("send_after_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state,
+        %         io:format("\n[send_after_state -> send_after_state] Nodes: ~p.\n", [Nodes]);
+        %     select_after_state ->
+        %         NextState = list_to_atom("select_after_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state,
+        %         io:format("\n[send_after_state -> select_after_state] Nodes: ~p.\n", [Nodes]);
+        %     after_state ->
+        %         NextState = list_to_atom("after_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state,
+        %         io:format("\n[ERROR] [send_after_state -> after_state] Nodes: ~p.\n", [Nodes]);
+        %     _Else1 ->
+        %         NextState = list_to_atom("_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state
+        % end,
         {Act, Var} = Edge#edge.edge_data#edge_data.event,
         Event = Edge#edge.edge_data#edge_data.event_type,
         Cons = Edge#edge.edge_data#edge_data.comments,
         Comms = lists:map(fun({A, B}) -> atom_to_list(A) ++ " " ++ atom_to_list(B) end, Cons),
         % clause(Event, Act, merl:var(Var), Trans, NextState, Comms)
         Dir = Edge#edge.edge_data#edge_data.trans_type,
-    
+
         Comms = lists:map(
             fun({A, B}) ->
                 atom_to_list(A) ++ " " ++
@@ -868,8 +1025,8 @@ send_after_state(Id, Edges, Nodes) ->
             end,
             Cons
         ),
-    
-        if 
+
+        if
             (Dir == recv) or (Dir == send) ->
                 Clause = clause(Dir, Act, merl:var(Var), Trans, NextState, Comms);
             true ->
@@ -898,48 +1055,51 @@ select_after_state(Id, Edges, Nodes) ->
     TimeoutEdge = lists:last(lists:filter(fun(Elem) -> Elem#edge.is_silent end, Edges)),
     Timeout = TimeoutEdge#edge.edge_data#edge_data.timeout,
 
-    case maps:get(TimeoutEdge#edge.to, Nodes) of
-        end_state ->
-            Q_NextState = normal;
-        % Q_Trans = stop;
-        custom_end_state ->
-            Q_NextState = 'custom_end_state';
-        standard_state ->
-            Q_NextState = list_to_atom("std_state" ++ integer_to_list(TimeoutEdge#edge.to));
-        % Q_Trans = next_state;
+    Q_NextState = get_next_state_and_trans(
+        maps:get(TimeoutEdge#edge.to, Nodes), integer_to_list(TimeoutEdge#edge.to)
+    ),
+    % case maps:get(TimeoutEdge#edge.to, Nodes) of
+    %     end_state ->
+    %         Q_NextState = normal;
+    %     % Q_Trans = stop;
+    %     custom_end_state ->
+    %         Q_NextState = 'custom_end_state';
+    %     standard_state ->
+    %         Q_NextState = list_to_atom("std_state" ++ integer_to_list(TimeoutEdge#edge.to));
+    %     % Q_Trans = next_state;
 
-        choice_state ->
-            Q_NextState = list_to_atom("choice_state" ++ integer_to_list(TimeoutEdge#edge.to));
-        % Q_Trans = next_state;
+    %     choice_state ->
+    %         Q_NextState = list_to_atom("choice_state" ++ integer_to_list(TimeoutEdge#edge.to));
+    %     % Q_Trans = next_state;
 
-        recv_after_state ->
-            Q_NextState = list_to_atom("recv_after_state" ++ integer_to_list(TimeoutEdge#edge.to)),
-            % Q_Trans = next_state,
-            io:format("\n[Q: select_after_state -> recv_after_state] Nodes: ~p.\n", [Nodes]);
-        branch_after_state ->
-            Q_NextState = list_to_atom(
-                "branch_after_state" ++ integer_to_list(TimeoutEdge#edge.to)
-            ),
-            % Q_Trans = next_state,
-            io:format("\n[Q: select_after_state -> branch_after_state] Nodes: ~p.\n", [Nodes]);
-        send_after_state ->
-            Q_NextState = list_to_atom("send_after_state" ++ integer_to_list(TimeoutEdge#edge.to)),
-            % Q_Trans = next_state,
-            io:format("\n[Q: select_after_state -> send_after_state] Nodes: ~p.\n", [Nodes]);
-        select_after_state ->
-            Q_NextState = list_to_atom(
-                "select_after_state" ++ integer_to_list(TimeoutEdge#edge.to)
-            ),
-            % Q_Trans = next_state,
-            io:format("\n[Q: select_after_state -> select_after_state] Nodes: ~p.\n", [Nodes]);
-        after_state ->
-            Q_NextState = list_to_atom("after_state" ++ integer_to_list(TimeoutEdge#edge.to)),
-            % Q_Trans = next_state,
-            io:format("\n[ERROR] [Q: select_after_state -> after_state] Nodes: ~p.\n", [Nodes]);
-        _Else ->
-            Q_NextState = list_to_atom("_state" ++ integer_to_list(TimeoutEdge#edge.to))
-        % Q_Trans = next_state
-    end,
+    %     recv_after_state ->
+    %         Q_NextState = list_to_atom("recv_after_state" ++ integer_to_list(TimeoutEdge#edge.to)),
+    %         % Q_Trans = next_state,
+    %         io:format("\n[Q: select_after_state -> recv_after_state] Nodes: ~p.\n", [Nodes]);
+    %     branch_after_state ->
+    %         Q_NextState = list_to_atom(
+    %             "branch_after_state" ++ integer_to_list(TimeoutEdge#edge.to)
+    %         ),
+    %         % Q_Trans = next_state,
+    %         io:format("\n[Q: select_after_state -> branch_after_state] Nodes: ~p.\n", [Nodes]);
+    %     send_after_state ->
+    %         Q_NextState = list_to_atom("send_after_state" ++ integer_to_list(TimeoutEdge#edge.to)),
+    %         % Q_Trans = next_state,
+    %         io:format("\n[Q: select_after_state -> send_after_state] Nodes: ~p.\n", [Nodes]);
+    %     select_after_state ->
+    %         Q_NextState = list_to_atom(
+    %             "select_after_state" ++ integer_to_list(TimeoutEdge#edge.to)
+    %         ),
+    %         % Q_Trans = next_state,
+    %         io:format("\n[Q: select_after_state -> select_after_state] Nodes: ~p.\n", [Nodes]);
+    %     after_state ->
+    %         Q_NextState = list_to_atom("after_state" ++ integer_to_list(TimeoutEdge#edge.to)),
+    %         % Q_Trans = next_state,
+    %         io:format("\n[ERROR] [Q: select_after_state -> after_state] Nodes: ~p.\n", [Nodes]);
+    %     _Else ->
+    %         Q_NextState = list_to_atom("_state" ++ integer_to_list(TimeoutEdge#edge.to))
+    %     % Q_Trans = next_state
+    % end,
 
     % EnterClause = enter_clause(timeout, Name, Timeout,Q_NextState),
     EnterClause = enter_clause(timeout, Timeout, Q_NextState),
@@ -965,50 +1125,53 @@ select_after_state(Id, Edges, Nodes) ->
         %       Clause;
 
         %   true ->
-        case maps:get(Edge#edge.to, Nodes) of
-            end_state ->
-                NextState = normal,
-                Trans = stop;
-            custom_end_state ->
-                NextState = custom_end_state,
-                Trans = next_state;
-            standard_state ->
-                NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state;
-            choice_state ->
-                NextState = list_to_atom("choice_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state;
-            recv_after_state ->
-                NextState = list_to_atom("recv_after_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state,
-                io:format("\n[select_after_state -> recv_after_state] Nodes: ~p.\n", [Nodes]);
-            branch_after_state ->
-                NextState = list_to_atom("branch_after_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state,
-                io:format("\n[select_after_state -> branch_after_state] Nodes: ~p.\n", [Nodes]);
-            send_after_state ->
-                NextState = list_to_atom("send_after_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state,
-                io:format("\n[select_after_state -> send_after_state] Nodes: ~p.\n", [Nodes]);
-            select_after_state ->
-                NextState = list_to_atom("select_after_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state,
-                io:format("\n[select_after_state -> select_after_state] Nodes: ~p.\n", [Nodes]);
-            after_state ->
-                NextState = list_to_atom("after_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state,
-                io:format("\n[ERROR] [select_after_state -> after_state] Nodes: ~p.\n", [Nodes]);
-            _Else1 ->
-                NextState = list_to_atom("_state" ++ integer_to_list(Edge#edge.to)),
-                Trans = next_state
-        end,
+        {NextState, Trans} = get_next_state_and_trans(
+            maps:get(Edge#edge.to, Nodes), integer_to_list(Edge#edge.to)
+        ),
+        % case maps:get(Edge#edge.to, Nodes) of
+        %     end_state ->
+        %         NextState = normal,
+        %         Trans = stop;
+        %     custom_end_state ->
+        %         NextState = custom_end_state,
+        %         Trans = next_state;
+        %     standard_state ->
+        %         NextState = list_to_atom("std_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state;
+        %     choice_state ->
+        %         NextState = list_to_atom("choice_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state;
+        %     recv_after_state ->
+        %         NextState = list_to_atom("recv_after_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state,
+        %         io:format("\n[select_after_state -> recv_after_state] Nodes: ~p.\n", [Nodes]);
+        %     branch_after_state ->
+        %         NextState = list_to_atom("branch_after_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state,
+        %         io:format("\n[select_after_state -> branch_after_state] Nodes: ~p.\n", [Nodes]);
+        %     send_after_state ->
+        %         NextState = list_to_atom("send_after_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state,
+        %         io:format("\n[select_after_state -> send_after_state] Nodes: ~p.\n", [Nodes]);
+        %     select_after_state ->
+        %         NextState = list_to_atom("select_after_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state,
+        %         io:format("\n[select_after_state -> select_after_state] Nodes: ~p.\n", [Nodes]);
+        %     after_state ->
+        %         NextState = list_to_atom("after_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state,
+        %         io:format("\n[ERROR] [select_after_state -> after_state] Nodes: ~p.\n", [Nodes]);
+        %     _Else1 ->
+        %         NextState = list_to_atom("_state" ++ integer_to_list(Edge#edge.to)),
+        %         Trans = next_state
+        % end,
         {Act, Var} = Edge#edge.edge_data#edge_data.event,
         Event = Edge#edge.edge_data#edge_data.event_type,
         Cons = Edge#edge.edge_data#edge_data.comments,
         Comms = lists:map(fun({A, B}) -> atom_to_list(A) ++ " " ++ atom_to_list(B) end, Cons),
         % clause(Event, Act, merl:var(Var), Trans, NextState, Comms)
         Dir = Edge#edge.edge_data#edge_data.trans_type,
-    
+
         Comms = lists:map(
             fun({A, B}) ->
                 atom_to_list(A) ++ " " ++
@@ -1016,8 +1179,8 @@ select_after_state(Id, Edges, Nodes) ->
             end,
             Cons
         ),
-    
-        if 
+
+        if
             (Dir == recv) or (Dir == send) ->
                 Clause = clause(Dir, Act, merl:var(Var), Trans, NextState, Comms);
             true ->
@@ -1186,7 +1349,8 @@ state_funs(K, V, Edges, Nodes) ->
     Es = lists:filter(Pred, Edges),
     case V of
         init_state ->
-            init_state(K, Es, Nodes);
+            % init_state(K, Es, Nodes);
+            init_setup_state(K, Es, Nodes);
         end_state ->
             end_state();
         custom_end_state ->
@@ -1277,8 +1441,31 @@ cb_fun(Edge, NameMacro) ->
 gen_module(FileName, P) ->
     Server = merl:var(list_to_atom("?SERVER")),
     Module = merl:var(list_to_atom("?MODULE")),
+    Func = merl:var(list_to_atom("?FUNCTION_NAME")),
 
-    Start = ?Q(["() -> ", "gen_statem:start_link({local, _@Server}, _@Module, [], []) "]),
+    % Start = ?Q(["() -> ", "gen_statem:start_link({local, _@Server}, _@Module, [], []) "]),
+    StartP = ?Q(["(Params) -> ", "gen_statem:start_link({local, _@Server}, _@Module, Params, []) "]),
+    Start = ?Q(["() -> ", "_@Module:start_link([]) "]),
+
+    Send = ?Q([
+        "(Label, Msg) -> ",
+        "printout(\"~p: {~p, ~p}.\", [_@Func, Label, Msg]),",
+        "gen_statem:cast(_@Module, {send, {Label, Msg}})"
+    ]),
+
+    Recv = ?Q([
+        "(Label) -> ",
+        "printout(\"~p: ~p.\", [_@Func, Label]),",
+        "gen_statem:call(_@Module, {recv, Label})"
+    ]),
+
+    Tout = ?Q([
+        "(Label, Msg) -> ",
+        "printout(\"~p: {~p, ~p}.\", [_@Func, Label, Msg]),",
+        "gen_statem:cast(_@Module, {issue_timeout, {Msg, Label}})"
+    ]),
+
+    % SetupFun =
 
     % Cb = merl:quote(["() -> ", "[state_functions, state_enter]" ]),
     Cb = merl:quote(["() -> ", "[state_functions, state_enter]"]),
@@ -1291,15 +1478,16 @@ gen_module(FileName, P) ->
 
     {Edges, Nodes} = build_fsm:to_fsm(P),
 
-%     ok.
+    %     ok.
 
-% blah(FileName, P, Nodes, Edges, Start, Stop, Cb, Server, Module) ->
+    % blah(FileName, P, Nodes, Edges, Start, Stop, Cb, Server, Module) ->
     io:format("\n------ FSM:\nNodes: ~p\nEdges: ~p\n------\n", [Nodes, Edges]),
 
     NonEndEdges = lists:filter(fun(Elem) -> not Elem#edge.is_custom_end end, Edges),
 
     io:format("\n------ FSM (filtered NonEndEdges): ~p\n------\n", [NonEndEdges]),
 
+    % [InitFun|StateFuns]
     StateFuns = maps:fold(
         fun(K, V, AccIn) ->
             % io:format("\n[StateFuns] (~p, ~p):...\n\tAccIn: ~p.\n",[K,V,AccIn]),
@@ -1311,8 +1499,12 @@ gen_module(FileName, P) ->
         Nodes
     ),
 
+    % [InitFun|StateFuns1] = StateFuns,
+    InitFun = hd(StateFuns),
+    StateFuns1 = lists:nthtail(1, StateFuns),
+
     NonSilentEdges = lists:filter(fun(Elem) -> not Elem#edge.is_silent end, NonEndEdges),
-    io:format("\n------ FSM (filtered NonSilentEdges): ~p\n------\n", [NonSilentEdges]),
+    % io:format("\n------ FSM (filtered NonSilentEdges): ~p\n------\n", [NonSilentEdges]),
 
     CBFuns = lists:foldl(
         fun(Edge, AccIn) ->
@@ -1323,17 +1515,24 @@ gen_module(FileName, P) ->
         lists:delete(hd(NonSilentEdges), NonSilentEdges)
     ),
 
-    io:format("--- success: CBFuns: ~p\n-----\n", [CBFuns]),
+    % io:format("--- success: CBFuns: ~p\n-----\n", [CBFuns]),
 
     Fs =
         [
+            {true, start_link, [StartP]},
             {true, start_link, [Start]},
-            {true, callback_mode, [Cb]}
+            {true, callback_mode, [Cb]},
+            {true, send, [Send]},
+            {true, recv, [Recv]},
+            {true, issue_timeout, [Tout]},
+            {true, init, init_state(no_data)},
+            {true, init, init_state(with_data)},
+            InitFun
             % {true, init, [Init]}
-            | StateFuns
+            | StateFuns1
         ] ++ lists:usort(CBFuns) ++ [{true, stop, [Stop]}],
 
-    io:format("--- success: Fs: ~p\n------\n", [Fs]),
+    % io:format("--- success: Fs: ~p\n------\n", [Fs]),
 
     Forms = merl_build:add_attribute(
         behaviour, [merl:term('gen_statem')], merl_build:init_module(FileName)
@@ -1375,9 +1574,16 @@ gen_module(FileName, P) ->
         Forms3
     ),
 
-    Forms5 = merl_build:add_function(false, printout, [
-        ?Q(["(Str, Params) -> io:format(\"[~p|~p]: \" ++ Str ++ \"\n\", [_@Module, self()] ++ Params)"])
-    ], Forms4),
+    Forms5 = merl_build:add_function(
+        false,
+        printout,
+        [
+            ?Q([
+                "(Str, Params) -> io:format(\"[~p|~p]: \" ++ Str ++ \"\n\", [_@Module, self()] ++ Params)"
+            ])
+        ],
+        Forms4
+    ),
 
     io:format("--- success: Forms.\n"),
 
