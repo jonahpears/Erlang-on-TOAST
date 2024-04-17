@@ -109,15 +109,28 @@ init_setup_state(_Id, [Edge], Nodes) ->
         "end"
     ]),
 
-    {true, init_setup_state, [Clause, Clause2]}.
+
+    Cons = [
+            "% @doc Waits to receive the process-ID of the `coparty' before continuing to the initial state of the FSM.",
+            "% Note: In the binary setting, sessions are only composed of two participants."
+          ],
+    Clause1 = erl_syntax:add_precomments(
+        lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons), Clause
+    ),
+    Clauses = [Clause1, Clause2],
+    {true, init_setup_state, Clauses}.
 
 init_state(no_data) ->
+    Clause = ?Q([
+        "([{HKey,HVal}|T])",
+        "when is_atom(HKey) and is_map_key(HKey, #statem_options{}) ->",
+        "init(T, #statem_data{options = maps:put(HKey, HVal, #statem_options{})})"
+      ]),
+    Cons = [ "% @doc Parse init params." ],
+    Clause1 = erl_syntax:add_precomments(lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons), Clause),
+
     Clauses = [
-        ?Q([
-            "([{HKey,HVal}|T])",
-            "when is_atom(HKey) and is_map_key(HKey, #statem_options{}) ->",
-            "init(T, #statem_data{options = maps:put(HKey, HVal, #statem_options{})})"
-        ]),
+        Clause1,
         ?Q(["([_H|T]) -> init(T, #statem_data{})"]),
         ?Q(["([]) -> {ok, init_setup_state, #statem_data{}}"])
     ],
@@ -125,12 +138,17 @@ init_state(no_data) ->
     % {true, init, Clauses};
     Clauses;
 init_state(with_data) ->
-    Clauses = [
-        ?Q([
+  Clause = ?Q([
             "([{HKey,HVal}|T], #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msgs = _Msgs, queued_actions = _Queue, options = Options} = Data) ",
             "when is_atom(HKey) and is_map_key(HKey, Options) -> ",
             "init(T, maps:put(options, maps:put(HKey, HVal, Options), Data))"
         ]),
+    
+        Cons = [ "% @doc Parse init params (with #statem_data already created)." ],
+        Clause1 = erl_syntax:add_precomments(lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons), Clause),
+    
+    Clauses = [
+        Clause1,
         ?Q([
             "([_H|T], ",
             "#statem_data{ coparty_id = _CoPartyID, state_stack = _States, msgs = _Msgs, queued_actions = _Queue, options = _Options} = Data) -> ",
@@ -164,14 +182,17 @@ clause(send, Act, Var, Trans, NextState, Cons) ->
         "Data1 = #statem_data{ coparty_id = CoPartyID, state_stack = [NextState] ++ States, msgs = Msgs1, queued_actions = Queue, options = Options },",
         " {'@Trans@', NextState, Data1 }"
     ]),
-    if
-        length(Cons) > 0 ->
+    Cons1 = Cons ++ [
+                      "% @doc Sends a message to the #statem_data.coparty_id given that the message label that is valid for this state."
+                    ],
+    % if
+    %     length(Cons1) > 0 ->
             erl_syntax:add_precomments(
-                lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons), Clause
+                lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons1), Clause
             );
-        true ->
-            Clause
-    end;
+    %     true ->
+    %         Clause
+    % end;
 clause(recv, Act, Var, Trans, NextState, Cons) ->
     Func = get_merl_func_name(),
     Clause = ?Q([
@@ -185,14 +206,19 @@ clause(recv, Act, Var, Trans, NextState, Cons) ->
         "Data1 = #statem_data{ coparty_id = CoPartyID, state_stack = [NextState] ++ States, msgs = Msgs1, queued_actions = Queue1, options = Options },",
         " {'@Trans@', NextState, Data1 }"
     ]),
-    if
-        length(Cons) > 0 ->
+    Cons1 = Cons ++ [
+                      "% @doc `Urgently' receives messages from the processes mailbox.",
+                      "% Only the expected messages may be received from the current state -- the rest will be `postponed' and received at a later state.",
+                      "% Note: unexpected messages can be perpetually postponed this way."
+                    ],
+    % if
+        % length(Cons1) > 0 ->
             erl_syntax:add_precomments(
-                lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons), Clause
+                lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons1), Clause
             );
-        true ->
-            Clause
-    end;
+    %     true ->
+    %         Clause
+    % end;
 %% @doc construct the clauses for the standard and choice states
 clause(Event, Act, Var, Trans, NextState, Cons) ->
     Clause = ?Q([
@@ -226,14 +252,18 @@ clause(recv_msg, Cons) ->
         "end,",
         " { keep_state_and_data, [{reply, From, ReplyMsg}] }"
     ]),
-    if
-        length(Cons) > 0 ->
+    Cons1 = Cons ++ [
+                      "% @doc Allows messages to be fetched once they have been `urgently received'.",
+                      "% Messages received from the mailbox are added to #statem_data.msgs with each message is stored in a list under their respective label."
+                    ],
+    % if
+    %     length(Cons1) > 0 ->
             erl_syntax:add_precomments(
-                lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons), Clause
+                lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons1), Clause
             );
-        true ->
-            Clause
-    end;
+    %     true ->
+    %         Clause
+    % end;
 clause(postpone_send, Cons) ->
     Func = get_merl_func_name(),
     Clause = ?Q([
@@ -242,14 +272,21 @@ clause(postpone_send, Cons) ->
         "Data1 = #statem_data{ coparty_id = CoPartyID, state_stack = States, msgs = Msgs, queued_actions = Queue ++ [{Label, Msg}], options = Options },",
         " {keep_state, Data1 }"
     ]),
-    if
-        length(Cons) > 0 ->
+    Cons1 = Cons ++ [
+                      "% @doc Handle trying to perform send action from wrong state.", 
+                      "% Adds not-enabled sending actions to queue, to be processed at the next sending-state.",
+                      "% Allows sending actions to be sequentially `queued'.",
+                      "% Invalid send actions will cause error when later processed.",
+                      "% If #statem_option.persistent_queue == false then queue is emptied whenever a message is received -- useful for queueing up `default' timeout actions if no message is received, while allowing you to respond if otherwise."
+                    ],
+    % if
+    %     length(Cons1) > 0 ->
             erl_syntax:add_precomments(
-                lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons), Clause
+                lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons1), Clause
             );
-        true ->
-            Clause
-    end;
+    %     true ->
+    %         Clause
+    % end;
 clause(postpone_recv, Cons) ->
     Func = get_merl_func_name(),
     Clause = ?Q([
@@ -258,14 +295,19 @@ clause(postpone_recv, Cons) ->
         % "Data1 = #statem_data{ coparty_id = CoPartyID, state_stack = States, msgs = Msgs, queued_actions = Queue ++ [{Label, Msg}], options = Options },",
         " {keep_state_and_data, [postpone] }"
     ]),
-    if
-        length(Cons) > 0 ->
+    Cons1 = Cons ++ [
+                      "% @doc Handle messages arriving in mailbox before state-change.", 
+                      "% Postpone receiving the message until next state.",
+                      "% Note: unexpected messages can be perpetually postponed this way."
+                  ],
+    % if
+    %     length(Cons1) > 0 ->
             erl_syntax:add_precomments(
-                lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons), Clause
-            );
-        true ->
-            Clause
-    end.
+                lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons1), Clause
+            ).
+    %     true ->
+    %         Clause
+    % end.
 queue_clause() ->
     Func = get_merl_func_name(),
     Clause = ?Q([
@@ -275,10 +317,18 @@ queue_clause() ->
         "{repeat_state, Data1, [{next_event, cast, {send, H}}]}"
     ]),
 
+    Cons = [
+            "% @doc Process queued (sending) actions.",
+            "% Note: unspecified sending actions may be perpetually queued this way -- without stalling progress, as they are only processed once per-state (on entry)."
+          ],
+
+    erl_syntax:add_precomments(
+        lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons), Clause
+    ).
     % erl_syntax:add_precomments(
     %     erl_syntax:comment(list_to_atom("% process queued actions")), Clause
     % ).
-    Clause.
+    % Clause.
 
 timeout_clause(TimeoutState, TimeoutDuration, Cons) ->
     timeout_clause(TimeoutState, TimeoutDuration, Cons, true).
@@ -316,73 +366,133 @@ timeout_clause(TimeoutState, TimeoutDuration, Cons, ShowIO) ->
 %% @doc an extra clause for enter state
 enter_clause() -> enter_clause(basic).
 enter_clause(basic) ->
-    ?Q([
+    Clause = ?Q([
         "(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msgs = _Msgs, queued_actions = _Queue, options = _Options } = _Data) -> keep_state_and_data"
-    ]);
+    ]),
+
+    Cons = [
+              "% @doc Enter new state. (basic)"
+          ],
+    erl_syntax:add_precomments(
+        lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons), Clause
+    );
 enter_clause(queues) ->
     [enter_clause(queue_process), enter_clause(queue_empty)];
 enter_clause(queue_process) ->
     Func = get_merl_func_name(),
-    ?Q([
+    Clause = ?Q([
         "(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msgs = _Msgs, queued_actions = [_H], options = _Options } = _Data) ->",
         "printout(\"(->) ~p, queued actions.\", [_@Func]),",
         " {keep_state_and_data, [{state_timeout, 0, process_queue}]}"
-    ]);
+    ]),
+
+    Cons = [
+              "% @doc Enter new state with queued actions, and immediately begin processesing them."
+          ],
+    erl_syntax:add_precomments(
+        lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons), Clause
+    );
 enter_clause(queue_empty) ->
     Func = get_merl_func_name(),
-    ?Q([
+    Clause = ?Q([
         "(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msgs = _Msgs, queued_actions = [], options = _Options } = _Data) ->",
         "printout(\"(->) ~p.\", [_@Func]),",
         " keep_state_and_data"
-    ]);
+    ]),
+    Cons = [
+              "% @doc Enter new state with no queued actions."
+          ],
+    erl_syntax:add_precomments(
+        lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons), Clause
+    );
 enter_clause(state) ->
     Func = get_merl_func_name(),
-    ?Q([
+    Clause = ?Q([
         "(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msgs = _Msgs, queued_actions = _Queue, options = _Options } = _Data) ->",
         "printout(\"(->) ~p.\", [_@Func]),",
         %  "io:format(\"(~p ->.)\n\",['@State@']),",
         " keep_state_and_data"
-    ]);
+    ]),
+    Cons = [
+              "% @doc Enter new state."
+          ],
+    erl_syntax:add_precomments(
+        lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons), Clause
+    );
 enter_clause(stop) ->
-    ?Q([
+    Clause = ?Q([
         "(enter, _OldState, #stop_data{ reason = _Reason, statem_data = _StatemData } = _Data) ->",
         " {keep_state_and_data, [{state_timeut, 0, go_to_terminate}]}"
-    ]).
+    ]),
+    Cons = [
+              "% @doc Stop state."
+          ],
+    erl_syntax:add_precomments(
+        lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons), Clause
+    ).
 enter_clause(timeout_recv, Timeout, ToState) ->
     Func = get_merl_func_name(),
-    [
+    % [
         % enter_clause(queue_process),
-        ?Q([
+        Clause = ?Q([
             "(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msgs = _Msgs, queued_actions = _Queue, options = _Options } = _Data) ->",
             "printout(\"(~p ->.)\",[_@Func]),",
             "{keep_state_and_data, [{state_timeout, '@Timeout@', '@ToState@'}]}"
-        ])
-    ];
+        ]),
+        Cons = [
+                  "% @doc Enter new receiving state that has a timeout."
+              ],
+        Clause1 = erl_syntax:add_precomments(
+            lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons), Clause
+        ),
+        [Clause1];
+    % ];
 enter_clause(timeout_send, Timeout, ToState) ->
     Func = get_merl_func_name(),
-    [
-        enter_clause(queue_process),
-        ?Q([
+    % [
+        Clause2 = enter_clause(queue_process),
+        Clause = ?Q([
             "(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msgs = _Msgs, queued_actions = [], options = _Options } = _Data) ->",
             "printout(\"(~p ->.)\",[_@Func]),",
             "{keep_state_and_data, [{state_timeout, '@Timeout@', '@ToState@'}]}"
-        ])
-    ].
+        ]),
+
+    Cons = [
+              "% @doc Enter new sending state that has a timeout."
+          ],
+    Clause1 = erl_syntax:add_precomments(
+        lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons), Clause
+    ),
+    [Clause2, Clause1].
+    % ].
 % enter_clause(Timeout,State) -> ?Q(["(enter, _OldState, Data) ->", "{keep_state, Data, [{state_timeout, ", Timeout, ", ", State, "}]}"]).
 % enter_clause(Timeout,State) -> ?Q(["(enter, _OldState, Data) -> {keep_state, Data, [{state_timeout,1000,init}]}"]).
 custom_stop_clause() ->
     Func = get_merl_func_name(),
-    ?Q([
+    Clause = ?Q([
         "(state_timeout, go_to_terminate, #stop_data{ reason = Reason, statem_data = StatemData } = Data) ->",
         "printout(\"(->) ~p,\nReason: ~p,\nStatemData: \n\t~p.\", [_@Func, Reason, StatemData]),",
         " {stop, Reason, Data}"
-    ]).
+    ]),
+    
+    Cons = [
+              "% @doc Custom stopping-state to allow for better debugging."
+          ],
+    erl_syntax:add_precomments(
+        lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons), Clause
+    ).
 stop_clause() ->
     Func = get_merl_func_name(),
     Name = get_merl_name_name(),
-    ?Q([
+    Clause = ?Q([
         "() -> printout(\"~p.\", [_@Func]), gen_statem:stop(_@Name)"
-    ]).
+    ]),
+    Cons = [
+              "% @doc Stop state. (original)"
+          ],
+    erl_syntax:add_precomments(
+        lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons), Clause
+    ).
 
 %% @doc generates standard states, i.e. act x
 std_state(Id, [Edge], Nodes) ->
@@ -905,7 +1015,7 @@ gen_module(FileName, P) ->
   %     Nodes
   % ),
     % [InitFun|StateFuns1] = StateFuns,
-    InitFun = hd(StateFuns),
+    SetupFun = hd(StateFuns),
     StateFuns1 = lists:nthtail(1, StateFuns),
 
     NonSilentEdges = lists:filter(fun(Elem) -> not Elem#edge.is_silent end, NonEndEdges),
@@ -924,6 +1034,16 @@ gen_module(FileName, P) ->
 
     % io:format("--- success: CBFuns: ~p\n-----\n", [CBFuns]),
 
+    % InitFunNoDataCons = [ "% @doc Parse init params." ],
+
+    % InitFunNoData = erl_syntax:add_precomments(lists:map(fun(Com) -> erl_syntax:comment([Com]) end, InitFunNoDataCons), init_state(no_data)),
+
+    % InitFunWithDataCons = [ "% @doc Parse init params." ],
+
+    % InitFunWithData = erl_syntax:add_precomments(lists:map(fun(Com) -> erl_syntax:comment([Com]) end, InitFunWithDataCons), init_state(with_data)),
+
+
+
     Fs =
         [
             {true, start_link, [StartP]},
@@ -934,7 +1054,7 @@ gen_module(FileName, P) ->
             {true, issue_timeout, [Tout]},
             {true, init, init_state(no_data)},
             {true, init, init_state(with_data)},
-            InitFun
+            SetupFun
             % {true, init, [Init]}
             | StateFuns1
         ] ++ lists:usort(CBFuns) ++ [{true, stop, [Stop]}],

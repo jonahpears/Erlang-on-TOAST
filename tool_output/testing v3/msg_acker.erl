@@ -50,10 +50,12 @@ issue_timeout(Label, Msg) ->
     printout("~p: {~p, ~p}.", [?FUNCTION_NAME, Label, Msg]),
     gen_statem:cast(?MODULE, {issue_timeout, {Msg, Label}}).
 
+%% @doc Parse init params.
 init([{HKey, HVal} | T]) when is_atom(HKey) and is_map_key(HKey, #statem_options{}) -> init(T, #statem_data{options = maps:put(HKey, HVal, #statem_options{})});
 init([_H | T]) -> init(T, #statem_data{});
 init([]) -> {ok, init_setup_state, #statem_data{}}.
 
+%% @doc Parse init params (with #statem_data already created).
 init([{HKey, HVal} | T], #statem_data{coparty_id = _CoPartyID, state_stack = _States, msgs = _Msgs, queued_actions = _Queue, options = Options} = Data)
     when is_atom(HKey) and is_map_key(HKey, Options) ->
     init(T, maps:put(options, maps:put(HKey, HVal, Options), Data));
@@ -62,6 +64,8 @@ init([_H | T], #statem_data{coparty_id = _CoPartyID, state_stack = _States, msgs
 init([], #statem_data{coparty_id = _CoPartyID, state_stack = _States, msgs = _Msgs, queued_actions = _Queue, options = _Options} = Data) ->
     {ok, init_setup_state, Data}.
 
+%% @doc Waits to receive the process-ID of the `coparty' before continuing to the initial state of the FSM.
+%% Note: In the binary setting, sessions are only composed of two participants.
 init_setup_state(enter, _OldState,
                  #statem_data{coparty_id = _CoPartyID, state_stack = _States, msgs = _Msgs, queued_actions = _Queue, options = _Options} = _Data) ->
     {keep_state_and_data, [{state_timeout, 0, wait_to_finish_setup}]};
@@ -85,6 +89,9 @@ state1_std(state_timeout, process_queue,
     printout("(->) ~p, queued action: ~p.", [?FUNCTION_NAME, H]),
     Data1 = #statem_data{coparty_id = CoPartyID, state_stack = States, msgs = Msgs, queued_actions = T, options = Options},
     {repeat_state, Data1, [{next_event, cast, {send, H}}]};
+%% @doc `Urgently' receives messages from the processes mailbox.
+%% Only the expected messages may be received from the current state -- the rest will be `postponed' and received at a later state.
+%% Note: unexpected messages can be perpetually postponed this way.
 state1_std(info, {CoPartyID, {msg1, Msg1}},
            #statem_data{coparty_id = CoPartyID, state_stack = States, msgs = Msgs, queued_actions = Queue,
                         options =
@@ -104,6 +111,8 @@ state1_std(info, {CoPartyID, {msg1, Msg1}},
     end,
     Data1 = #statem_data{coparty_id = CoPartyID, state_stack = [NextState] ++ States, msgs = Msgs1, queued_actions = Queue1, options = Options},
     {next_state, NextState, Data1};
+%% @doc Allows messages to be fetched once they have been `urgently received'.
+%% Messages received from the mailbox are added to #statem_data.msgs with each message is stored in a list under their respective label.
 state1_std({call, From}, {recv, Label},
            #statem_data{coparty_id = _CoPartyID, state_stack = _States, msgs = Msgs, queued_actions = _Queue, options = _Options} = _Data) ->
     printout("~p, looking for msg with label (~p).", [?FUNCTION_NAME, Label]),
@@ -120,6 +129,11 @@ state1_std({call, From}, {recv, Label},
             ReplyMsg = {error, no_msg_found_under_label}
     end,
     {keep_state_and_data, [{reply, From, ReplyMsg}]};
+%% @doc Handle trying to perform send action from wrong state.
+%% Adds not-enabled sending actions to queue, to be processed at the next sending-state.
+%% Allows sending actions to be sequentially `queued'.
+%% Invalid send actions will cause error when later processed.
+%% If #statem_option.persistent_queue == false then queue is emptied whenever a message is received -- useful for queueing up `default' timeout actions if no message is received, while allowing you to respond if otherwise.
 state1_std(cast, {send, {Label, Msg}},
            #statem_data{coparty_id = CoPartyID, state_stack = States, msgs = Msgs, queued_actions = Queue,
                         options =
@@ -130,6 +144,9 @@ state1_std(cast, {send, {Label, Msg}},
     printout("~p, early send -- add to queue: ~p.", [?FUNCTION_NAME, {Label, Msg}]),
     Data1 = #statem_data{coparty_id = CoPartyID, state_stack = States, msgs = Msgs, queued_actions = Queue ++ [{Label, Msg}], options = Options},
     {keep_state, Data1};
+%% @doc Handle messages arriving in mailbox before state-change.
+%% Postpone receiving the message until next state.
+%% Note: unexpected messages can be perpetually postponed this way.
 state1_std(info, {CoPartyID, {Label, Msg}},
            #statem_data{coparty_id = CoPartyID, state_stack = _States, msgs = _Msgs, queued_actions = _Queue,
                         options =
@@ -153,6 +170,7 @@ state2_send_after(state_timeout, process_queue,
     printout("(->) ~p, queued action: ~p.", [?FUNCTION_NAME, H]),
     Data1 = #statem_data{coparty_id = CoPartyID, state_stack = States, msgs = Msgs, queued_actions = T, options = Options},
     {repeat_state, Data1, [{next_event, cast, {send, H}}]};
+%% @doc Sends a message to the #statem_data.coparty_id given that the message label that is valid for this state.
 state2_send_after(cast, {send, {ack1, Ack1}},
                   #statem_data{coparty_id = CoPartyID, state_stack = States, msgs = Msgs, queued_actions = Queue,
                                options =
@@ -173,6 +191,8 @@ state2_send_after(cast, {send, {ack1, Ack1}},
 state2_send_after(state_timeout, state4_std, Data) ->
     printout("~p, (timeout[~p] -> ~p.)\n", [?FUNCTION_NAME, 3000, state4_std]),
     {next_state, state4_std, Data};
+%% @doc Allows messages to be fetched once they have been `urgently received'.
+%% Messages received from the mailbox are added to #statem_data.msgs with each message is stored in a list under their respective label.
 state2_send_after({call, From}, {recv, Label},
                   #statem_data{coparty_id = _CoPartyID, state_stack = _States, msgs = Msgs, queued_actions = _Queue, options = _Options} = _Data) ->
     printout("~p, looking for msg with label (~p).", [?FUNCTION_NAME, Label]),
@@ -189,6 +209,11 @@ state2_send_after({call, From}, {recv, Label},
             ReplyMsg = {error, no_msg_found_under_label}
     end,
     {keep_state_and_data, [{reply, From, ReplyMsg}]};
+%% @doc Handle trying to perform send action from wrong state.
+%% Adds not-enabled sending actions to queue, to be processed at the next sending-state.
+%% Allows sending actions to be sequentially `queued'.
+%% Invalid send actions will cause error when later processed.
+%% If #statem_option.persistent_queue == false then queue is emptied whenever a message is received -- useful for queueing up `default' timeout actions if no message is received, while allowing you to respond if otherwise.
 state2_send_after(cast, {send, {Label, Msg}},
                   #statem_data{coparty_id = CoPartyID, state_stack = States, msgs = Msgs, queued_actions = Queue,
                                options =
@@ -199,6 +224,9 @@ state2_send_after(cast, {send, {Label, Msg}},
     printout("~p, early send -- add to queue: ~p.", [?FUNCTION_NAME, {Label, Msg}]),
     Data1 = #statem_data{coparty_id = CoPartyID, state_stack = States, msgs = Msgs, queued_actions = Queue ++ [{Label, Msg}], options = Options},
     {keep_state, Data1};
+%% @doc Handle messages arriving in mailbox before state-change.
+%% Postpone receiving the message until next state.
+%% Note: unexpected messages can be perpetually postponed this way.
 state2_send_after(info, {CoPartyID, {Label, Msg}},
                   #statem_data{coparty_id = CoPartyID, state_stack = _States, msgs = _Msgs, queued_actions = _Queue,
                                options =
@@ -220,6 +248,9 @@ state4_std(state_timeout, process_queue,
     printout("(->) ~p, queued action: ~p.", [?FUNCTION_NAME, H]),
     Data1 = #statem_data{coparty_id = CoPartyID, state_stack = States, msgs = Msgs, queued_actions = T, options = Options},
     {repeat_state, Data1, [{next_event, cast, {send, H}}]};
+%% @doc `Urgently' receives messages from the processes mailbox.
+%% Only the expected messages may be received from the current state -- the rest will be `postponed' and received at a later state.
+%% Note: unexpected messages can be perpetually postponed this way.
 state4_std(info, {CoPartyID, {msg2, Msg2}},
            #statem_data{coparty_id = CoPartyID, state_stack = States, msgs = Msgs, queued_actions = Queue,
                         options =
@@ -239,6 +270,8 @@ state4_std(info, {CoPartyID, {msg2, Msg2}},
     end,
     Data1 = #statem_data{coparty_id = CoPartyID, state_stack = [NextState] ++ States, msgs = Msgs1, queued_actions = Queue1, options = Options},
     {next_state, NextState, Data1};
+%% @doc Allows messages to be fetched once they have been `urgently received'.
+%% Messages received from the mailbox are added to #statem_data.msgs with each message is stored in a list under their respective label.
 state4_std({call, From}, {recv, Label},
            #statem_data{coparty_id = _CoPartyID, state_stack = _States, msgs = Msgs, queued_actions = _Queue, options = _Options} = _Data) ->
     printout("~p, looking for msg with label (~p).", [?FUNCTION_NAME, Label]),
@@ -255,6 +288,11 @@ state4_std({call, From}, {recv, Label},
             ReplyMsg = {error, no_msg_found_under_label}
     end,
     {keep_state_and_data, [{reply, From, ReplyMsg}]};
+%% @doc Handle trying to perform send action from wrong state.
+%% Adds not-enabled sending actions to queue, to be processed at the next sending-state.
+%% Allows sending actions to be sequentially `queued'.
+%% Invalid send actions will cause error when later processed.
+%% If #statem_option.persistent_queue == false then queue is emptied whenever a message is received -- useful for queueing up `default' timeout actions if no message is received, while allowing you to respond if otherwise.
 state4_std(cast, {send, {Label, Msg}},
            #statem_data{coparty_id = CoPartyID, state_stack = States, msgs = Msgs, queued_actions = Queue,
                         options =
@@ -265,6 +303,9 @@ state4_std(cast, {send, {Label, Msg}},
     printout("~p, early send -- add to queue: ~p.", [?FUNCTION_NAME, {Label, Msg}]),
     Data1 = #statem_data{coparty_id = CoPartyID, state_stack = States, msgs = Msgs, queued_actions = Queue ++ [{Label, Msg}], options = Options},
     {keep_state, Data1};
+%% @doc Handle messages arriving in mailbox before state-change.
+%% Postpone receiving the message until next state.
+%% Note: unexpected messages can be perpetually postponed this way.
 state4_std(info, {CoPartyID, {Label, Msg}},
            #statem_data{coparty_id = CoPartyID, state_stack = _States, msgs = _Msgs, queued_actions = _Queue,
                         options =
@@ -288,6 +329,7 @@ state5_send_after(state_timeout, process_queue,
     printout("(->) ~p, queued action: ~p.", [?FUNCTION_NAME, H]),
     Data1 = #statem_data{coparty_id = CoPartyID, state_stack = States, msgs = Msgs, queued_actions = T, options = Options},
     {repeat_state, Data1, [{next_event, cast, {send, H}}]};
+%% @doc Sends a message to the #statem_data.coparty_id given that the message label that is valid for this state.
 state5_send_after(cast, {send, {ack2, Ack2}},
                   #statem_data{coparty_id = CoPartyID, state_stack = States, msgs = Msgs, queued_actions = Queue,
                                options =
@@ -308,6 +350,8 @@ state5_send_after(cast, {send, {ack2, Ack2}},
 state5_send_after(state_timeout, state7_std, Data) ->
     printout("~p, (timeout[~p] -> ~p.)\n", [?FUNCTION_NAME, 3000, state7_std]),
     {next_state, state7_std, Data};
+%% @doc Allows messages to be fetched once they have been `urgently received'.
+%% Messages received from the mailbox are added to #statem_data.msgs with each message is stored in a list under their respective label.
 state5_send_after({call, From}, {recv, Label},
                   #statem_data{coparty_id = _CoPartyID, state_stack = _States, msgs = Msgs, queued_actions = _Queue, options = _Options} = _Data) ->
     printout("~p, looking for msg with label (~p).", [?FUNCTION_NAME, Label]),
@@ -324,6 +368,11 @@ state5_send_after({call, From}, {recv, Label},
             ReplyMsg = {error, no_msg_found_under_label}
     end,
     {keep_state_and_data, [{reply, From, ReplyMsg}]};
+%% @doc Handle trying to perform send action from wrong state.
+%% Adds not-enabled sending actions to queue, to be processed at the next sending-state.
+%% Allows sending actions to be sequentially `queued'.
+%% Invalid send actions will cause error when later processed.
+%% If #statem_option.persistent_queue == false then queue is emptied whenever a message is received -- useful for queueing up `default' timeout actions if no message is received, while allowing you to respond if otherwise.
 state5_send_after(cast, {send, {Label, Msg}},
                   #statem_data{coparty_id = CoPartyID, state_stack = States, msgs = Msgs, queued_actions = Queue,
                                options =
@@ -334,6 +383,9 @@ state5_send_after(cast, {send, {Label, Msg}},
     printout("~p, early send -- add to queue: ~p.", [?FUNCTION_NAME, {Label, Msg}]),
     Data1 = #statem_data{coparty_id = CoPartyID, state_stack = States, msgs = Msgs, queued_actions = Queue ++ [{Label, Msg}], options = Options},
     {keep_state, Data1};
+%% @doc Handle messages arriving in mailbox before state-change.
+%% Postpone receiving the message until next state.
+%% Note: unexpected messages can be perpetually postponed this way.
 state5_send_after(info, {CoPartyID, {Label, Msg}},
                   #statem_data{coparty_id = CoPartyID, state_stack = _States, msgs = _Msgs, queued_actions = _Queue,
                                options =
@@ -355,6 +407,9 @@ state7_std(state_timeout, process_queue,
     printout("(->) ~p, queued action: ~p.", [?FUNCTION_NAME, H]),
     Data1 = #statem_data{coparty_id = CoPartyID, state_stack = States, msgs = Msgs, queued_actions = T, options = Options},
     {repeat_state, Data1, [{next_event, cast, {send, H}}]};
+%% @doc `Urgently' receives messages from the processes mailbox.
+%% Only the expected messages may be received from the current state -- the rest will be `postponed' and received at a later state.
+%% Note: unexpected messages can be perpetually postponed this way.
 state7_std(info, {CoPartyID, {tout, Tout}},
            #statem_data{coparty_id = CoPartyID, state_stack = States, msgs = Msgs, queued_actions = Queue,
                         options =
@@ -374,6 +429,8 @@ state7_std(info, {CoPartyID, {tout, Tout}},
     end,
     Data1 = #statem_data{coparty_id = CoPartyID, state_stack = [NextState] ++ States, msgs = Msgs1, queued_actions = Queue1, options = Options},
     {next_state, NextState, Data1};
+%% @doc Allows messages to be fetched once they have been `urgently received'.
+%% Messages received from the mailbox are added to #statem_data.msgs with each message is stored in a list under their respective label.
 state7_std({call, From}, {recv, Label},
            #statem_data{coparty_id = _CoPartyID, state_stack = _States, msgs = Msgs, queued_actions = _Queue, options = _Options} = _Data) ->
     printout("~p, looking for msg with label (~p).", [?FUNCTION_NAME, Label]),
@@ -390,6 +447,11 @@ state7_std({call, From}, {recv, Label},
             ReplyMsg = {error, no_msg_found_under_label}
     end,
     {keep_state_and_data, [{reply, From, ReplyMsg}]};
+%% @doc Handle trying to perform send action from wrong state.
+%% Adds not-enabled sending actions to queue, to be processed at the next sending-state.
+%% Allows sending actions to be sequentially `queued'.
+%% Invalid send actions will cause error when later processed.
+%% If #statem_option.persistent_queue == false then queue is emptied whenever a message is received -- useful for queueing up `default' timeout actions if no message is received, while allowing you to respond if otherwise.
 state7_std(cast, {send, {Label, Msg}},
            #statem_data{coparty_id = CoPartyID, state_stack = States, msgs = Msgs, queued_actions = Queue,
                         options =
@@ -400,6 +462,9 @@ state7_std(cast, {send, {Label, Msg}},
     printout("~p, early send -- add to queue: ~p.", [?FUNCTION_NAME, {Label, Msg}]),
     Data1 = #statem_data{coparty_id = CoPartyID, state_stack = States, msgs = Msgs, queued_actions = Queue ++ [{Label, Msg}], options = Options},
     {keep_state, Data1};
+%% @doc Handle messages arriving in mailbox before state-change.
+%% Postpone receiving the message until next state.
+%% Note: unexpected messages can be perpetually postponed this way.
 state7_std(info, {CoPartyID, {Label, Msg}},
            #statem_data{coparty_id = CoPartyID, state_stack = _States, msgs = _Msgs, queued_actions = _Queue,
                         options =
