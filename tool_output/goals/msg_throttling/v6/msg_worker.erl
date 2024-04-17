@@ -322,7 +322,6 @@ handle_event(state_timeout, NextState, State, #statem_data{ name=Name, coparty_i
 %% % % % % % %
 handle_event({call, From}, {recv, Label}, State, #statem_data{ name=Name, coparty_id = _CoPartyID, init_state=_InitState, states = _States, msgs = Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = _Options} = _StatemData) -> 
     printout(Name, "~p, ~p, looking for msg with label (~p).", [?FUNCTION_NAME, State, Label]),
-    % printout("~p, Msgs: ~p.", [?FUNCTION_NAME, Msgs]),
     case maps:find(Label, Msgs) of
         {ok, [H]} -> 
             printout("~p, ~p, found msg (~p: ~p) out of 1.", [?FUNCTION_NAME, State, Label, H]),

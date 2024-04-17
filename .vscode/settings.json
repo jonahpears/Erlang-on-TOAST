@@ -1,3 +1,10 @@
 {
-    "erlang.codeLensEnabled": true
+    "erlang.codeLensEnabled": true,
+    "[erlang]": {
+        "editor.detectIndentation": false,
+        "editor.tabSize": 2
+    },
+    "editor.detectIndentation": false,
+    "editor.tabSize": 2,
+    "editor.indentSize": "tabSize"
 }
