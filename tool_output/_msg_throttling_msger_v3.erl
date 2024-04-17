@@ -107,11 +107,11 @@ state1_std({call, From}, {recv, Label},
     case maps:find(Label, Msgs) of
         {ok, [H]} ->
             printout("~p, found msg (~p: ~p) out of 1.", [?FUNCTION_NAME, Label, H]),
-            ReplyMsg = {ok, #{label => Label, msg => H, total => 1}};
+            ReplyMsg = {ok, #{label => Label, msg => H, total => 1, tail => []}};
         {ok, [H | T]} ->
-            NumMsgs = lists:length(T) + 1,
+            NumMsgs = length(T) + 1,
             printout("~p, found msg (~p: ~p) out of ~p.", [?FUNCTION_NAME, Label, H, NumMsgs]),
-            ReplyMsg = {ok, #{label => Label, msg => H, total => NumMsgs}};
+            ReplyMsg = {ok, #{label => Label, msg => H, total => NumMsgs, tail => T}};
         error ->
             printout("~p, no msgs with label (~p) found.", [?FUNCTION_NAME, Label]),
             ReplyMsg = {error, no_msg_found_under_label}
@@ -170,11 +170,11 @@ state2_recv_after({call, From}, {recv, Label},
     case maps:find(Label, Msgs) of
         {ok, [H]} ->
             printout("~p, found msg (~p: ~p) out of 1.", [?FUNCTION_NAME, Label, H]),
-            ReplyMsg = {ok, #{label => Label, msg => H, total => 1}};
+            ReplyMsg = {ok, #{label => Label, msg => H, total => 1, tail => []}};
         {ok, [H | T]} ->
-            NumMsgs = lists:length(T) + 1,
+            NumMsgs = length(T) + 1,
             printout("~p, found msg (~p: ~p) out of ~p.", [?FUNCTION_NAME, Label, H, NumMsgs]),
-            ReplyMsg = {ok, #{label => Label, msg => H, total => NumMsgs}};
+            ReplyMsg = {ok, #{label => Label, msg => H, total => NumMsgs, tail => T}};
         error ->
             printout("~p, no msgs with label (~p) found.", [?FUNCTION_NAME, Label]),
             ReplyMsg = {error, no_msg_found_under_label}
@@ -233,11 +233,11 @@ state3_std({call, From}, {recv, Label},
     case maps:find(Label, Msgs) of
         {ok, [H]} ->
             printout("~p, found msg (~p: ~p) out of 1.", [?FUNCTION_NAME, Label, H]),
-            ReplyMsg = {ok, #{label => Label, msg => H, total => 1}};
+            ReplyMsg = {ok, #{label => Label, msg => H, total => 1, tail => []}};
         {ok, [H | T]} ->
-            NumMsgs = lists:length(T) + 1,
+            NumMsgs = length(T) + 1,
             printout("~p, found msg (~p: ~p) out of ~p.", [?FUNCTION_NAME, Label, H, NumMsgs]),
-            ReplyMsg = {ok, #{label => Label, msg => H, total => NumMsgs}};
+            ReplyMsg = {ok, #{label => Label, msg => H, total => NumMsgs, tail => T}};
         error ->
             printout("~p, no msgs with label (~p) found.", [?FUNCTION_NAME, Label]),
             ReplyMsg = {error, no_msg_found_under_label}
@@ -296,11 +296,11 @@ state4_recv_after({call, From}, {recv, Label},
     case maps:find(Label, Msgs) of
         {ok, [H]} ->
             printout("~p, found msg (~p: ~p) out of 1.", [?FUNCTION_NAME, Label, H]),
-            ReplyMsg = {ok, #{label => Label, msg => H, total => 1}};
+            ReplyMsg = {ok, #{label => Label, msg => H, total => 1, tail => []}};
         {ok, [H | T]} ->
-            NumMsgs = lists:length(T) + 1,
+            NumMsgs = length(T) + 1,
             printout("~p, found msg (~p: ~p) out of ~p.", [?FUNCTION_NAME, Label, H, NumMsgs]),
-            ReplyMsg = {ok, #{label => Label, msg => H, total => NumMsgs}};
+            ReplyMsg = {ok, #{label => Label, msg => H, total => NumMsgs, tail => T}};
         error ->
             printout("~p, no msgs with label (~p) found.", [?FUNCTION_NAME, Label]),
             ReplyMsg = {error, no_msg_found_under_label}
@@ -359,11 +359,11 @@ state5_std({call, From}, {recv, Label},
     case maps:find(Label, Msgs) of
         {ok, [H]} ->
             printout("~p, found msg (~p: ~p) out of 1.", [?FUNCTION_NAME, Label, H]),
-            ReplyMsg = {ok, #{label => Label, msg => H, total => 1}};
+            ReplyMsg = {ok, #{label => Label, msg => H, total => 1, tail => []}};
         {ok, [H | T]} ->
-            NumMsgs = lists:length(T) + 1,
+            NumMsgs = length(T) + 1,
             printout("~p, found msg (~p: ~p) out of ~p.", [?FUNCTION_NAME, Label, H, NumMsgs]),
-            ReplyMsg = {ok, #{label => Label, msg => H, total => NumMsgs}};
+            ReplyMsg = {ok, #{label => Label, msg => H, total => NumMsgs, tail => T}};
         error ->
             printout("~p, no msgs with label (~p) found.", [?FUNCTION_NAME, Label]),
             ReplyMsg = {error, no_msg_found_under_label}
