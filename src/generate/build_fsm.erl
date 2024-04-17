@@ -139,7 +139,7 @@ to_fsm({act, Act, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks
     Edges1 = Edges ++ [Edge],
     Nodes1 = maps:put(PrevVis, standard_state(), Nodes),
     to_fsm(P, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks);
-%%
+%% @doc generic timeout state (only called after main construct)
 to_fsm({aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
     % +1,
     Index = PrevIndex,
@@ -152,7 +152,6 @@ to_fsm({aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Cl
         is_delayable_send = false,
         is_custom_end = false
     },
-    % Edge = #edge{from = PrevVis, to = Index, edge_data = #edge_data{timeout = Timeout, comments = [] ++ [{aft, Timeout}]}, is_silent = true},
     Edges1 = Edges ++ [Edge],
     %% TODO figure out why we do the below:
     % Nodes1 = maps:put(PrevVis, after_state(), Nodes),
@@ -165,10 +164,8 @@ to_fsm({aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Cl
     {Edges2, Nodes2, RecMap2, Index2, Index2, EndIndex2, Clocks2} = to_fsm(
         Q, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks
     ),
-    %% reapply after_state
-    % Nodes3 = maps:put(PrevIndex, after_state(), Nodes2),
-    % {Edges2, Nodes3, RecMap2, Index2, Index2, EndIndex2, Clocks2};
     {Edges2, Nodes2, RecMap2, Index2, Index2, EndIndex2, Clocks2};
+%% @doc single act with timeout
 to_fsm({act, Act, P, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
     % Edge = #edge{from = PrevVis, to = Index, edge_data = data(Act)},
     % Edges1 = Edges ++ [Edge],
@@ -259,6 +256,7 @@ to_fsm({act, Act, P, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis,
             Nodes1 = maps:put(PrevVis, unknown_state(), Nodes),
             to_fsm(P, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks)
     end;
+%% @doc branching receive
 to_fsm({branch, Branches}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
     Index = PrevIndex + 1,
     Nodes1 = maps:put(PrevVis, choice_state(), Nodes),
@@ -291,6 +289,7 @@ to_fsm({branch, Branches}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, C
 %       {Edges, Nodes1, RecMap, PrevIndex, Index, EndIndex, Clocks}, Branches)
 % end;
 
+%% @doc branching receive with timeout
 to_fsm(
     {branch, Branches, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks
 ) ->
@@ -324,7 +323,8 @@ to_fsm(
         [Edges3, Nodes3, PrevIndex3, PrevVis3, EndIndex3]
     ),
     {Edges3, Nodes3, RecMap3, PrevIndex3, PrevVis3, EndIndex3, Clocks3};
-%
+
+%% @doc output selection
 to_fsm({select, Branches}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
     Index = PrevIndex + 1,
     Nodes1 = maps:put(PrevVis, choice_state(), Nodes),
@@ -346,6 +346,7 @@ to_fsm({select, Branches}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, C
         {Edges, Nodes1, RecMap, PrevIndex, Index, EndIndex, Clocks},
         Branches
     );
+%% @doc output selection with timeout
 to_fsm(
     {select, Branches, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks
 ) ->

@@ -94,18 +94,18 @@ init_setup_state(_Id, [Edge], Nodes) ->
     % NextState = list_to_atom("state" ++ integer_to_list(Edge#edge.to)),
     NextState = get_next_state(maps:get(Edge#edge.to, Nodes), integer_to_list(Edge#edge.to)),
     Clause = ?Q([
-        "(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = _Queue, options = _Options } = _Data) ->",
+        "(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msgs = _Msgs, queued_actions = _Queue, options = _Options } = _Data) ->",
         "{keep_state_and_data, [{state_timeout, 0, wait_to_finish_setup}]}"
     ]),
 
     Func = get_merl_func_name(),
 
     Clause2 = ?Q([
-        "(state_timeout, wait_to_finish_setup, #statem_data{ coparty_id = _CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = Queue, options = Options } = _Data) -> ",
+        "(state_timeout, wait_to_finish_setup, #statem_data{ coparty_id = _CoPartyID, state_stack = States, msgs = Msgs, queued_actions = Queue, options = Options } = _Data) -> ",
         "printout(\"~p, waiting to finish setup.\", [_@Func]), ",
         "receive {_SupervisorID, sup_init, CoPartyID} -> ",
         "printout(\"~p, received coparty ID (~p).\", [_@Func, CoPartyID]), ",
-        "{next_state, '@NextState@', #statem_data{ coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = Queue, options = Options }} ",
+        "{next_state, '@NextState@', #statem_data{ coparty_id = CoPartyID, state_stack = States, msgs = Msgs, queued_actions = Queue, options = Options }} ",
         "end"
     ]),
 
@@ -127,23 +127,23 @@ init_state(no_data) ->
 init_state(with_data) ->
     Clauses = [
         ?Q([
-            "([{HKey,HVal}|T], #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = _Queue, options = Options} = Data) ",
+            "([{HKey,HVal}|T], #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msgs = _Msgs, queued_actions = _Queue, options = Options} = Data) ",
             "when is_atom(HKey) and is_map_key(HKey, Options) -> ",
             "init(T, maps:put(options, maps:put(HKey, HVal, Options), Data))"
         ]),
         ?Q([
             "([_H|T], ",
-            "#statem_data{ coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = _Queue, options = _Options} = Data) -> ",
+            "#statem_data{ coparty_id = _CoPartyID, state_stack = _States, msgs = _Msgs, queued_actions = _Queue, options = _Options} = Data) -> ",
             "init(T, Data)"
         ]),
         ?Q([
             "([_H|T], ",
-            "#statem_data{ coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = _Queue, options = _Options} = Data) -> ",
+            "#statem_data{ coparty_id = _CoPartyID, state_stack = _States, msgs = _Msgs, queued_actions = _Queue, options = _Options} = Data) -> ",
             "init(T, Data)"
         ]),
         ?Q([
             "([], ",
-            "#statem_data{ coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = _Queue, options = _Options} = Data) -> ",
+            "#statem_data{ coparty_id = _CoPartyID, state_stack = _States, msgs = _Msgs, queued_actions = _Queue, options = _Options} = Data) -> ",
             "{ok, init_setup_state, Data}"
         ])
     ],
@@ -154,11 +154,14 @@ init_state(with_data) ->
 clause(send, Act, Var, Trans, NextState, Cons) ->
     Func = get_merl_func_name(),
     Clause = ?Q([
-        "(cast, {send, {'@Act@', _@Var}}, #statem_data{ coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = Queue, options = #statem_options{ allow_delayable_sends = _AllowDelayableSends, printout_enabled = _PrintoutEnabled } = Options } = _Data) ->",
+        "(cast, {send, {'@Act@', _@Var}}, #statem_data{ coparty_id = CoPartyID, state_stack = States, msgs = Msgs, queued_actions = Queue, options = #statem_options{ allow_delayable_sends = _AllowDelayableSends, printout_enabled = _PrintoutEnabled, persistent_queue = _PersistentQueue } = Options } = _Data) ->",
         "CoPartyID ! {self(), {'@Act@', _@Var}},",
         "printout(\"~p, send (~p) to ~p.\", [_@Func, {'@Act@', _@Var}, CoPartyID]),",
         "NextState = '@NextState@',",
-        "Data1 = #statem_data{ coparty_id = CoPartyID, state_stack = [NextState] ++ States, msg_stack = [{send, {'@Act@', _@Var}}] ++ Msgs, queued_actions = Queue, options = Options },",
+        "case maps:find('@Act@', Msgs) of ",
+        " {ok, StateMsgs} -> Msgs1 = maps:put('@Act@', [_@Var] ++ StateMsgs, Msgs);",
+        " error -> Msgs1 = maps:put('@Act@', [_@Var], Msgs) end,",
+        "Data1 = #statem_data{ coparty_id = CoPartyID, state_stack = [NextState] ++ States, msgs = Msgs1, queued_actions = Queue, options = Options },",
         " {'@Trans@', NextState, Data1 }"
     ]),
     if
@@ -172,10 +175,14 @@ clause(send, Act, Var, Trans, NextState, Cons) ->
 clause(recv, Act, Var, Trans, NextState, Cons) ->
     Func = get_merl_func_name(),
     Clause = ?Q([
-        "(info, {CoPartyID, {'@Act@', _@Var}}, #statem_data{ coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = Queue, options = #statem_options{ allow_delayable_sends = _AllowDelayableSends, printout_enabled = _PrintoutEnabled } = Options } = _Data) ->",
+        "(info, {CoPartyID, {'@Act@', _@Var}}, #statem_data{ coparty_id = CoPartyID, state_stack = States, msgs = Msgs, queued_actions = Queue, options = #statem_options{ allow_delayable_sends = _AllowDelayableSends, printout_enabled = _PrintoutEnabled, persistent_queue = PersistentQueue } = Options } = _Data) ->",
         "printout(\"~p, recv (~p) from ~p.\", [_@Func, {'@Act@', _@Var}, CoPartyID]),",
         "NextState = '@NextState@',",
-        "Data1 = #statem_data{ coparty_id = CoPartyID, state_stack = [NextState] ++ States, msg_stack = [{recv, {'@Act@', _@Var}}] ++ Msgs, queued_actions = Queue, options = Options },",
+        "case maps:find('@Act@', Msgs) of ",
+        " {ok, StateMsgs} -> Msgs1 = maps:put('@Act@', [_@Var] ++ StateMsgs, Msgs);",
+        " error -> Msgs1 = maps:put('@Act@', [_@Var], Msgs) end,",
+        "case PersistentQueue of false -> Queue1 = []; true -> Queue1 = Queue end,",
+        "Data1 = #statem_data{ coparty_id = CoPartyID, state_stack = [NextState] ++ States, msgs = Msgs1, queued_actions = Queue1, options = Options },",
         " {'@Trans@', NextState, Data1 }"
     ]),
     if
@@ -203,7 +210,7 @@ clause(Event, Act, Var, Trans, NextState, Cons) ->
 clause(recv_msg, Cons) ->
     Func = get_merl_func_name(),
     Clause = ?Q([
-        "({call, From}, {recv, Label}, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msg_stack = Msgs, queued_actions = _Queue, options = _Options } = _Data) ->",
+        "({call, From}, {recv, Label}, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msgs = Msgs, queued_actions = _Queue, options = _Options } = _Data) ->",
         "printout(\"~p, looking for msg with label (~p).\", [_@Func, Label]),",
         "case maps:find(Label, Msgs) of",
         "{ok, [H]} -> ",
@@ -230,9 +237,9 @@ clause(recv_msg, Cons) ->
 clause(postpone_send, Cons) ->
     Func = get_merl_func_name(),
     Clause = ?Q([
-        "(cast, {Label, Msg}, #statem_data{ coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = Queue, options = #statem_options{ allow_delayable_sends = _AllowDelayableSends, printout_enabled = _PrintoutEnabled } = Options } = _Data) ->",
-        "printout(\"~p, too early to send,\n\tadding to queue: ~p.\", [_@Func, {Label, Msg}]),",
-        "Data1 = #statem_data{ coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = Queue ++ [{Label, Msg}], options = Options },",
+        "(cast, {send, {Label, Msg}}, #statem_data{ coparty_id = CoPartyID, state_stack = States, msgs = Msgs, queued_actions = Queue, options = #statem_options{ allow_delayable_sends = _AllowDelayableSends, printout_enabled = _PrintoutEnabled, persistent_queue = _PersistentQueue } = Options } = _Data) ->",
+        "printout(\"~p, early send -- add to queue: ~p.\", [_@Func, {Label, Msg}]),",
+        "Data1 = #statem_data{ coparty_id = CoPartyID, state_stack = States, msgs = Msgs, queued_actions = Queue ++ [{Label, Msg}], options = Options },",
         " {keep_state, Data1 }"
     ]),
     if
@@ -246,9 +253,9 @@ clause(postpone_send, Cons) ->
 clause(postpone_recv, Cons) ->
     Func = get_merl_func_name(),
     Clause = ?Q([
-        "(info, {CoPartyID, {Label, Msg}}, #statem_data{ coparty_id = CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = _Queue, options = #statem_options{ allow_delayable_sends = _AllowDelayableSends, printout_enabled = _PrintoutEnabled } = _Options } = _Data) ->",
-        "printout(\"~p, too early to recv (~p) -- postponing.\", [_@Func, {Label, Msg}]),",
-        % "Data1 = #statem_data{ coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = Queue ++ [{Label, Msg}], options = Options },",
+        "(info, {CoPartyID, {Label, Msg}}, #statem_data{ coparty_id = CoPartyID, state_stack = _States, msgs = _Msgs, queued_actions = _Queue, options = #statem_options{ allow_delayable_sends = _AllowDelayableSends, printout_enabled = _PrintoutEnabled, persistent_queue = _PersistentQueue } = _Options } = _Data) ->",
+        "printout(\"~p, early recv (~p) -- postponing.\", [_@Func, {Label, Msg}]),",
+        % "Data1 = #statem_data{ coparty_id = CoPartyID, state_stack = States, msgs = Msgs, queued_actions = Queue ++ [{Label, Msg}], options = Options },",
         " {keep_state_and_data, [postpone] }"
     ]),
     if
@@ -262,10 +269,10 @@ clause(postpone_recv, Cons) ->
 queue_clause() ->
     Func = get_merl_func_name(),
     Clause = ?Q([
-        "(state_timeout, process_queue, #statem_data{ coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = [H|T], options = Options } = _Data) ->",
+        "(state_timeout, process_queue, #statem_data{ coparty_id = CoPartyID, state_stack = States, msgs = Msgs, queued_actions = [H|T], options = Options } = _Data) ->",
         "printout(\"(->) ~p, queued action: ~p.\", [_@Func, H]),",
-        "Data1 = #statem_data{ coparty_id = CoPartyID, state_stack = States, msg_stack = Msgs, queued_actions = T, options = Options },",
-        "{repeat_state, Data1, [{next_event, cast, H}]}"
+        "Data1 = #statem_data{ coparty_id = CoPartyID, state_stack = States, msgs = Msgs, queued_actions = T, options = Options },",
+        "{repeat_state, Data1, [{next_event, cast, {send, H}}]}"
     ]),
 
     % erl_syntax:add_precomments(
@@ -281,9 +288,10 @@ timeout_clause(TimeoutState, TimeoutDuration, Cons, ShowIO) ->
     % PrintStr = io_lib:format("io:format(\"(timeout[~p] -> ~p.)\n\")", [TimeoutDuration,TimeoutState]),
     if
         ShowIO == true ->
+            Func = get_merl_func_name(),
             Clause = ?Q([
                 "(state_timeout, '@TimeoutState@', Data) ->",
-                "io:format(\"(timeout[~p] -> ~p.)\n\",['@TimeoutDuration@','@TimeoutState@']),",
+                "printout(\"~p, (timeout[~p] -> ~p.)\n\",[_@Func, '@TimeoutDuration@','@TimeoutState@']),",
                 "{next_state, '@TimeoutState@', Data}"
             ]),
             Cons1 = Cons ++ ["% This is a timeout branch:"];
@@ -309,28 +317,28 @@ timeout_clause(TimeoutState, TimeoutDuration, Cons, ShowIO) ->
 enter_clause() -> enter_clause(basic).
 enter_clause(basic) ->
     ?Q([
-        "(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = _Queue, options = _Options } = _Data) -> keep_state_and_data"
+        "(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msgs = _Msgs, queued_actions = _Queue, options = _Options } = _Data) -> keep_state_and_data"
     ]);
 enter_clause(queues) ->
     [enter_clause(queue_process), enter_clause(queue_empty)];
 enter_clause(queue_process) ->
     Func = get_merl_func_name(),
     ?Q([
-        "(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = [_H], options = _Options } = _Data) ->",
+        "(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msgs = _Msgs, queued_actions = [_H], options = _Options } = _Data) ->",
         "printout(\"(->) ~p, queued actions.\", [_@Func]),",
         " {keep_state_and_data, [{state_timeout, 0, process_queue}]}"
     ]);
 enter_clause(queue_empty) ->
     Func = get_merl_func_name(),
     ?Q([
-        "(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = [], options = _Options } = _Data) ->",
+        "(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msgs = _Msgs, queued_actions = [], options = _Options } = _Data) ->",
         "printout(\"(->) ~p.\", [_@Func]),",
         " keep_state_and_data"
     ]);
 enter_clause(state) ->
     Func = get_merl_func_name(),
     ?Q([
-        "(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = _Queue, options = _Options } = _Data) ->",
+        "(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msgs = _Msgs, queued_actions = _Queue, options = _Options } = _Data) ->",
         "printout(\"(->) ~p.\", [_@Func]),",
         %  "io:format(\"(~p ->.)\n\",['@State@']),",
         " keep_state_and_data"
@@ -345,7 +353,7 @@ enter_clause(timeout_recv, Timeout, ToState) ->
     [
         % enter_clause(queue_process),
         ?Q([
-            "(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = _Queue, options = _Options } = _Data) ->",
+            "(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msgs = _Msgs, queued_actions = _Queue, options = _Options } = _Data) ->",
             "printout(\"(~p ->.)\",[_@Func]),",
             "{keep_state_and_data, [{state_timeout, '@Timeout@', '@ToState@'}]}"
         ])
@@ -355,7 +363,7 @@ enter_clause(timeout_send, Timeout, ToState) ->
     [
         enter_clause(queue_process),
         ?Q([
-            "(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msg_stack = _Msgs, queued_actions = [], options = _Options } = _Data) ->",
+            "(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msgs = _Msgs, queued_actions = [], options = _Options } = _Data) ->",
             "printout(\"(~p ->.)\",[_@Func]),",
             "{keep_state_and_data, [{state_timeout, '@Timeout@', '@ToState@'}]}"
         ])
@@ -366,7 +374,7 @@ custom_stop_clause() ->
     Func = get_merl_func_name(),
     ?Q([
         "(state_timeout, go_to_terminate, #stop_data{ reason = Reason, statem_data = StatemData } = Data) ->",
-        "printout(\"(->) ~p, Reason: ~p,\nStatemData: \n\t~p.\", [_@Func, Reason, StatemData]),",
+        "printout(\"(->) ~p,\nReason: ~p,\nStatemData: \n\t~p.\", [_@Func, Reason, StatemData]),",
         " {stop, Reason, Data}"
     ]).
 stop_clause() ->
@@ -881,6 +889,21 @@ gen_module(FileName, P) ->
         Nodes
     ),
 
+  %   % [InitFun|StateFuns]
+  % NameID = 0,
+  % StateFuns = maps:fold(
+  %     fun(K, V, AccIn) ->
+  %         NameID=NameID+1,
+  %         % io:format("\n[StateFuns] (~p, ~p):...\n\tAccIn: ~p.\n",[K,V,AccIn]),
+  %         {true, Name, Clauses} = state_funs(K, V, Edges, Nodes),
+  %         Name1 = list_to_atom("state" ++ integer_to_list(NameID) ++ "_" ++ Name),
+  %         % io:format("\n\tStateFun: ~p.\n",[StateFun]),
+  %         AccIn ++ [{true, Name1, Clauses}]
+  %         % AccIn ++ [StateFun]
+  %     end,
+  %     [],
+  %     Nodes
+  % ),
     % [InitFun|StateFuns1] = StateFuns,
     InitFun = hd(StateFuns),
     StateFuns1 = lists:nthtail(1, StateFuns),
@@ -928,7 +951,8 @@ gen_module(FileName, P) ->
         statem_options,
         [
             {'allow_delayable_sends', merl:term('false')},
-            {'printout_enabled', merl:term('true')}
+            {'printout_enabled', merl:term('true')},
+            {'persistent_queue', merl:term('false')}
         ],
         Forms1
     ),
@@ -938,7 +962,7 @@ gen_module(FileName, P) ->
         [
             {'coparty_id', merl:term('undefined')},
             {'state_stack', merl:var('[]')},
-            {'msg_stack', merl:var('[]')},
+            {'msgs', merl:var('#{}')},
             {'queued_actions', merl:var('[]')},
             {'options', merl:var('#statem_options{}')}
         ],
