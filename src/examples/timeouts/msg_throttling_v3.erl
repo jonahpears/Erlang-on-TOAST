@@ -20,7 +20,7 @@ role_msger() ->
                         {act, r_ack2, 
                             {rvar, "s2"}, 
                         aft, 3000,
-                            {act, s_tout, endP}
+                            issue_timeout
                         }
                     }
                 }
@@ -29,6 +29,42 @@ role_msger() ->
     }.
 
 role_acker() ->
+    {rec, "t1", 
+        {act, r_msg1, 
+            {rec, "t2", 
+                {act, s_ack1, 
+                    {rvar, "t1"}, 
+                 aft, 3000, 
+                    {act, r_msg2, 
+                        {act, s_ack2, 
+                            {rvar, "t2"}
+                        }
+                    }
+                }
+            }
+        }
+    }.
+
+role_msger(notimeout) ->
+    {rec, "s1", 
+        {act, s_msg1, 
+            {rec, "s2", 
+                {act, r_ack1, 
+                    {rvar, "s1"}, 
+                 aft, 3000, 
+                    {act, s_msg2, 
+                        {act, r_ack2, 
+                            {rvar, "s2"}, 
+                        aft, 3000,
+                            {act, s_tout, endP}
+                        }
+                    }
+                }
+            }
+        }
+    }.
+
+role_acker(notimeout) ->
     {rec, "t1", 
         {act, r_msg1, 
             {rec, "t2", 

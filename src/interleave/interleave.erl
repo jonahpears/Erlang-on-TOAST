@@ -26,6 +26,7 @@
                    | {'consume', atom(), protocol()}
                    | {'rec', string(), protocol()}
                    | {'rvar', string()}
+                   | 'issue_timeout'
                    | 'endP'.
                   %  | 'error'.
 

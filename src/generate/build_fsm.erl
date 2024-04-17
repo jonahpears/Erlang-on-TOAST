@@ -4,7 +4,7 @@
 -export([to_fsm/1]).
 
 -include("reng.hrl").
-
+fatal_timeout_state() -> fatal_timeout_state.
 standard_state() -> standard_state.
 choice_state() -> choice_state.
 % mixed_choice_state() -> mixed_choice_state.
@@ -125,6 +125,21 @@ data(Param, Constraint) ->
     integer(),
     map()
 ) -> {list(), map(), map(), integer(), integer(), integer(), map()}.
+
+to_fsm(issue_timeout, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
+  Index = PrevIndex + 1,
+  Edge = #edge{
+      from = PrevVis,
+      to = Index,
+      edge_data = #edge_data{trans_type=issue_timeout},
+      is_silent = false,
+      is_delayable_send = false,
+      is_custom_end = false,
+      is_internal_timeout_to_supervisor = true
+  },
+  Edges1 = Edges ++ [Edge],
+  Nodes1 = maps:put(PrevVis, fatal_timeout_state(), Nodes),
+  to_fsm(endP, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks);
 
 to_fsm({act, Act, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
     Index = PrevIndex + 1,

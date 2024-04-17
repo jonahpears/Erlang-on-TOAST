@@ -45,10 +45,13 @@ get_next_state_and_trans(To, Num) ->
             % io:format("\n[init_state -> after_state] Nodes: ~p.\n", [Nodes]),
             Trans = next_state,
             NextState = list_to_atom("state" ++ Num ++ "_after");
+        fatal_timeout_state ->
+          Trans = next_state,
+          NextState = list_to_atom("state" ++ Num ++ "_fatal_timeout");
         _Else ->
             % io:format("\n[unhandled NextState] init_state, Nodes: ~p.\n", [Nodes]),
             Trans = next_state,
-            NextState = list_to_atom("state" ++ Num ++ "_unexpected")
+            NextState = list_to_atom("state" ++ Num ++ "_unexpected_" ++ atom_to_list(To))
     end,
     {NextState, Trans}.
 
@@ -308,6 +311,19 @@ clause(postpone_recv, Cons) ->
     %     true ->
     %         Clause
     % end.
+
+fatal_timeout_clause() ->
+  Clause = ?Q([
+      "(state_timeout, go_to_fatal_timeout, Data) ->
+        {next_state, custom_end_state, Data}"
+  ]),
+  Clause.
+  % Cons = [
+  %           "% @doc Fatal timeout state."
+  %       ],
+  % erl_syntax:add_precomments(
+  %     lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons), Clause
+  % ).
 queue_clause() ->
     Func = get_merl_func_name(),
     Clause = ?Q([
@@ -422,10 +438,21 @@ enter_clause(state) ->
 enter_clause(stop) ->
     Clause = ?Q([
         "(enter, _OldState, #stop_data{ reason = _Reason, statem_data = _StatemData } = _Data) ->",
-        " {keep_state_and_data, [{state_timeut, 0, go_to_terminate}]}"
+        " {keep_state_and_data, [{state_timeout, 0, go_to_terminate}]}"
     ]),
     Cons = [
               "% @doc Stop state."
+          ],
+    erl_syntax:add_precomments(
+        lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons), Clause
+    );
+enter_clause(fatal_timeout) ->
+    Clause = ?Q([
+        "(enter, _OldState, #statem_data{ coparty_id = _CoPartyID, state_stack = _States, msgs = _Msgs, queued_actions = _Queue, options = _Options } = Data) ->",
+        " {keep_state, #stop_data{reason = error_fatal_timeout, statem_data = Data}, [{state_timeout, 0, go_to_fatal_timeout}]}"
+    ]),
+    Cons = [
+              "% @doc Fatal timeout state -- trigger supervisor to restart protocol."
           ],
     erl_syntax:add_precomments(
         lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Cons), Clause
@@ -870,6 +897,12 @@ select_after_state(Id, Edges, Nodes) ->
     Clauses = EnterClause ++ [queue_clause()] ++ Edges2 ++ [Q_Clause] ++ AuxClauses,
     % Clauses = [EnterClause] ++ Edges,
     {true, Name, Clauses}.
+    
+  
+fatal_timeout_state(Id, _Edges, _Nodes) ->
+    Name = list_to_atom("state" ++ integer_to_list(Id) ++ "_fatal_timeout"),
+    Clauses = [enter_clause(fatal_timeout), fatal_timeout_clause()],
+    {true, Name, Clauses}.
 
 %% @doc calls the appropriate function for choice and standard states
 state_funs(K, V, Edges, Nodes) ->
@@ -877,6 +910,7 @@ state_funs(K, V, Edges, Nodes) ->
     Pred = fun(Edge) -> Edge#edge.from =:= K end,
     Es = lists:filter(Pred, Edges),
     case V of
+      fatal_timeout_state -> fatal_timeout_state(K, Es, Nodes);
         init_state ->
             % init_state(K, Es, Nodes);
             init_setup_state(K, Es, Nodes);

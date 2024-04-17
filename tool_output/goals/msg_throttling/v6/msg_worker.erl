@@ -188,7 +188,7 @@ handle_event(enter, _OldState, issue_timeout=State, #statem_data{ name=Name, cop
     printout(Name, "(->) ~p.", [State]),
     {keep_state, #stop_data{reason = error_exceeded_throttling_capacity, statem_data = StatemData}, [{state_timeout, 0, goto_stop}]};
 handle_event(state_timeout, goto_stop, issue_timeout=_State, Data) ->
-    {next_state, state_stop, Data};
+    {next_state, stop_state, Data};
 
 
 %% state enter, mixed choice (and no queued actions)
@@ -351,7 +351,7 @@ handle_event({call, From}, {recv, Label}, State, #statem_data{ name=Name, copart
 %% % % % % % %
 handle_event(EventType, EventContent, State, Data) ->
     printout(Data#statem_data.name, "error, reached unknown event:\n\tEventType: ~p,\n\tEventContent: ~p,\n\tState: ~p,\n\tData: ~p.", [EventType, EventContent, State, Data]),
-    {next_state, state_stop, #stop_data{ reason = unknown_event_to_handle, statem_data = Data}}.
+    {next_state, stop_state, #stop_data{ reason = unknown_event_to_handle, statem_data = Data}}.
 
 
 
