@@ -12,13 +12,8 @@
          init/2,
          init_setup_state/3,
          issue_timeout/2,
-         receive_ack1/1,
-         receive_ack2/1,
          recv/1,
          send/2,
-         send_msg1/1,
-         send_msg2/1,
-         send_tout/1,
          start_link/0,
          start_link/1,
          state1_std/3,
@@ -343,15 +338,5 @@ custom_end_state(state_timeout, go_to_terminate, #stop_data{reason = Reason, sta
 terminate(Reason, State, Data) ->
     printout("(->) ~p, ~p, Reason: ~p,\nData: \n\t~p.", [?FUNCTION_NAME, State, Reason, Data]),
     ok.
-
-receive_ack1(Ack1) -> gen_statem:cast(?SERVER, {receive_ack1, Ack1}).
-
-receive_ack2(Ack2) -> gen_statem:cast(?SERVER, {receive_ack2, Ack2}).
-
-send_msg1(Msg1) -> gen_statem:internal(?SERVER, {send_msg1, Msg1}).
-
-send_msg2(Msg2) -> gen_statem:internal(?SERVER, {send_msg2, Msg2}).
-
-send_tout(Tout) -> gen_statem:internal(?SERVER, {send_tout, Tout}).
 
 stop() -> gen_statem:stop(?SERVER).
