@@ -2,8 +2,6 @@
 
 -file("msg_msger", 1).
 
--file("_msg_throttling_msger_v3", 1).
-
 -behaviour(gen_statem).
 
 -define(SERVER, ?MODULE).

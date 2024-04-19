@@ -2,8 +2,6 @@
 
 -file("msg_acker", 1).
 
--file("_msg_throttling_acker_v3", 1).
-
 -behaviour(gen_statem).
 
 -define(SERVER, ?MODULE).
