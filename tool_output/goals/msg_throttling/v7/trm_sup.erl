@@ -47,7 +47,16 @@ init(Params) -> init([Params], #supervisor_options{}).
 
 
 -spec init([{atom(),any()}|[]], map()) -> {atom(), atom(), map()}.
-init([{child_options,#child_options{ restart = _Restart, shutdown = _Shutdown, type = _Type } = HVal}|T], #supervisor_options{ strategy = Strategy, intensity = Intensity, period = Period, child_options = _ChildOptions, statem_options = StatemOptions, child_spec = ChildSpec } = _Params) -> 
+init([{child_options,
+      #child_options{ restart = _Restart, 
+                      shutdown = _Shutdown, 
+                      type = _Type } = HVal} | T], 
+      #supervisor_options{ strategy = Strategy, 
+                           intensity = Intensity, 
+                           period = Period, 
+                           child_options = _ChildOptions, 
+                           statem_options = StatemOptions, 
+                           child_spec = ChildSpec } = _Params) -> 
     Params1 = #supervisor_options{ strategy = Strategy,
                                    intensity = Intensity,
                                    period = Period,
