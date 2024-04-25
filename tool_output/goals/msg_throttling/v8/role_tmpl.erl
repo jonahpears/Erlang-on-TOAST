@@ -25,11 +25,7 @@
 %% generic callbacks
 -export([ send/2, recv/1 ]).
 
-
--define(NAME, ?MODULE).
-
-printout(Name, Str, [_H|_T]=Params) -> io:format("[~p|~p]: " ++ Str ++ "\n", [Name, self()] ++ Params).
-printout(Str, [_H|_T]=Params) -> io:format("[~p|~p]: " ++ Str ++ "\n", [?NAME, self()] ++ Params).
+-include("printout.hrl").
 
 %% gen_statem
 start_link([{name, Name}|_T]=Params) -> 
@@ -37,7 +33,7 @@ start_link([{name, Name}|_T]=Params) ->
     gen_statem:start_link({global, Name}, ?MODULE, Params, []);
 start_link([_H|_T]=Params) -> 
     % printout("~p, Params: ~p.", [self(), Params]),
-    gen_statem:start_link({local, ?NAME}, ?MODULE, Params, []).
+    gen_statem:start_link({local, ?MODULE}, ?MODULE, Params, []).
 start_link() -> 
     printout("~p.", [self()]),
     msg_worker:start_link([]).
@@ -49,6 +45,18 @@ init([_H|_T]=Params) -> init(Params, #statem_data{});
 init(Params) -> init([Params], #statem_data{}).
 
 -spec init([{atom(),any()}|[]], map()) -> {atom(), atom(), map()}.
+% init([{HKey,HVal}|T], #statem_data{ name=_Name, coparty_id = undefined=_CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = Options} = StatemData) 
+%   when is_atom(HKey) ->
+%     case HKey of 
+%       options ->
+%         {OKey, OVal} = HVal,
+%         Data#statem_data.options = maps:put(OKey, OVal, Data#statem_data.options),
+%         init(T, Data);
+      
+
+
+
+
 init([{HKey,HVal}|T], #statem_data{ name=_Name, coparty_id = undefined=_CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = Options} = StatemData) 
     when is_atom(HKey) and is_map_key(HKey, Options) -> init(T, maps:put(options, maps:put(HKey, HVal, Options), StatemData));
 init([{name,HVal}|T], #statem_data{ name=_Name, coparty_id = undefined=CoPartyID, init_state=InitState, states = States, msgs = Msgs, timeouts = Timeouts, state_map = StateMap, queued_actions = Queue, options = Options} = _StatemData) -> 
@@ -98,13 +106,16 @@ init([{state_map,HVal}|T], #statem_data{ name=Name, coparty_id = undefined=CoPar
                                 options = Options },
     init(T, StatemData1);
 init([_H|T], #statem_data{ name=_Name, coparty_id = undefined=_CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = _Options} = StatemData) -> init(T, StatemData);
-init([], #statem_data{ name=_Name, coparty_id = undefined=_CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = _Options} = StatemData) -> 
+init([], #statem_data{ name=Name, coparty_id = undefined=_CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = _Options} = StatemData) -> 
+    %% get app ID and send self()
+    [{app_id,AppID}|_T] = ets:lookup(tpri,app_id),
+    AppID ! {tpri, Name, mon, self()},
     {ok, init_setup_state, StatemData}.
 
 
 stop() -> 
     printout("~p.", [?FUNCTION_NAME]),
-    gen_statem:stop(?NAME).
+    gen_statem:stop(?MODULE).
 
 
 terminate(Reason, issue_timeout, #statem_data{name=Name, coparty_id = _CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = _Options} = StatemData) ->
@@ -116,8 +127,8 @@ terminate(Reason, State, #statem_data{name=Name, coparty_id = _CoPartyID, init_s
 
 
 %% generic callbacks
-send(Label, Msg) -> gen_statem:cast(?NAME, {send, Label, Msg}).
-recv(Label) -> gen_statem:call(?NAME, {recv, Label}).
+send(Label, Msg) -> gen_statem:cast(?MODULE, {send, Label, Msg}).
+recv(Label) -> gen_statem:call(?MODULE, {recv, Label}).
 
 
 
@@ -136,7 +147,7 @@ handle_event(info, {act, send, Label, Msg}, _State, #statem_data{ name=Name, cop
 handle_event(info, {act, recv, Label}, _State, #statem_data{ name=Name, coparty_id = _CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = _Options} = _StatemData) ->
     % printout(Name, "~p, wrong state to recv (~p: ~p), postponing.", [State, Label, Msg]),
     io:format("\n"),
-    printout(Name, "~p, {act, recv, ~p}.", [?FUNCTION_NAME, Label]),
+    printout(Name, "~p, {recv, ~p},\n\n\tThis is a mistake! To retrieve messages use:\n\t\t\"gen_statem(?THIS_PID, {recv, ~p}).\"", [?FUNCTION_NAME, Label, Label]),
     {keep_state_and_data, [{next_event, cast, {recv, Label}}]};
 
 
@@ -278,7 +289,10 @@ handle_event(cast, {send, Label, Msg}, State, #statem_data{ name=Name, coparty_i
 handle_event(info, {CoPartyID, Label, Msg}, State, #statem_data{ name=Name, coparty_id = CoPartyID, init_state=InitState, states = States, msgs = Msgs, timeouts = Timeouts, state_map = StateMap, queued_actions = Queue, options = Options} = _StatemData) 
     when is_map_key(State, StateMap)
     and is_atom(map_get(Label, map_get(recv, map_get(State, StateMap)))) ->    
-    % add message to the front of the queue of messages received by this label
+    %% forward if necessary
+    {ForwardMsg, ForwardTo} = maps:get(forward_receptions, Options),
+    if ForwardMsg -> ForwardTo ! {self(), Label, Msg} end,
+    %% add message to the front of the queue of messages received by this label
     case maps:find(Label, Msgs) of
         {ok, StateMsgs} -> 
             Msgs1 = maps:put(Label, [Msg] ++ StateMsgs, Msgs);
@@ -324,13 +338,13 @@ handle_event(state_timeout, NextState, State, #statem_data{ name=Name, coparty_i
 handle_event({call, From}, {recv, Label}, State, #statem_data{ name=Name, coparty_id = _CoPartyID, init_state=_InitState, states = _States, msgs = Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = _Options} = _StatemData) -> 
     printout(Name, "~p, ~p, looking for msg with label (~p).", [?FUNCTION_NAME, State, Label]),
     case maps:find(Label, Msgs) of
-        {ok, [H]} -> 
+        {ok, [H]=Matches} -> 
             printout("~p, ~p, found msg (~p: ~p) out of 1.", [?FUNCTION_NAME, State, Label, H]),
-            ReplyMsg = {ok, #{  label => Label, msg => H, total => 1 }};
-        {ok, [H|T]} -> 
+            ReplyMsg = {ok, #{  label => Label, msg => H, total => 1, matches => Matches }};
+        {ok, [H|T]=Matches} -> 
             NumMsgs = lists:length(T)+1,
             printout("~p, ~p, found msg (~p: ~p) out of ~p.", [?FUNCTION_NAME, State, Label, H, NumMsgs]),
-            ReplyMsg = {ok, #{  label => Label, msg => H, total => NumMsgs }};
+            ReplyMsg = {ok, #{  label => Label, msg => H, total => NumMsgs, matches => Matches }};
          error -> 
             printout("~p, ~p, no msgs with label (~p) found.", [?FUNCTION_NAME, State, Label]),
             ReplyMsg = {error, no_msg_found_under_label}
@@ -339,13 +353,22 @@ handle_event({call, From}, {recv, Label}, State, #statem_data{ name=Name, copart
 
 
 %% % % % % % %
-%% handle external action calls
+%% handle external requests to change options
 %% % % % % % %
-% handle_event({call, From}, {send, Label, Payload}, _State, #statem_data{ name=Name, coparty_id = _CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = _Options} = _StatemData) -> 
-%     % printout(Name, "~p, ~p, el (~p).", [?FUNCTION_NAME, State, Label]),
-%     printout(Name, "~p, {send, ~p, ~p}.", [?FUNCTION_NAME, Label, Payload]),
-%     ReplyMsg = send(Label, Payload),
-%     {keep_state_and_data, [{reply, From, ReplyMsg}]};
+handle_event({call, From}, {options, Key, Val}, _State, #statem_data{ name=Name, coparty_id = CoPartyID, init_state=InitState, states = States, msgs = Msgs, timeouts = Timeouts, state_map = StateMap, queued_actions = Queue, options = Options} = _StatemData) 
+  when is_map_key(Key, Options) ->    
+    printout(Name, "~p, changing option: ~p => ~p}.", [?FUNCTION_NAME, Key, Val]),
+    Data1 = #statem_data{ name = Name,
+                          coparty_id = CoPartyID,
+                          init_state = InitState,
+                          states = States,
+                          msgs = Msgs,
+                          timeouts = Timeouts,
+                          state_map = StateMap,
+                          queued_actions = Queue,
+                          options = maps:put(Key, Val, Options) },
+    {keep_state, Data1, [{reply, From, ok}]};
+
 
 %% % % % % % %
 %% anything else

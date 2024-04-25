@@ -135,8 +135,8 @@ handle_event(info, {act, send, Label, Msg}, _State, #statem_data{ name=Name, cop
 handle_event(info, {act, recv, Label}, _State, #statem_data{ name=Name, coparty_id = _CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = _Options} = _StatemData) ->
     % printout(Name, "~p, wrong state to recv (~p: ~p), postponing.", [State, Label, Msg]),
     io:format("\n"),
-    printout(Name, "~p, {act, recv, ~p}.", [?FUNCTION_NAME, Label]),
-    {keep_state_and_data, [{next_event, cast, {recv, Label}}]};
+    printout(Name, "~p, {recv, ~p},\n\n\tThis is a mistake! To retrieve messages use:\n\t\t\"gen_statem(?THIS_PID, {recv, ~p}).\"", [?FUNCTION_NAME, Label, Label]),
+    keep_state_and_data;
 
 
 
