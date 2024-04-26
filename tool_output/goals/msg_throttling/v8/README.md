@@ -4,7 +4,7 @@
 # Compiling Application
 
 ```erl
-c(tpri_app), c(tpri_server), c(tpri_sup), c(role_sup), c(role_tmpl).
+c(tpri_app), c(tpri_server), c(tpri_sup), c(role_sup), c(role_tmp).
 ```
 
 ```erl
@@ -17,7 +17,7 @@ c(role_fsm_bob), c(role_imp_bob).
 
 ## All Together
 ```erl
-c(tpri_app), c(tpri_server), c(tpri_sup), c(role_sup), c(role_tmpl), c(role_fsm_ali), c(role_imp_ali), c(role_fsm_bob), c(role_imp_bob).
+c(tpri_app), c(tpri_server), c(tpri_sup), c(role_sup), c(role_tmp), c(role_fsm_ali), c(role_imp_ali), c(role_fsm_bob), c(role_imp_bob).
 ```
 
 
@@ -54,5 +54,5 @@ application:stop(tpri_app).
 # Execution Examples
 
 ```erl
-c(tpri_app), c(tpri_server), c(tpri_sup), c(role_sup), c(role_tmpl), c(role_fsm_ali), c(role_imp_ali), c(role_fsm_bob), c(role_imp_bob), tpri_app:start().
+c(tpri_app), c(tpri_server), c(tpri_sup), c(role_sup), c(role_tmp), c(role_fsm_ali), c(role_imp_ali), c(role_fsm_bob), c(role_imp_bob), tpri_app:start().
 ```

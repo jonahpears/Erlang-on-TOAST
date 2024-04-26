@@ -10,16 +10,39 @@
 
 -export([ start_link/1 ]).
 
--define(NAME, ali).
+-define(NAME, ali_role_imp).
+
+%% comment out below to change behaviour of program
+% -define(SAFE_UPPER_BOUND, 2). %% ! <- comment in/out
+-ifdef(SAFE_UPPER_BOUND).
+-define(UPPER_BOUND, ?SAFE_UPPER_BOUND).
+-else.
+-define(UPPER_BOUND, 10).
+-endif.
+
+% -define(SAFE_DURATION, 1000). %% ! <- comment in/out
+-ifdef(SAFE_DURATION).
+-define(DURATION, ?SAFE_DURATION).
+-else.
+-define(DURATION, 500).
+-endif.
 
 -include("printout.hrl").
 -include("role_cb_funs.hrl").
 -include("rand_from_range.hrl").
 
-start_link() -> ?MODULE:start_link([]).
+start_link() -> start_link([]).
 
 start_link(Params) -> 
-  PID = erlang:spawn_link(?MODULE, ?MODULE, init, Params),
+  printout(?NAME, "~p.", [?FUNCTION_NAME]),
+  % printout(?NAME, "~p, Params: ~p.", [?FUNCTION_NAME, Params]),
+  Params1 = maps:from_list(Params),
+  RoleID = maps:get(id,Params1),
+  ?assert(RoleID==?MODULE, io_lib:format("Error in ~p: Module of file (~p) does not match Role/ID provided (~p).",[?MODULE,?MODULE,RoleID])),
+  Name = maps:get(name,Params1),
+  ?assert(Name==?NAME, io_lib:format("Error in ~p: Name in file (~p) does not match Name provided (~p).",[?MODULE,?NAME,Name])),
+  PID = erlang:spawn_link(?MODULE, init, [Params]),
+  printout(?NAME, "leaving ~p as : ~p.", [?FUNCTION_NAME, PID]),
   {ok, PID}.
 
 
@@ -28,12 +51,11 @@ init(Params) ->
   printout(?NAME, "~p.", [?FUNCTION_NAME]),
 
   Params1 = maps:from_list(Params),
-  Name = maps:get(name,Params1),
-  ?assert(Name==?NAME, io_lib:format("Error in ~p: Name in file (~p) does not match Name provided (~p).",[?MODULE,?NAME,Name])),
+  Role = maps:get(role,Params1),
 
-  %% get app ID and send self()
-  AppID = ets:lookup(tpri,app_id),
-  AppID ! {tpri, Name, imp, self()},
+  %% get app ID and send self() and Role
+  [{app_id,AppID}|_T] = ets:lookup(tpri,app_id),
+  AppID ! {role, Role, imp, self()},
 
   %% wait to receive coparty ID
   receive
@@ -45,7 +67,13 @@ init(Params) ->
       special_request(ToServer, {options, printout_enabled, true}),
       %% wait for signal to begin
       receive
-        {setup_finished, start} -> ?MODULE:main(ToServer)
+        {setup_finished, start} -> 
+          printout(?NAME, "~p, build upper bound: ~p.", [?FUNCTION_NAME, ?UPPER_BOUND]),
+          printout(?NAME, "~p, build duration: ~p.", [?FUNCTION_NAME, ?DURATION]),
+          printout(?NAME, "leaving ~p.", [?FUNCTION_NAME]),
+          main(ToServer),
+          %% finish ?
+          mon_terminate(ToServer)
       end
   end.
 
@@ -65,27 +93,40 @@ init(Params) ->
 %% 3) if ali sends a message of "***" or more, the server will be forced to violate the protocol
 
 main(ToServer) ->
-  Num = rand_from_range(1, 10)+1,
+  %% determine loop iterations
+  Num = rand_from_range(1, 10),
+  %% begin loop
   loop(ToServer, Num).
 
+%% loop finished
 loop(_ToServer, 0) -> 
   printout(?NAME, "~p, finished.", [?FUNCTION_NAME]),
   ok;
-loop(ToServer, Iterations) ->
-  Len = rand_from_range(1, 10),
-  Message = msg_builder(Len),
-  printout(?NAME, "~p, build ~p: ~p.",[?FUNCTION_NAME,Iterations,Message]),
 
+%% main loop
+loop(ToServer, Iterations) ->
+  %% get length of next message to sent
+  Len = rand_from_range(1, ?UPPER_BOUND),
+  printout(?NAME, "~p, building ~p.",[?FUNCTION_NAME,Iterations]),
+
+  %% build and send message 
+  Message = msg_builder(Len) ++ integer_to_list(Iterations),
   mon_send(ToServer, msg, Message),
+  printout(?NAME, "~p, sent ~p.",[?FUNCTION_NAME,Message]),
+
+  %% loop
   loop(ToServer, Iterations-1).
 
 
-msg_builder(Num) when is_integer(Num) -> 
-  msg_builder("",Num).
+%% build message of length Num
+msg_builder(Num) when is_integer(Num) -> msg_builder("",Num).
 
-msg_builder(Msg, 0) -> Msg;
+%% stop building message
+msg_builder(Msg, 0) -> Msg++"*";
 
+%% build message, which takes ?DURATION
 msg_builder(Msg, Num) -> 
-  timer:sleep(500), 
+  timer:sleep(?DURATION), 
+  %% continue building message
   msg_builder(Msg++"*", Num-1).
 

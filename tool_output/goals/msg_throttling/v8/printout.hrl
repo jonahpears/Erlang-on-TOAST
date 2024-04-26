@@ -6,4 +6,4 @@ when is_list(Str) ->
   io:format("[~p|~p]: " ++ Str ++ "\n", [?MODULE, self()] ++ Params).
 printout(Name, Str, Params) 
 when is_atom(Name) and is_list(Str) -> 
-  io:format("[~p|~p|~p]: " ++ Str ++ "\n", [?MODULE, self()] ++ Params).
+  io:format("[~p|~p]: " ++ Str ++ "\n", [Name, self()] ++ Params).

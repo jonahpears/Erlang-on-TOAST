@@ -60,12 +60,21 @@ init([{HKey, HVal} | T], #statem_data{coparty_id = _CoPartyID, state_stack = _St
     when is_atom(HKey) and is_map_key(HKey, Options) ->
       Data1 = maps:put(options, maps:put(HKey, HVal, Options), Data),
       init(T, Data1);
+init([{name,HVal}|T],#statem_data{name=undefined, coparty_id = CoPartyID, state_stack = States, msgs = Msgs, queued_actions = Queue, options = Options} = Data) ->
+    Name = list_to_atom(atom_to_list(HVal) ++ "_fsm_mon"),
+    StatemData1 = #statem_data{ name = Name,
+                                coparty_id = CoPartyID,
+                                state_stack = States,
+                                msgs = Msgs,
+                                queued_actions = Queue,
+                                options = Options },
+    init(T, StatemData1);
 init([_H | T], #statem_data{coparty_id = _CoPartyID, state_stack = _States, msgs = _Msgs, queued_actions = _Queue, options = _Options} = Data) -> 
   init(T, Data);
 init([], #statem_data{name=Name, coparty_id = _CoPartyID, state_stack = _States, msgs = _Msgs, queued_actions = _Queue, options = _Options} = Data) ->
     %% get app ID and send self()
     [{app_id,AppID}|_T] = ets:lookup(tpri,app_id),
-    AppID ! {tpri, Name, mon, self()},
+    AppID ! {role, Name, mon, self()},
     {ok, init_setup_state, Data}.
 
 %% @doc Waits to receive the process-ID of the `coparty' before continuing to the initial state of the FSM.

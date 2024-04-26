@@ -3,12 +3,12 @@
 %% if mon=role_fsm then module used is "role_fsm_" ++ name (same as ID)
 %% if mon=role_gen then only ID is "role_gen_" ++ name
 -record(role_modules, { sup = role_sup,
-                        mon = role_fsm, %% or role_tmpl
+                        mon = role_fsm, %% or role_tmp
                         imp = role_imp }).
 
--record(sup_flags, { strategy = one_for_all,
-                     intensity = 1,
-                     period = 5 }).
+% -record(sup_flags, { strategy = one_for_all,
+%                      intensity = 1,
+%                      period = 5 }).
 
 -record(role_spec, { name,
                      modules = #role_modules{},
@@ -19,7 +19,7 @@
                          shutdown = 2000,
                          type = worker }).
 
--record(statem_data, { name,
+-record(statem_data, { role, name,
                        coparty_id, 
                        init_state,
                        states = [], 

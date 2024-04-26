@@ -2,7 +2,7 @@
 
 child_spec(Module, ID, #child_options{ restart = Restart, shutdown = Shutdown, type = Type }, ChildParams) ->
   #{ id => ID,
-     start => {Module, start_link, [[{name,ID}] ++ ChildParams]},
+     start => {Module, start_link, [[{id,ID}] ++ ChildParams]},
      restart => Restart,
      shutdown => Shutdown,
      type => Type,

@@ -10,7 +10,15 @@
 
 -export([ start_link/1 ]).
 
--define(NAME, bob).
+-define(NAME, bob_role_imp).
+
+%% comment out below to change behaviour of program
+% -define(SAFE_DURATION, 10). %% ! <- comment in/out
+-ifdef(SAFE_DURATION).
+-define(DURATION, ?SAFE_DURATION).
+-else.
+-define(DURATION, 1000).
+-endif.
 
 -include("printout.hrl").
 -include("role_cb_funs.hrl").
@@ -18,7 +26,15 @@
 start_link() -> ?MODULE:start_link([]).
 
 start_link(Params) -> 
-  PID = erlang:spawn_link(?MODULE, ?MODULE, init, Params),
+  printout(?NAME, "~p.", [?FUNCTION_NAME]),
+  % printout(?NAME, "~p, Params: ~p.", [?FUNCTION_NAME, Params]),
+  Params1 = maps:from_list(Params),
+  RoleID = maps:get(id,Params1),
+  ?assert(RoleID==?MODULE, io_lib:format("Error in ~p: Module of file (~p) does not match Role/ID provided (~p).",[?MODULE,?MODULE,RoleID])),
+  Name = maps:get(name,Params1),
+  ?assert(Name==?NAME, io_lib:format("Error in ~p: Name in file (~p) does not match Name provided (~p).",[?MODULE,?NAME,Name])),
+  PID = erlang:spawn_link(?MODULE, init, [Params]),
+  printout(?NAME, "leaving ~p as : ~p.", [?FUNCTION_NAME, PID]),
   {ok, PID}.
 
 
@@ -27,26 +43,28 @@ init(Params) ->
   printout(?NAME, "~p.", [?FUNCTION_NAME]),
 
   Params1 = maps:from_list(Params),
-  Name = maps:get(name,Params1),
-  ?assert(Name==?NAME, io_lib:format("Error in ~p: Name in file (~p) does not match Name provided (~p).",[?MODULE,?NAME,Name])),
+  Role = maps:get(role,Params1),
 
-  %% get app ID and send self()
+  %% get app ID and send self() and Role
   [{app_id,AppID}|_T] = ets:lookup(tpri,app_id),
-  AppID ! {tpri, Name, imp, self()},
+  AppID ! {role, Role, imp, self()},
 
   %% wait to receive coparty ID
   receive
-    {setup_coparty, ToClient} -> 
+    {setup_coparty, Client} -> 
       %% setup options with monitor
       %% request messages to be immediately forwarded automatically
-      special_request(ToClient, {options, forward_receptions, #{enabled=>true,to=>self()}}),
+      special_request(Client, {options, forward_receptions, #{enabled=>true,to=>self()}}),
       %% allow sending actions to be queued if untimely
-      special_request(ToClient, {options, queue_actions, #{enabled=>true,flush_after_recv=>false}}),
+      special_request(Client, {options, queue_actions, #{enabled=>true,flush_after_recv=>false}}),
       %% monitor printout
-      special_request(ToClient, {options, printout_enabled, true}),
+      special_request(Client, {options, printout_enabled, true}),
       %% wait for signal to begin
       receive
-        {setup_finished, start} -> ?MODULE:main(ToClient)
+        {setup_finished, start} -> 
+          printout(?NAME, "~p, process duration: ~p.", [?FUNCTION_NAME, ?DURATION]),
+          printout(?NAME, "leaving ~p.", [?FUNCTION_NAME]),
+          main(Client)
       end
   end.
 
@@ -68,17 +86,23 @@ init(Params) ->
 %% 2) the protocol specifies that 2 unacknowledged messages is a violation
 %% 3) if ali sends a message of "***" or more, the server will be forced to violate the protocol
 
-main(ToClient) ->
+main(Client) -> loop(Client).
+
+%% main loop
+loop(Client) ->
+  %% receive message from client
   receive 
-    {ToClient, Label, Msg} -> 
+    {Client, Label, Msg} -> 
       printout(?NAME, "~p, processing: ~p.",[?FUNCTION_NAME,{Label,Msg}]),
       process_msg(Msg), 
-      mon_send(ToClient, ack),
-      main(ToClient) 
+      %% after processing, send ack
+      mon_send(Client, ack),
+      %% loop
+      loop(Client) 
   end.
 
-
-process_msg("") -> ok;
-process_msg("*" ++ Msg) -> timer:sleep(1000), process_msg(Msg).
+%% process message, each * takes ?DURATION
+process_msg("*" ++ Msg) -> timer:sleep(?DURATION), process_msg(Msg);
+process_msg(_Msg) -> ok.
 
 
