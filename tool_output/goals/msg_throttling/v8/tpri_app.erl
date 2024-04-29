@@ -93,15 +93,15 @@ run() ->
 ets_setup(Roles) ->
   % printout("~p, waiting.", [?FUNCTION_NAME]),
   receive
-    {tpri, server_id, ServerID} = Msg -> 
+    {tpri, server_id, ServerID} = _Msg -> 
       printout("~p, server_id: ~p.", [?FUNCTION_NAME,ServerID]),
       ets:insert(tpri, {tpri_server_id, ServerID}),
       Roles1 = Roles;
-    {tpri, sup_id, SupID} = Msg -> 
+    {tpri, sup_id, SupID} = _Msg -> 
       printout("~p, tpri sup_id: ~p.", [?FUNCTION_NAME,SupID]),
       ets:insert(tpri, {tpri_sup_id, SupID}),
       Roles1 = Roles;
-    {role, Name, Kind, SupID} = Msg ->
+    {role, Name, Kind, SupID} = _Msg ->
       printout("~p, role ~p: ~p.", [?FUNCTION_NAME,Name,Kind]),
       %% check if role already exists
       case ets:member(tpri, Name) of

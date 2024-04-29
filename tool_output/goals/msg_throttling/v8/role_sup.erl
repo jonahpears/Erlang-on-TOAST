@@ -22,7 +22,7 @@ start_link() -> ?MODULE:start_link([]).
 start_link(Params) -> 
     printout("~p.", [?FUNCTION_NAME]),
     Params1 = maps:from_list(Params),
-    RoleID = maps:get(id,Params1,err_no_role_id),
+    RoleID = maps:get(reg_id,Params1,err_no_role_id),
     printout(RoleID, "~p, role/id: ~p.", [?FUNCTION_NAME, RoleID]),
     case RoleID of
       err_no_role_id -> 
@@ -61,7 +61,7 @@ init(finished, Params) ->
   % printout("~p, finished, params: ~p.", [?FUNCTION_NAME, Params]),
 
   %% get roles 
-  RoleError = maps:take(id, Params),
+  RoleError = maps:take(reg_id, Params),
   ?assert(RoleError=/=error, "Error in params: no role/id provided!"),
   {RoleID,Params1} = RoleError,
   ?assert(is_atom(RoleID), io_lib:format("Error in params: role/id is not atom: ~p.", [RoleID])),
@@ -82,20 +82,25 @@ init(finished, Params) ->
   ChildOptions = maps:get(child_options, Params1),
   SupFlags = maps:get(sup_flags, Params1),
 
+  %% update name to be in non-file format (readability)
+  MonName = list_to_atom(atom_to_list(Name) ++ "_role_mon"),
+  % MonName = list_to_atom(atom_to_list(Name) ++ "_" ++ atom_to_list(Mon)),
+  MonParams = #{ role => Name, name => MonName},
+
   %% if using "master-template" version (event handler), 
   %% then ensure necessary params
   if (Mon==role_tmp) -> 
     Keys = maps:keys(Params1),
-    ?assert(lists:member(init_state, Keys), "Error in params: no init_state!"),
-    ?assert(lists:member(timeouts, Keys), "Error in params: no timeouts!"),
-    ?assert(lists:member(state_map, Keys), "Error in params: no state_map!")
+    ?assert(lists:member(fsm, Keys), "Error in params: no fsm!"),
+    Fsm = maps:get(fsm, Params1),
+    FsmKeys = maps:keys(Fsm),
+    ?assert(lists:member(init, FsmKeys), "Error in fsm-params: no init (state)!"),
+    ?assert(lists:member(timeouts, FsmKeys), "Error in fsm-params: no timeouts!"),
+    ?assert(lists:member(map, FsmKeys), "Error in fsm-params: no (state) map!"),
+    MonParams1 = maps:put(fsm, Fsm, MonParams);
+    true -> MonParams1 = MonParams
   end,
 
-  %% update name to be in non-file format (readability)
-  MonName = list_to_atom(atom_to_list(Name) ++ "_role_mon"),
-  % MonName = list_to_atom(atom_to_list(Name) ++ "_" ++ atom_to_list(Mon)),
-  MonParams = maps:put(role, Name, Params1),
-  MonParams1 = maps:put(name, MonName, MonParams),
   MonParams2 = maps:to_list(MonParams1),
 
   %% create spec for fsm and imp
@@ -121,6 +126,6 @@ init(finished, Params) ->
   printout(RoleID, "leaving ~p.", [?FUNCTION_NAME]),
   {ok, {SupFlags, ChildSpecs}}.
 
-name() -> lists:first(ets:lookup(tpri,self())).
+% name() -> lists:first(ets:lookup(tpri,self())).
 
 

@@ -13,8 +13,7 @@
           terminate/3 ]).
 
 %% custom wrappers for gen_statem
--export([ start_link/1, 
-          init/2 ]).
+-export([ start_link/1 ]).
 
 %% callbacks
 -export([ handle_event/4 ]).
@@ -26,134 +25,84 @@
 -export([ send/2, recv/1 ]).
 
 -include("printout.hrl").
+-include("role_mon_show.hrl").
+-include("list_to_map_builder.hrl").
+-include("list_to_map_getter.hrl").
+-include("list_to_map_setter.hrl").
+-include("role_mon_data.hrl").
+-include("role_mon_options.hrl").
 
 -define(MSG_AGE_LIMIT, 4).
 
-start_link([_H|_T]=Params) -> 
-    printout("~p.", [?FUNCTION_NAME]),
-    % printout("~p, Params: ~p.", [?FUNCTION_NAME, Params]),
-    Params1 = maps:from_list(Params),
-    RoleID = maps:get(id,Params1,err_no_role_id),
-    Role = maps:get(role,Params1),
-    Name = maps:get(name,Params1),
-    printout(Name, "~p, role/id: ~p.", [?FUNCTION_NAME, RoleID]),
-    printout(Name, "~p, role name: ~p.", [?FUNCTION_NAME, Role]),
-    case RoleID of
-      err_no_role_id -> 
-        printout(Name, "~p, ~p, registering locally.", [?FUNCTION_NAME, RoleID]),
-        {ok,PID} = gen_statem:start_link({local, ?MODULE}, ?MODULE, Params, []);
-      _ ->
-        printout(Name, "~p, registering globally as: ~p.", [?FUNCTION_NAME, Name]),
-        {ok,PID} = gen_statem:start_link({global, Name}, ?MODULE, Params, [])
-    end,
-    printout(Name, "leaving ~p as ~p.", [?FUNCTION_NAME, PID]),
-    {ok, PID}.
+
+start_link(List) when is_list(List) -> 
+  %% get data-map from list
+  Data = data(List),
+  show({"~p.", [?FUNCTION_NAME], Data}),
+
+  #{name := Name} = Data,
+  #{role := Role} = Data,
+  show({Name, "~p, role name: ~p.", [?FUNCTION_NAME, Role], Data}),
+
+  RegID = maps:get(reg_id,Data,err_no_role_id),
+  show({Name, "~p, reg_id: ~p.", [?FUNCTION_NAME, RegID], Data}),
+
+  case RegID of
+    err_no_role_id -> 
+      show({Name, "~p, ~p, registering locally.", [?FUNCTION_NAME, RegID], Data}),
+      {ok,PID} = gen_statem:start_link({local, ?MODULE}, ?MODULE, [Data], []);
+    _ ->
+      show({Name, "~p, registering globally as: ~p.", [?FUNCTION_NAME, Name], Data}),
+      {ok,PID} = gen_statem:start_link({global, Name}, ?MODULE, [Data], [])
+  end,
+  show({Name, "leaving ~p as ~p.", [?FUNCTION_NAME, PID], Data}),
+  {ok, PID}.
+
+
+
 
 start_link() -> 
-    printout("~p.", [self()]),
-    ?MODULE:start_link([]).
+  printout("~p.", [self()]),
+  ?MODULE:start_link([]).
+
+
+
 
 callback_mode() -> [handle_event_function, state_enter].
 
--spec init([{atom(),any()}|[]]) -> {atom(), atom(), map()}.
-init([_H|_T]=Params) -> init(Params, #statem_data{});
-init(Params) -> init([Params], #statem_data{}).
-
--spec init([{atom(),any()}|[]], map()) -> {atom(), atom(), map()}.
-% init([{HKey,HVal}|T], #statem_data{ name=_Name, coparty_id = undefined=_CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = Options} = StatemData) 
-%   when is_atom(HKey) ->
-%     case HKey of 
-%       options ->
-%         {OKey, OVal} = HVal,
-%         Data#statem_data.options = maps:put(OKey, OVal, Data#statem_data.options),
-%         init(T, Data);
-      
 
 
 
+init([Data]) when is_map(Data) -> 
+  %% get name and role from data
+  #{name := Name} = Data,
+  #{role := Role} = Data,
+  show({Name, "~p, finished process params.", [?FUNCTION_NAME], Data}),
+  show({Name, "~p, Data: ~p.", [?FUNCTION_NAME, Data], Data}),
 
-init([{HKey,HVal}|T], #statem_data{ role=Role,name=_Name, coparty_id = undefined=_CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = Options} = StatemData) 
-    when is_atom(HKey) and is_map_key(HKey, Options) -> init(T, maps:put(options, maps:put(HKey, HVal, Options), StatemData));
-init([{name,Name1}|T], #statem_data{ role=Role, name=Name, coparty_id = undefined=CoPartyID, init_state=InitState, states = States, msgs = Msgs, timeouts = Timeouts, state_map = StateMap, queued_actions = Queue, options = Options} = _StatemData) -> 
-    printout("~p, name=~p or ~p (old).",[?FUNCTION_NAME,Name1,Name]),
-    StatemData1 = #statem_data{ role=Role, name = Name1,
-                                coparty_id = CoPartyID,
-                                init_state = InitState,
-                                states = States,
-                                msgs = Msgs,
-                                timeouts = Timeouts,
-                                state_map = StateMap,
-                                queued_actions = Queue,
-                                options = Options },
-    init(T, StatemData1);
-init([{role,Role1}|T], #statem_data{ role=Role,name=Name, coparty_id = undefined=CoPartyID, init_state=InitState, states = States, msgs = Msgs, timeouts = Timeouts, state_map = StateMap, queued_actions = Queue, options = Options} = _StatemData) -> 
-    printout("~p, role=~p or ~p (old).",[?FUNCTION_NAME,Role1,Role]),
-    StatemData1 = #statem_data{ role=Role1,
-                                name = Name,
-                                coparty_id = CoPartyID,
-                                init_state = InitState,
-                                states = States,
-                                msgs = Msgs,
-                                timeouts = Timeouts,
-                                state_map = StateMap,
-                                queued_actions = Queue,
-                                options = Options },
-    init(T, StatemData1);
-init([{init_state,HVal}|T], #statem_data{ role=Role, name=Name, coparty_id = undefined=CoPartyID, init_state=_InitState, states = States, msgs = Msgs, timeouts = Timeouts, state_map = StateMap, queued_actions = Queue, options = Options} = _StatemData) -> 
-    StatemData1 = #statem_data{ role=Role, name = Name,
-                                coparty_id = CoPartyID,
-                                init_state = HVal,
-                                states = States,
-                                msgs = Msgs,
-                                timeouts = Timeouts,
-                                state_map = StateMap,
-                                queued_actions = Queue,
-                                options = Options },
-    init(T, StatemData1);
-init([{timeouts,HVal}|T], #statem_data{ role=Role, name=Name, coparty_id = undefined=CoPartyID, init_state=InitState, states = States, msgs = Msgs, timeouts = Timeouts, state_map = StateMap, queued_actions = Queue, options = Options} = _StatemData) -> 
-    Timeouts1 = maps:merge(Timeouts, HVal),
-    StatemData1 = #statem_data{ role=Role, name = Name,
-                                coparty_id = CoPartyID,
-                                init_state = InitState,
-                                states = States,
-                                msgs = Msgs,
-                                timeouts = Timeouts1,
-                                state_map = StateMap,
-                                queued_actions = Queue,
-                                options = Options },
-    init(T, StatemData1);
-init([{state_map,HVal}|T], #statem_data{ role=Role, name=Name, coparty_id = undefined=CoPartyID, init_state=InitState, states = States, msgs = Msgs, timeouts = Timeouts, state_map = StateMap, queued_actions = Queue, options = Options} = _StatemData) -> 
-    StateMap1 = maps:merge(StateMap, HVal),
-    StatemData1 = #statem_data{ role=Role, name = Name,
-                                coparty_id = CoPartyID,
-                                init_state = InitState,
-                                states = States,
-                                msgs = Msgs,
-                                timeouts = Timeouts,
-                                state_map = StateMap1,
-                                queued_actions = Queue,
-                                options = Options },
-    init(T, StatemData1);
-init([_H|T], #statem_data{ name=_Name, coparty_id = undefined=_CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = _Options} = StatemData) -> init(T, StatemData);
-init([], #statem_data{ role=Role,name=Name, coparty_id = undefined=_CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = _Options} = StatemData) -> 
-    %% get app ID and send self()
-    [{app_id,AppID}|_T] = ets:lookup(tpri,app_id),
-    AppID ! {role, Role, mon, self()},
-    printout(Name, "~p, registered with app.", [?FUNCTION_NAME]),
-    {ok, init_setup_state, StatemData}.
+  %% get app ID and send self()
+  [{app_id,AppID}|_T] = ets:lookup(tpri,app_id),
+  AppID ! {role, Role, mon, self()},
+  show({Name, "~p, registered with app.", [?FUNCTION_NAME], Data}),
+
+  {ok, init_setup_state, Data}.
+
+
 
 
 stop() -> 
-    printout("~p.", [?FUNCTION_NAME]),
-    gen_statem:stop(?MODULE).
+  printout("~p.", [?FUNCTION_NAME]),
+  gen_statem:stop(?MODULE).
 
 
-terminate(Reason, issue_timeout, #statem_data{name=Name, coparty_id = _CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = _Options} = StatemData) ->
-    printout(Name, "~p, timeout: {Reason: ~p},\n\t{State: ~p}", [?FUNCTION_NAME, Reason, StatemData]),
-    ok;
-terminate(Reason, State, #statem_data{name=Name, coparty_id = _CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = _Options} = StatemData) -> 
-    printout(Name, "~p, {Reason: ~p},\n\t{State: ~p},\n\t{StatemData: ~p}.", [?FUNCTION_NAME,Reason,State,StatemData]),
-    ok.
+
+
+terminate(Reason, issue_timeout=_State, #{name:=Name}=Data) ->
+  show({Name, "~p, (timeout)...\n\treason: ~p,\n\tdata: ~p.", [?FUNCTION_NAME, Reason, Data], Data});
+
+terminate(Reason, State, #{name:=Name}=Data) ->
+  show({Name, "~p, (~p)...\n\treason: ~p,\n\tdata: ~p.", [?FUNCTION_NAME, State, Reason, Data], Data}).
+
 
 
 
@@ -169,17 +118,16 @@ recv(Label) -> gen_statem:call(?MODULE, {recv, Label}).
 %% % % % % % %
 %% handling instructions from user/implementation/controller
 %% % % % % % %
-handle_event(info, {act, send, Label, Msg}, _State, #statem_data{ name=Name, coparty_id = _CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = _Options} = _StatemData) ->
-    % printout(Name, "~p, wrong state to recv (~p: ~p), postponing.", [State, Label, Msg]),
-    io:format("\n"),
-    printout(Name, "~p, {act, send, ~p, ~p}...", [?FUNCTION_NAME, Label, Msg]),
-    {keep_state_and_data, [{next_event, cast, {send, Label, Msg}}]};
+handle_event(info, {act, send, Label, Msg, Meta}, _State, #{name:=Name}=Data) ->
+  io:format("\n"),
+  show({Name, "~p, {act, send, ~p, ~p, ~p}...", [?FUNCTION_NAME, Label, Msg, Meta], Data}),
+  {keep_state_and_data, [{next_event, cast, {send, Label, Msg, Meta}}]};
 
-handle_event(info, {act, recv, Label}, _State, #statem_data{ name=Name, coparty_id = _CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = _Options} = _StatemData) ->
-    % printout(Name, "~p, wrong state to recv (~p: ~p), postponing.", [State, Label, Msg]),
-    io:format("\n"),
-    printout(Name, "~p, {recv, ~p},\n\n\tThis is a mistake! To retrieve messages use:\n\t\t\"gen_statem(?THIS_PID, {recv, ~p}).\"", [?FUNCTION_NAME, Label, Label]),
-    {keep_state_and_data, [{next_event, cast, {recv, Label}}]};
+handle_event(info, {act, recv, Label}, _State, #{name:=Name}=Data) ->
+  io:format("\n"),
+  show({Name, "~p, {recv, ~p},\n\n\tThis is a mistake! To retrieve messages use:\n\t\t\"gen_statem(?THIS_PID, {recv, ~p}).\"", [?FUNCTION_NAME, Label, Label], Data}),
+  {keep_state_and_data, [{next_event, cast, {recv, Label}}]};
+
 
 
 
@@ -190,33 +138,31 @@ handle_event(info, {act, recv, Label}, _State, #statem_data{ name=Name, coparty_
 %% % % % % % %
 
 %% catch before start (to receive the CoPartyID)
-handle_event(enter, _OldState, init_setup_state=State, #statem_data{name=Name, coparty_id = undefined, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = _Options} = StatemData) -> 
-    printout(Name, "(->) ~p.", [State]),
-    {keep_state, StatemData, [{state_timeout, 0, wait_to_finish}]};
-handle_event(state_timeout, wait_to_finish, init_setup_state=State, #statem_data{name=Name, coparty_id = undefined, init_state=InitState, states = States, msgs = Msgs, timeouts = Timeouts, state_map = StateMap, queued_actions = Queue, options = Options} = _StatemData) ->
-    printout(Name, "~p, waiting to finish setup.", [State]),
-    receive
-        {_SupID, sup_init, CoID} ->
-            printout(Name, "~p, received coparty ID (~p).", [State,CoID]),
-            printout(Name, "~p, options: ~p.", [State,Options]),
-            {next_state, InitState, #statem_data{ name=Name,
-                                                         coparty_id = CoID, 
-                                                         init_state = InitState,
-                                                         states = States,
-                                                         msgs = Msgs,
-                                                         timeouts = Timeouts,
-                                                         state_map = StateMap,
-                                                         queued_actions = Queue,
-                                                         options = Options }}
-    end;
+handle_event(enter, _OldState, init_setup_state=State, #{name:=Name,coparty_id:=undefined}=Data) -> 
+  show({Name, "(->) ~p.", [State], Data}),
+  {keep_state, Data, [{state_timeout, 0, wait_to_finish}]};
+
+handle_event(state_timeout, wait_to_finish, init_setup_state=State, 
+#{name:=Name,coparty_id:=undefined,fsm:=#{init:=Init},options:=Options}=Data) ->
+  show({Name, "~p, waiting to finish setup.", [State], Data}),
+  receive
+    {_SupID, sup_init, CoPartyID} ->
+      show({Name, "~p, received coparty ID (~p).", [State,CoPartyID], Data}),
+      show(verbose, {Name, "~p, options: ~p.", [State,Options], Data}),
+      Data1 = Data#{coparty_id => CoPartyID, trace => [Init]},
+      show(verbose, {Name, "leaving ~p, entering ~p.", [State,Init], Data1}),
+      {next_state, Init, Data1}
+  end;
 
 %% catch before stop
-handle_event(enter, _OldState, stop_state=State, #stop_data{reason = _Reason, statem_data = _StatemData} = Data) -> 
-    printout("(->) ~p.", [State]),
-    {keep_state, Data, [{state_timeout, 0, exit_deferral}]};
-handle_event(state_timeout, exit_deferral, stop_state=State, #stop_data{reason = Reason, statem_data = #statem_data{name=Name, coparty_id = _CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = _Options} = StatemData} = _Data) -> 
-    printout(Name, "~p, ~p, StatemData: \n\t~p.", [State, Reason, StatemData]),
-    {stop, Reason, StatemData};
+handle_event(enter, _OldState, stop_state=State, #{data:=#{name:=Name}=Data}=StopData) -> 
+  show({Name, "(->) ~p.", [State], Data}),
+  {keep_state, StopData, [{state_timeout, 0, exit_deferral}]};
+
+handle_event(state_timeout, exit_deferral, stop_state=State, #{reason:=Reason,data:=#{name:=Name}=Data}=_StopData) -> 
+  show({Name, "~p, ~p, Data: \n\t~p.", [State, Reason, Data], Data}),
+  {stop, Reason, Data};
+
 
 
 
@@ -226,256 +172,322 @@ handle_event(state_timeout, exit_deferral, stop_state=State, #stop_data{reason =
 %% states enter
 %% % % % % % %
 
-
 %% state enter, issue timeout (stop and cause supervisor to notice)
-handle_event(enter, _OldState, issue_timeout=State, #statem_data{ name=Name, coparty_id = _CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = _Options} = StatemData) ->
-    printout(Name, "(->) ~p.", [State]),
-    {keep_state, #stop_data{reason = error_exceeded_throttling_capacity, statem_data = StatemData}, [{state_timeout, 0, goto_stop}]};
+handle_event(enter, _OldState, issue_timeout=State, #{name:=Name}=Data) ->
+  show({Name, "(->) ~p.", [State], Data}),
+  StopData = stop_data([{reason, error_exceeded_throttling_capacity}, {data, Data}]),
+  {keep_state, StopData, [{state_timeout, 0, goto_stop}]};
+
 handle_event(state_timeout, goto_stop, issue_timeout=_State, Data) ->
-    {next_state, stop_state, Data};
+  {next_state, stop_state, Data};
+
+
 
 
 %% state enter, mixed choice (and no queued actions)
-handle_event(enter, _OldState, State, #statem_data{ name=Name, coparty_id = _CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = Timeouts, state_map = StateMap, queued_actions = [], options = _Options} = StatemData)
-    when is_map_key(State, Timeouts) ->
-        {TimeoutDuration, TimeoutState} = maps:get(State, Timeouts),
-        Actions = maps:get(State, StateMap, none),
-        printout(Name, "(->) ~p [t:~p], available actions: ~p.", [State, TimeoutDuration, Actions]),
-        if Actions=:=none -> printout(Name, "~p, StateMap: ~p.", [State, StateMap]); true-> ok end,
-        {keep_state, StatemData, [{state_timeout, TimeoutDuration, TimeoutState}]};
+handle_event(enter, _OldState, State, #{name:=Name,fsm:=#{timeouts:=Timeouts,map:=Map},queue:=#{on:=[],off:=[]}}=Data)
+when is_map_key(State, Timeouts) ->
+  %% get timeout
+  {TimeoutDuration, TimeoutState} = maps:get(State, Timeouts),
+  %% get current actions
+  Actions = maps:get(State, Map, none),
+  %% display available actions if verbose
+  #{options:=#{printout:=#{verbose:=Verbose}}} = Data,
+  case Verbose of 
+    true -> 
+      %% assuming mixed-states are modelled as two (with silent/timeout edge between them)
+      Action = lists:nth(1, maps:keys(Actions)),
+      %% get outgoing edges
+      #{Action:=Edges} = Actions,
+      EdgeStr = lists:foldl(fun({Label, Succ}, Acc) -> Str = io_lib:format("\n\t~p: <~p> -> ~p",[Action, Label, Succ]), Acc ++ [Str] end, [], maps:to_list(Edges)),
+      show(verbose, {Name, "(->) ~p [t:~p], actions:~s.", [State, TimeoutDuration, EdgeStr], Data});
+    _ ->
+      show({Name, "(->) ~p [t:~p].", [State, TimeoutDuration], Data})
+  end,
+  %% if no actions, this is unusual (and likely unintended)
+  case Actions==none of
+    true -> 
+      show({Name, "~p, unusual, no actions from this state:\n\t~p.", [State, Map], Data});
+    _ -> ok
+  end,
+  {keep_state, Data, [{state_timeout, TimeoutDuration, TimeoutState}]};
+
+
 
 
 %% state enter, no queued actions and no mixed-choice
-handle_event(enter, _OldState, State, #statem_data{ name=Name, coparty_id = _CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = StateMap, queued_actions = [], options = _Options} = _StatemData) ->
-    Actions = maps:get(State, StateMap, none),
-    printout(Name, "(->) ~p: ~p.", [State, Actions]),
-    if Actions=:=none -> printout(Name, "~p, StateMap: ~p.", [State, StateMap]); true-> ok end,
-    keep_state_and_data;
+handle_event(enter, _OldState, State, #{name:=Name,fsm:=#{map:=Map},queue:=#{on:=[],off:=[]}}=Data) ->
+  %% get current actions
+  Actions = maps:get(State, Map, none),
+  %% display available actions if verbose
+  #{options:=#{printout:=#{verbose:=Verbose}}} = Data,
+  case Verbose of 
+    true -> 
+      %% assuming mixed-states are modelled as two (with silent/timeout edge between them)
+      Action = lists:nth(1, maps:keys(Actions)),
+      %% get outgoing edges
+      #{Action:=Edges} = Actions,
+      EdgeStr = lists:foldl(fun({Label, Succ}, Acc) -> Str = io_lib:format("\n\t~p: <~p> -> ~p",[Action, Label, Succ]), Acc ++ [Str] end, [], maps:to_list(Edges)),
+      show(verbose, {Name, "(->) ~p, actions:~s.", [State, EdgeStr], Data});
+    _ ->
+      show({Name, "(->) ~p.", [State], Data})
+  end,
+  %% if no actions, this is unusual (and likely unintended)
+  case Actions==none of
+    true -> 
+      show({Name, "~p, unusual, no actions from this state: ~p.", [State, Map], Data});
+    _ -> ok
+  end,
+  keep_state_and_data;
 
 
-%% state enter, handle queued actions
-handle_event(enter, _OldState, State, #statem_data{ name=Name, coparty_id = _CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = [_H], options = _Options} = _StatemData) ->
-    printout(Name, "(->) ~p, with queued actions.", [State]),
-    {keep_state_and_data, [{state_timeout,0,process_queue}]};
-handle_event(enter, _OldState, State, #statem_data{ name=Name, coparty_id = _CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = [_H|T], options = _Options} = _StatemData) ->
-    printout(Name, "(->) ~p, with (~p) queued actions.", [State, length(T)+1]),
-    {keep_state_and_data, [{state_timeout,0,process_queue}]};
-handle_event(state_timeout, process_queue, State, #statem_data{ name=Name, coparty_id = CoPartyID, init_state=InitState, states = States, msgs = Msgs, timeouts = Timeouts, state_map = StateMap, queued_actions = [H|T], options = Options} = _StatemData) ->
-    printout(Name, "(->) ~p, queued action: ~p.", [State, H]),
-    StatemData1 = #statem_data{ name=Name,
-                                coparty_id = CoPartyID,
-                                init_state = InitState,
-                                states = States,
-                                msgs = Msgs,
-                                timeouts = Timeouts,
-                                state_map = StateMap,
-                                queued_actions = T,
-                                options = Options },
-    {repeat_state, StatemData1, [{next_event, cast, H}]};
+
+
+%% state enter, begin handling queued actions
+handle_event(enter, _OldState, State, #{name:=Name,queue:=#{on:=[],off:=Off}}=Data) when is_list(Off) ->
+  show({Name, "(->) ~p, with (~p) queued actions.", [State, length(Off)], Data}),
+  {keep_state_and_data, [{state_timeout,0,begin_process_queue}]};
+
+handle_event(state_timeout, begin_process_queue, _State, #{queue:=#{on:=[],off:=Off}}=Data) ->
+  %% move off-queue to (active) on-queue
+  Data1 = Data#{queue=>#{on=>Off,off=>[]}},
+  {repeat_state, Data1};
+
+
+
+
+%% state enter, continue handling queued actions (list Off may be non-empty, containing those already tried this state)
+handle_event(enter, _OldState, State, #{name:=Name,queue:=#{on:=On}}=Data) when is_list(On) ->
+  show({Name, "(->) ~p (handling queue).", [State], Data}),
+  {keep_state_and_data, [{state_timeout,0,continue_process_queue}]};
+
+handle_event(state_timeout, continue_process_queue, State, 
+#{ name:=Name, 
+   queue:=#{on:=[#{label:=Label,payload:=Payload,aging:=#{enabled:=LocalAgingEnabled,age:=Age}=Aging}=H|T]},
+   options:=#{queue:=#{enabled:=true,aging:=#{enabled:=GlobalAgingEnabled,max_age:=MaxAge}}} }=Data) ->
+  show({Name, "(->) ~p, queued action: ~p.", [State, H]}),
+  %% update next data
+  Data1 = Data#{queue=>#{on=>T}},
+  Aging1 = Aging#{age=>Age+1},
+  %% check if aging enabled
+  case MaxAge of
+    -1 -> %% overrides both global and local aging, disabling them both
+      {repeat_state, Data1, [{next_event, cast, {send, Label, Payload, Aging1}}]};
+    _ -> %% need to check if message is aged and valid to send
+      case GlobalAgingEnabled or LocalAgingEnabled of
+        true -> %% aging applies to this action
+          case Age>=MaxAge of
+            true -> %% message is young enough to try again
+              {repeat_state, Data1, [{next_event, cast, {send, Label, Payload, Aging1}}]};
+            _ -> %% message is too old to try again
+              {repeat_state, Data1}
+          end;
+        _ -> %% message cannot be aged
+          {repeat_state, Data1, [{next_event, cast, {send, Label, Payload, Aging1}}]}
+      end
+  end;
+
+
+
 
 
 
 %% % % % % % %
-%% sending actions, from correct states
+%% sending actions
 %% % % % % % %
-handle_event(cast, {send, Label, Msg}, State, #statem_data{ name=Name, coparty_id = CoPartyID, init_state=InitState, states = States, msgs = Msgs, timeouts = Timeouts, state_map = StateMap, queued_actions = Queue, options = Options} = _StatemData) 
-    when is_map_key(State, StateMap)
-    and is_atom(map_get(Label, map_get(send, map_get(State, StateMap)))) ->
-    CoPartyID ! {self(), Label, Msg},
-    NextState = maps:get(Label, maps:get(send, maps:get(State, StateMap))),
-    StatemData1 = #statem_data{ name=Name,
-                                coparty_id = CoPartyID,
-                                init_state = InitState,
-                                states = [NextState] ++ States,
-                                msgs = Msgs,
-                                timeouts = Timeouts,
-                                state_map = StateMap,
-                                queued_actions = Queue,
-                                options = Options },
-    printout(Name, "~p, send (~p: ~p).", [State, Label, Msg]),
-    {next_state, NextState, StatemData1};
 
+%% from correct states
+handle_event(cast, {send, Label, Payload, Meta}, State, #{name:=Name,coparty_id:=CoPartyID,fsm:=#{map:=Map},trace:=Trace}=Data) 
+when is_map_key(State, Map) and is_atom(map_get(Label, map_get(send, map_get(State, Map)))) and is_list(Meta) ->
+  %% send message to co-party
+  CoPartyID ! {self(), Label, Payload},
+  %% get next state
+  #{State:=#{send:=#{Label:=NextState}}} = Map,
+  % NextState = maps:get(Label, maps:get(send, maps:get(State, StateMap))),
+  %% update trace
+  Data1 = Data#{trace=>[NextState] ++ Trace},
+  show({Name, "~p, send (~p: ~p).", [State, Label, Payload], Data1}),
+  {next_state, NextState, Data1};
 
-
-%% % % % % % %
-%% sending actions, from wrong states
-%% % % % % % %
-handle_event(cast, {send, Label, Msg}, State, #statem_data{ name=Name, coparty_id = CoPartyID, init_state=InitState, states = States, msgs = Msgs, timeouts = Timeouts, state_map = StateMap, queued_actions = Queue, options = Options} = _StatemData) ->
-    %% queue if enabled
-    QueueOptions = maps:get(queue_actions, Options),
-    QueueEnabled = maps:get(enabled,QueueOptions),
-    if (QueueEnabled=:=true) ->
-      printout(Name, "~p, wrong state to send (~p: ~p), adding to queue.", [State, Label, Msg]),
-      Queue1 = Queue ++ [{send, Label, Msg, {age, 0}}];
-      true -> 
-        printout(Name, "~p, wrong state to send (~p: ~p), ignoring.", [State, Label, Msg]),
-        Queue1 = Queue
-    end,
-    StatemData1 = #statem_data{ name=Name,
-                                coparty_id = CoPartyID,
-                                init_state = InitState,
-                                states = States,
-                                msgs = Msgs,
-                                timeouts = Timeouts,
-                                state_map = StateMap,
-                                queued_actions = Queue1,
-                                options = Options },
-    {keep_state, StatemData1};
-
-
-%% % % % % % %
-%% sending queued actions, from wrong states
-%% % % % % % %
-handle_event(cast, {send, Label, Msg, {age, Age}}, State, #statem_data{ name=Name, coparty_id = CoPartyID, init_state=InitState, states = States, msgs = Msgs, timeouts = Timeouts, state_map = StateMap, queued_actions = Queue, options = Options} = _StatemData) ->
-    %% queue if enabled
-    QueueOptions = maps:get(queue_actions, Options),
-    QueueEnabled = maps:get(enabled,QueueOptions),
-    if (QueueEnabled=:=true) ->
-      if (Age=<?MSG_AGE_LIMIT) -> 
-          printout(Name, "~p, wrong state to send (~p: ~p), adding to queue.", [State, Label, Msg]),
-          Queue1 = Queue ++ [{send, Label, Msg, {age, Age+1}}];
+%% from wrong states, and queue enabled 
+handle_event(cast, {send, Label, Payload, Meta}, State, #{name:=Name,fsm:=#{map:=Map},queue:=#{on:=On,off:=Off},options:=#{queue:=#{enabled:=true}}}=Data) 
+when is_map_key(State, Map) and is_list(Meta) ->
+  %% make sure 
+  Action = new_queued_action(Label, Payload, Meta),
+  %% check if this message is flagged to be queued (default: true)
+  #{meta:=#{queue:=#{enabled:=ActionQueueEnabled}}} = Action,
+  case ActionQueueEnabled of
+    true -> %% this message is flagged to be queued 
+      Off1 = Off ++ [Action];
+    _ -> %% this message has been specifically flagged to not be queued
+      Off1 = Off,
+      %% verbose explanation (?)
+      #{options:=#{printout:=#{verbose:=Verbose}}} = Data,
+      case Verbose of 
         true -> 
-          printout(Name, "~p, wrong state to send (~p: ~p), but too old.", [State, Label, Msg]),
-          Queue1 = Queue
+          %% assuming mixed-states are modelled as two (with silent/timeout edge between them)
+          show(verbose, {Name, "~p, wrong state to send (~p: ~p),\n\tand global-queue option set to true,\n\tbut -- message explicitly flagged to not be queue-able:\n\t~p.", [State, Label, Payload, Action], Data});
+        _ ->
+          show({Name, "~p, unusual, cannot add to queue: ~p.", [State, {Label, Payload}], Data})
+      end
+  end,
+  %% next data has updated off-queue 
+  Data1 = Data#{queue:=#{on=>On,off=>Off1}},
+  {keep_state, Data1};
+
+%% from wrong states, and queue explicitly enabled 
+handle_event(cast, {send, Label, Payload, #{queue:=true}=Meta}, State, #{name:=Name,fsm:=#{map:=Map},queue:=#{off:=Off}=Queue,options:=#{queue:=#{enabled:=false}}}=Data) 
+when is_map_key(State, Map) and is_list(Meta) ->
+  %% assimulate into map-format with full meta
+  Action = new_queued_action(Label, Payload, Meta),
+  %% verbose explanation (?)
+  #{options:=#{printout:=#{verbose:=Verbose}}} = Data,
+  case Verbose of 
+    true -> 
+      %% assuming mixed-states are modelled as two (with silent/timeout edge between them)
+      show(verbose, {Name, "~p, wrong state to send (~p: ~p),\n\tand global-queue option set to false,\n\tbut -- message flagged to be queue-able:\n\t~p.", [State, Label, Payload, Action], Data});
+    _ ->
+      show({Name, "~p, added to queue: ~p.", [State, {Label, Payload}], Data})
+  end,
+  %% add to queue
+  Off1 = Off ++ [Action],
+  %% next data has updated off-queue 
+  Data1 = Data#{queue=>Queue#{off=>Off1}},
+  {keep_state, Data1};
+
+
+
+
+
+
+%% % % % % % %
+%% receiving actions, 
+%% % % % % % %
+
+%% from correct states
+handle_event(info, {CoPartyID, Label, Payload}, State, #{name:=Name,coparty_id:=CoPartyID,fsm:=#{map:=Map},msgs:=Msgs,queue:=Queue,options:=#{forward_receptions:=#{enabled:=ForwardingEnabled,to:=ForwardTo,any:=ForwardAny,labels:=ForwardLabels},queue:=#{flush_after_recv:=#{enabled:=FlushingEnabled,after_any:=FlushAfterAny,after_labels:=FlushAfterLabels}}}}=Data) 
+when is_map_key(State, Map) and is_atom(map_get(Label, map_get(recv, map_get(State, Map)))) ->  
+  %% forward if necessary
+  case ForwardingEnabled of
+    true ->
+      case ForwardAny or lists:member(Label, ForwardLabels) of
+        true ->
+          show(verbose, {Name, "~p, forwarding msg to ~p.", [State, ForwardTo], Data}),
+          ForwardTo ! {self(), Label, Payload};
+        _ -> ok
       end;
-      true -> 
-        printout(Name, "~p, wrong state to send (~p: ~p), ignoring.", [State, Label, Msg]),
-        Queue1 = Queue
-    end,
-    StatemData1 = #statem_data{ name=Name,
-                                coparty_id = CoPartyID,
-                                init_state = InitState,
-                                states = States,
-                                msgs = Msgs,
-                                timeouts = Timeouts,
-                                state_map = StateMap,
-                                queued_actions = Queue1,
-                                options = Options },
-    {keep_state, StatemData1};
+    _ -> ok
+  end,
+  %% flush queue if necessasry
+  case FlushingEnabled of
+    true -> %% check when to flush
+      case FlushAfterAny or lists:member(Label, FlushAfterLabels) of
+        true -> 
+          show(verbose, {Name, "~p, flushing queue after receiving.", [State], Data}),
+          Queue1 = Queue#{on=>[],off=>[]};
+        _ -> Queue1 = Queue
+      end; 
+    _ -> Queue1 = Queue
+  end,
+  %% add to list of receives to check next time we enter state
+  #{check_recvs:=CheckRecvs} = Queue1,
+  Queue2 = Queue#{check_recvs=>CheckRecvs ++ [Label]},
+  %% add to front of list of messages received under this label
+  Payloads = maps:get(Label, Msgs, []),
+  Payloads1 = [Payload] ++ Payloads,
+  Msgs1 = Msgs#{Label => Payloads1},
+  %% get next state
+  #{State:=#{recv:=#{Label:=NextState}}} = Map,
+  %% update data
+  Data1 = Data#{msgs=>Msgs1,queue=>Queue2},
+  show({Name, "~p, recv (~p: ~p) -> ~p.", [State, Label, Payload, NextState], Data1}),
+  {next_state, NextState, Data1};
 
-
-%% % % % % % %
-%% receiving actions, from correct states
-%% % % % % % %
-handle_event(info, {CoPartyID, Label, Msg}, State, #statem_data{ name=Name, coparty_id = CoPartyID, init_state=InitState, states = States, msgs = Msgs, timeouts = Timeouts, state_map = StateMap, queued_actions = Queue, options = Options} = _StatemData) 
-    when is_map_key(State, StateMap)
-    and is_atom(map_get(Label, map_get(recv, map_get(State, StateMap)))) ->    
-    %% forward if necessary
-    ForwardReceptions = maps:get(forward_receptions, Options),
-    % printout(Name, "~p, forward_receptions: ~p)", [State,ForwardReceptions]),
-    ForwardMsg = maps:get(enabled,ForwardReceptions),
-    ForwardTo = maps:get(to,ForwardReceptions),
-    if (ForwardMsg=:=true) -> 
-      printout(Name, "~p, forwarding msg to (~p).", [State,ForwardTo]),
-      ForwardTo ! {self(), Label, Msg};
-      true -> ok 
-    end,
-    %% flush if necessary
-    QueueOptions = maps:get(queue_actions, Options),
-    FlushAfterRecv = maps:get(flush_after_recv,QueueOptions),
-    if (FlushAfterRecv=:=true) -> 
-      printout(Name, "~p, flushing queue.", [State]),
-      Queue1 = [];
-      true -> Queue1 = Queue 
-    end,
-    %% add message to the front of the queue of messages received by this label
-    case maps:find(Label, Msgs) of
-        {ok, StateMsgs} -> 
-            Msgs1 = maps:put(Label, [Msg] ++ StateMsgs, Msgs);
-        error -> 
-            Msgs1 = maps:put(Label, [Msg], Msgs)
-    end,
-    %% next state
-    NextState = maps:get(Label, maps:get(recv, maps:get(State, StateMap))),
-    StatemData1 = #statem_data{ name=Name,
-                                coparty_id = CoPartyID,
-                                init_state = InitState,
-                                states = [NextState] ++ States,
-                                msgs = Msgs1,
-                                timeouts = Timeouts,
-                                state_map = StateMap,
-                                queued_actions = Queue1,
-                                options = Options },
-    printout(Name, "~p, recv (~p: ~p) -> ~p.", [State, Label, Msg, NextState]),
-    {next_state, NextState, StatemData1};
+%% from wrong states 
+handle_event(info, {CoPartyID, Label, Payload}, State, #{name:=Name,coparty_id:=CoPartyID}=Data) ->
+  show({Name, "~p, wrong state to recv (~p: ~p), postponing.", [State, Label, Payload], Data}),
+  {keep_state_and_data, [postpone]};
 
 
 
-%% % % % % % %
-%% receiving actions, from wrong states
-%% % % % % % %
-handle_event(info, {CoPartyID, Label, Msg}, State, #statem_data{ name=Name, coparty_id = CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = _Options} = _StatemData) ->
-    printout(Name, "~p, wrong state to recv (~p: ~p), postponing.", [State, Label, Msg]),
-    {keep_state_and_data, [postpone]};
 
 
 
 %% % % % % % %
 %% mixed-choice (timeouts)
 %% % % % % % %
-handle_event(state_timeout, NextState, State, #statem_data{ name=Name, coparty_id = _CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = _Options} = StatemData) ->
-    printout(Name, "~p, internal timeout (~p).", [State, NextState]),
-    {next_state, NextState, StatemData};
+handle_event(state_timeout, NextState, State, #{name:=Name}=Data) ->
+  show({Name, "~p, internal timeout (~p).", [State, NextState], Data}),
+  {next_state, NextState, Data};
+
+
+
 
 
 
 %% % % % % % %
 %% retreive latest message of given label
 %% % % % % % %
-handle_event({call, From}, {recv, Label}, State, #statem_data{ name=Name, coparty_id = _CoPartyID, init_state=_InitState, states = _States, msgs = Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = _Options} = _StatemData) -> 
-    printout(Name, "~p, looking for msg with label (~p).", [State, Label]),
-    case maps:find(Label, Msgs) of
-        {ok, [H]=Matches} -> 
-            printout("~p, found msg (~p: ~p) out of 1.", [State, Label, H]),
-            ReplyMsg = {ok, #{  label => Label, msg => H, total => 1, matches => Matches }};
-        {ok, [H|T]=Matches} -> 
-            NumMsgs = lists:length(T)+1,
-            printout("~p, found msg (~p: ~p) out of ~p.", [State, Label, H, NumMsgs]),
-            ReplyMsg = {ok, #{  label => Label, msg => H, total => NumMsgs, matches => Matches }};
-         error -> 
-            printout("~p, no msgs with label (~p) found.", [State, Label]),
-            ReplyMsg = {error, no_msg_found_under_label}
-    end,
-    {keep_state_and_data, [{reply, From, ReplyMsg}]};
+handle_event({call, From}, {recv, Label}, State, #{name:=Name,msgs:=Msgs}=Data) -> 
+  show({Name, "~p, looking for msg with label (~p).", [State, Label], Data}),
+  case maps:get(Label, Msgs, no_msg_found_under_label) of
+    no_msg_found_under_label=Err -> 
+      show({"~p, no msgs with label (~p) found.", [State, Label], Data}),
+      ReplyMsg = {error, Err};
+    Matches -> 
+      NumMsgs = lists:length(Matches),
+      H = lists:nth(1, Matches),
+      show({"~p, found msg (~p: ~p) out of ~p.", [State, Label, H, NumMsgs], Data}),
+      ReplyMsg = {ok, #{  label => Label, matches => Matches }}
+  end,
+  {keep_state_and_data, [{reply, From, ReplyMsg}]};
+
+
+
+
 
 
 %% % % % % % %
-%% handle external requests to change options
+%% handle external requests to 
 %% % % % % % %
-handle_event({call, From}, {options, Key, Val}, State, #statem_data{ name=Name, coparty_id = CoPartyID, init_state=InitState, states = States, msgs = Msgs, timeouts = Timeouts, state_map = StateMap, queued_actions = Queue, options = Options} = _StatemData) 
-  when is_map_key(Key, Options) ->    
-    printout(Name, "~p, changing option: ~p => ~p.", [State, Key, Val]),
-    Options1 = maps:put(Key, Val, Options),
-    % printout(Name, "~p, option: ~p}.", [?FUNCTION_NAME, Options]),
-    % printout(Name, "~p, option1: ~p}.", [?FUNCTION_NAME, Options1]),
-    Data1 = #statem_data{ name = Name,
-                          coparty_id = CoPartyID,
-                          init_state = InitState,
-                          states = States,
-                          msgs = Msgs,
-                          timeouts = Timeouts,
-                          state_map = StateMap,
-                          queued_actions = Queue,
-                          options = Options1 },
-    {keep_state, Data1, [{reply, From, ok}]};
+
+%% change options (using list-depth-key val)
+handle_event({call, From}, {options, [H|T]=Keys, Val}, State, #{name:=Name,options:=Options}=Data) 
+when is_list(Keys) ->    
+  show(verbose, {Name, "~p, changing option: ~p => ~p.", [State, Keys, Val], Data}),
+  Options1 = list_to_map_setter(H, T, Options),
+  Data1 = Data#{options=>Options1},
+  {keep_state, Data1, [{reply, From, ok}]};
+
+%% change options (single surface level key-val)
+handle_event({call, From}, {options, Key, Val}, State, #{name:=Name,options:=Options}=Data) 
+when is_map_key(Key, Options) ->    
+  show(verbose, {Name, "~p, changing option: ~p => ~p.", [State, Key, Val], Data}),
+  Options1 = maps:put(Key, Val, Options),
+  Data1 = Data#{options=>Options1},
+  {keep_state, Data1, [{reply, From, ok}]};
+    
+%% request copy of options
+handle_event({call, From}, get_options, State, #{name:=Name,options:=Options}=Data) ->    
+  show(verbose, {Name, "~p, sharing options with ~p,\n\tOptions: ~p.", [State, From, Options], Data}),
+  {keep_state, Data, [{reply, From, {ok, Options}}]};
+
+%% request fsm terminate
+handle_event({call, _From}, {terminate, Reason}, State, #{name:=Name}=Data) ->
+  show({Name, "~p, termination, reason: ~p.", [State, Reason], Data}),
+  Data1 = stop_data([{reason = Reason}, {data = Data}]), 
+  {next_state, stop_state, Data1};
 
 
-%% % % % % % %
-%% handle external requests to change options
-%% % % % % % %
-handle_event({call, _From}, {terminate, Reason}, State, #statem_data{ name=Name, coparty_id = _CoPartyID, init_state=_InitState, states = _States, msgs = _Msgs, timeouts = _Timeouts, state_map = _StateMap, queued_actions = _Queue, options = _Options} = StatemData) ->
-    printout(Name, "~p, termination, reason: ~p.", [State, Reason]),
-    Data1 = #stop_data{reason = Reason, statem_data = StatemData}, 
-    {next_state, stop_state, Data1};
+
+
 
 
 %% % % % % % %
 %% anything else
 %% % % % % % %
-handle_event(EventType, EventContent, State, Data) ->
-    printout(Data#statem_data.name, "error, reached unknown event:\n\tEventType: ~p,\n\tEventContent: ~p,\n\tState: ~p,\n\tData: ~p.", [EventType, EventContent, State, Data]),
-    {next_state, stop_state, #stop_data{ reason = unknown_event_to_handle, statem_data = Data}}.
-
-
-
+handle_event(EventType, EventContent, State, #{name:=Name}=Data) ->
+  show({Name, "~p, error, reached unhandled event...\n\tEventType: ~p,\n\tEventContent: ~p,\n\tData: ~p.", [State, EventType, EventContent, Data], Data}),
+  Data1 = stop_data([{reason, unhandled_event}, {data, Data}]), 
+  {next_state, stop_state, Data1}.
 

@@ -29,7 +29,7 @@ start_link(Params) ->
   printout(?NAME, "~p.", [?FUNCTION_NAME]),
   % printout(?NAME, "~p, Params: ~p.", [?FUNCTION_NAME, Params]),
   Params1 = maps:from_list(Params),
-  RoleID = maps:get(id,Params1),
+  RoleID = maps:get(reg_id,Params1),
   ?assert(RoleID==?MODULE, io_lib:format("Error in ~p: Module of file (~p) does not match Role/ID provided (~p).",[?MODULE,?MODULE,RoleID])),
   Name = maps:get(name,Params1),
   ?assert(Name==?NAME, io_lib:format("Error in ~p: Name in file (~p) does not match Name provided (~p).",[?MODULE,?NAME,Name])),
@@ -54,11 +54,11 @@ init(Params) ->
     {setup_coparty, Client} -> 
       %% setup options with monitor
       %% request messages to be immediately forwarded automatically
-      special_request(Client, {options, forward_receptions, #{enabled=>true,to=>self()}}),
+      special_request(Client, {options, forward_receptions, #{enabled=>true,to=>self(),any=>true}}),
       %% allow sending actions to be queued if untimely
-      special_request(Client, {options, queue_actions, #{enabled=>true,flush_after_recv=>false}}),
+      special_request(Client, {options, queue, #{enabled=>true,flush_after_recv=>#{enabled => false}}}),
       %% monitor printout
-      special_request(Client, {options, printout_enabled, true}),
+      special_request(Client, {options, printout, #{ enabled => true, verbose => true }}),
       %% wait for signal to begin
       receive
         {setup_finished, start} -> 

@@ -1,5 +1,6 @@
 -compile({nowarn_unused_function, [ {mon_send,2},
                                     {mon_send,3},
+                                    {mon_send,4},
                                     {mon_recv,2},
                                     {mon_recv,3},
                                     {mon_terminate,1},
@@ -7,7 +8,8 @@
                                     {special_request,2} ]}).
 
 %% callback functions (intended for user to monitor)
-mon_send(To, Label, Payload) -> To ! {act, send, Label, Payload}.
+mon_send(To, Label, Payload, Meta) -> To ! {act, send, Label, Payload, Meta}.
+mon_send(To, Label, Payload) -> mon_send(To, Label, Payload, []).
 mon_send(To, Label) -> mon_send(To, Label, "").
 
 mon_recv(all, From, Label) -> 

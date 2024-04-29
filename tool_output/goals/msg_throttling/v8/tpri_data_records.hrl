@@ -19,18 +19,18 @@
                          shutdown = 2000,
                          type = worker }).
 
--record(statem_data, { role, name,
-                       coparty_id, 
-                       init_state,
-                       states = [], 
-                       msgs = #{},
-                       timeouts = #{}, 
-                       state_map = #{},
-                       queued_actions = [],
-                       options = #{ allow_delayable_sends => false, 
-                                    printout_enabled => true,
-                                    queue_actions => #{enabled => true, flush_after_recv => true},
-                                    forward_receptions => #{ enabled => false, to => undefined}} }).
+% -record(statem_data, { role, name,
+%                        coparty_id, 
+%                        init_state,
+%                        states = [], 
+%                        msgs = #{},
+%                        timeouts = #{}, 
+%                        state_map = #{},
+%                        queued_actions = [],
+%                        options = #{ delayable_sends => #{enabled => false}, 
+%                                     printout => #{enabled => true, verbose => false},
+%                                     queue_actions => #{enabled => true, flush_after_recv => #{ any => true, spec_labels => []}},
+%                                     forward_receptions => #{ enabled => false, to => undefined, any => true, spec_labels => []}} }).
 
--record(stop_data, {reason, statem_data = #statem_data{}}).
+% -record(stop_data, {reason, statem_data = #statem_data{}}).
 

@@ -39,7 +39,7 @@ init(Params) ->
   % printout("~p, lookup AppID: ~p.", [?FUNCTION_NAME, AppID]),
   AppID ! {tpri, server_id, self()},
 
-  {ok, SupID} = tpri_sup:start_link(Params),
+  {ok, _SupID} = tpri_sup:start_link(Params),
 
   {ok, #state{}}.
 
