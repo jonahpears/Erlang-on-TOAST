@@ -13,14 +13,14 @@
 -define(NAME, ali_role_imp).
 
 %% comment out below to change behaviour of program
-% -define(SAFE_UPPER_BOUND, 2). %% ! <- comment in/out
+-define(SAFE_UPPER_BOUND, 2). %% ! <- comment in/out
 -ifdef(SAFE_UPPER_BOUND).
 -define(UPPER_BOUND, ?SAFE_UPPER_BOUND).
 -else.
 -define(UPPER_BOUND, 10).
 -endif.
 
-% -define(SAFE_DURATION, 1000). %% ! <- comment in/out
+-define(SAFE_DURATION, 1000). %% ! <- comment in/out
 -ifdef(SAFE_DURATION).
 -define(DURATION, ?SAFE_DURATION).
 -else.
@@ -59,21 +59,24 @@ init(Params) ->
 
   %% wait to receive coparty ID
   receive
-    {setup_coparty, ToServer} -> 
+    {setup_coparty, Server} -> 
       %% setup options with monitor
       %% allow sending actions to be queued if untimely
-      special_request(ToServer, {options, queue, #{enabled=>true,flush_after_recv=>#{enabled => false}}}),
+      special_request(Server, {options, queue, #{enabled=>true,flush_after_recv=>#{enabled => false, after_any => false, after_labels => []},aging => #{ enabled => false, max_age => -1}}}),
+      % special_request(Server, {options, queue, #{enabled=>true,flush_after_recv=>#{enabled => false}}}),
+      %% allow messages to be sent without labels
+      special_request(Server, {options, support_auto_label, #{enabled=>true}}),
       %% monitor printout
-      special_request(ToServer, {options, printout, #{ enabled => true, verbose => true }}),
+      special_request(Server, {options, printout, #{ enabled => true, verbose => true }}),
       %% wait for signal to begin
       receive
         {setup_finished, start} -> 
           printout(?NAME, "~p, build upper bound: ~p.", [?FUNCTION_NAME, ?UPPER_BOUND]),
           printout(?NAME, "~p, build duration: ~p.", [?FUNCTION_NAME, ?DURATION]),
           printout(?NAME, "leaving ~p.", [?FUNCTION_NAME]),
-          main(ToServer),
+          main(Server),
           %% finish ?
-          mon_terminate(ToServer)
+          mon_terminate(Server)
       end
   end.
 
@@ -92,30 +95,30 @@ init(Params) ->
 %% 2) the protocol specifies that 2 unacknowledged messages is a violation
 %% 3) if ali sends a message of "***" or more, the server will be forced to violate the protocol
 
-main(ToServer) ->
+main(Server) ->
   %% determine loop iterations
-  Num = rand_from_range(1, 10),
+  Num = rand_from_range(1, 100),
   %% begin loop
-  loop(ToServer, Num).
+  loop(Server, Num).
 
 %% loop finished
-loop(_ToServer, 0) -> 
+loop(_Server, 0) -> 
   printout(?NAME, "~p, finished.", [?FUNCTION_NAME]),
   ok;
 
 %% main loop
-loop(ToServer, Iterations) ->
+loop(Server, Iterations) ->
   %% get length of next message to sent
   Len = rand_from_range(1, ?UPPER_BOUND),
-  printout(?NAME, "~p, building ~p.",[?FUNCTION_NAME,Iterations]),
+  % printout(?NAME, "~p, building ~p.",[?FUNCTION_NAME,Iterations]),
 
   %% build and send message 
   Message = msg_builder(Len) ++ integer_to_list(Iterations),
-  mon_send(ToServer, msg, Message),
-  printout(?NAME, "~p, sent ~p.",[?FUNCTION_NAME,Message]),
+  mon_send(Server, Message),
+  % printout(?NAME, "~p, sent ~p.",[?FUNCTION_NAME,Message]),
 
   %% loop
-  loop(ToServer, Iterations-1).
+  loop(Server, Iterations-1).
 
 
 %% build message of length Num

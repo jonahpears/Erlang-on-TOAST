@@ -22,7 +22,10 @@ default_data() ->
                map => #{} }, %% outgoing edges from states
      trace => [], %% list of state-names reached
      msgs => #{}, %% received messages (maps labels to lists of payloads)
-     queue => #{ on => [], off => [], check_recvs => [] },
+     queue => #{ on => [], 
+                 off => [], 
+                 check_recvs => [],
+                 state_to_return_to => undefined },
      options => default_options() }.
 
 
@@ -41,7 +44,8 @@ default_queued_action() ->
 default_action_meta() ->
   #{ queue => #{ enabled => false },
      aging => #{ enabled => false, age => 0 },
-     flush => #{ after_recv => false, after_label => []} }.
+     drop => #{ after_recv => false, after_labels => []},
+     auto_label => #{ enabled => false } }.
 
 % queued_action_to_event(#{label:=Label,payload:=Payload,age:=Age}=_Action) -> {next_event, cast, {send, Label, Msg, Age}}
 

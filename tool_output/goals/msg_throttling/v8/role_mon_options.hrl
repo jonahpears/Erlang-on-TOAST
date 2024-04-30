@@ -13,10 +13,10 @@ default_options() ->
           #{ enabled => true, 
              verbose => false },
      queue => 
-          #{ enabled => true, 
+          #{ enabled => false, 
              flush_after_recv => 
-                  #{ enabled => true, 
-                     after_any => true, 
+                  #{ enabled => false, 
+                     after_any => false, 
                      after_labels => [] },
              aging =>
                   #{ enabled => false,
@@ -25,7 +25,9 @@ default_options() ->
      forward_receptions => 
           #{ enabled => false, 
              to => undefined, 
-             any => true, 
-             labels => [] } 
+             any => false, 
+             labels => [] },
+      support_auto_label => %% only for sending actions
+          #{ enabled => false }
     }.
 
