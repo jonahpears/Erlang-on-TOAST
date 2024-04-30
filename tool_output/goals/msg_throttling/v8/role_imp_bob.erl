@@ -57,13 +57,23 @@ init(Params) ->
       % special_request(Client, {options, forward_receptions, #{enabled=>true,to=>self(),any=>true}}),
       % %% allow sending actions to be queued if untimely
       % special_request(Client, {options, queue, #{enabled=>true,flush_after_recv=>#{enabled => false}}}),
-      
+
+      % %% request messages to be immediately forwarded automatically
+      % special_request(Client, {options, forward_receptions, [{enabled,true},{to,self()}{any,true}]}),
+      % %% allow sending actions to be queued if untimely
+      % special_request(Client, {options, queue, [{enabled,true},{to,self()}{any,true}]}),
+      % special_request(Client, {options, queue, #{enabled=>true,flush_after_recv=>#{enabled => false, after_any => false, after_labels => []},aging => #{ enabled => false, max_age => -1}}}),
+      % %% monitor printout
+      % special_request(Client, {options, printout, #{ enabled => true, verbose => true }}),
+
+
       %% request messages to be immediately forwarded automatically
       special_request(Client, {options, forward_receptions, #{enabled=>true,to=>self(),any=>true,labels=> []}}),
       %% allow sending actions to be queued if untimely
       special_request(Client, {options, queue, #{enabled=>true,flush_after_recv=>#{enabled => false, after_any => false, after_labels => []},aging => #{ enabled => false, max_age => -1}}}),
       %% monitor printout
       special_request(Client, {options, printout, #{ enabled => true, verbose => true }}),
+
       %% wait for signal to begin
       receive
         {setup_finished, start} -> 
