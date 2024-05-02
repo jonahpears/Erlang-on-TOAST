@@ -96,26 +96,23 @@ init(Params) ->
 
 main(Server) ->
   %% determine loop iterations
-  Num = rand_from_range(1, 100),
+  % Num = rand_from_range(1, 100),
+  Num = 12,
   %% begin loop
   loop(Server, Num).
 
 %% loop finished
 loop(_Server, 0) -> 
-  printout(?NAME, "~p, finished.", [?FUNCTION_NAME]),
+  printout(?NAME, "~p, finished.\n\n-------\n", [?FUNCTION_NAME]),
   ok;
 
 %% main loop
 loop(Server, Iterations) ->
-  %% get length of next message to sent
+  %% get length of next message to send
   Len = rand_from_range(1, ?UPPER_BOUND),
-  % printout(?NAME, "~p, building ~p.",[?FUNCTION_NAME,Iterations]),
-
   %% build and send message 
   Message = msg_builder(Len) ++ integer_to_list(Iterations),
   mon_send(Server, Message),
-  % printout(?NAME, "~p, sent ~p.",[?FUNCTION_NAME,Message]),
-
   %% loop
   loop(Server, Iterations-1).
 

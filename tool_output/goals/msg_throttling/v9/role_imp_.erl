@@ -34,12 +34,11 @@ init(Params) ->
   printout(?NAME, "~p.", [?FUNCTION_NAME]),
 
   Params1 = maps:from_list(Params),
-  Name = maps:get(name,Params1),
-  ?assert(Name==?NAME, io_lib:format("Error in ~p: Name in file (~p) does not match Name provided (~p).",[?MODULE,?NAME,Name])),
+  Role = maps:get(role,Params1),
 
-  %% get app ID and send self()
+  %% get app ID and send self() and Role
   [{app_id,AppID}|_T] = ets:lookup(tpri,app_id),
-  AppID ! {tpri, Name, imp, self()},
+  AppID ! {role, Role, imp, self()},
 
   %% wait to receive coparty ID
   receive

@@ -35,16 +35,17 @@ start_link(Params) ->
     {ok, PID}.
 
 %% init
-init(Params) ->
-  Default = [ {child_options, #child_options{ restart = temporary, % transient 
+init(Params) when is_list(Params) ->
+  Default = [ {child_options, #child_options{ restart = transient, 
                                               shutdown = 2000,
                                               type = worker }},
-              {sup_flags, sup_flags(one_for_all, 1, 5 )} ],
+              {sup_flags, default_sup_flags()} ],
+  %% note: in other init() Params is a map, since it is on the rhs
   init(Default ++ Params, #{}).
 
-init([], Params) -> init(finished, Params);
+init([], Params) when is_map(Params) -> init(finished, Params);
 
-init([H|T], Params) ->
+init([H|T], Params) when is_map(Params) ->
   case H of 
     {Key, Val} ->
       % printout("~p, HKey: ~p.", [?FUNCTION_NAME, H]),
@@ -56,7 +57,7 @@ init([H|T], Params) ->
   end,
   init(T, Params1);
 
-init(finished, Params) ->
+init(finished, Params) when is_map(Params) ->
   printout("~p, finished.", [?FUNCTION_NAME]),
   % printout("~p, finished, params: ~p.", [?FUNCTION_NAME, Params]),
 
@@ -118,7 +119,11 @@ init(finished, Params) ->
   ImpName = list_to_atom(atom_to_list(Name) ++ "_" ++ atom_to_list(imp)),
   ImpRegID = list_to_atom(atom_to_list(Imp) ++ "_" ++ atom_to_list(Name)),
   %% module/file of imp child is same as regID
-  ImpSpec = child_spec(ImpRegID,ImpRegID,ChildOptions,[{name, ImpName},{role,Name}]),
+  ChildOptions1 = #child_options{ restart = ChildOptions#child_options.restart,
+                                  shutdown = ChildOptions#child_options.shutdown,
+                                  type = ChildOptions#child_options.type,
+                                  significant = true },
+  ImpSpec = child_spec(ImpRegID,ImpRegID,ChildOptions1,[{name, ImpName},{role,Name}]),
 
   % printout(RoleID, "~p, monspec: ~p.", [?FUNCTION_NAME,MonSpec]),
   % printout(RoleID, "~p, impspec: ~p.", [?FUNCTION_NAME,ImpSpec]),

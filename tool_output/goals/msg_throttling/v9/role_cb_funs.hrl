@@ -1,4 +1,6 @@
--compile({nowarn_unused_function, [ {mon_send,2},
+-compile({nowarn_unused_function, [ {dir_send,3},
+                                    {dir_send,2},
+                                    {mon_send,2},
                                     {mon_send,3},
                                     {mon_send,4},
                                     {mon_recv,2},
@@ -6,6 +8,11 @@
                                     {mon_terminate,1},
                                     {mon_terminate,2},
                                     {special_request,2} ]}).
+
+%% callback functions (intended asym-user -> comonitor ->couser)
+dir_send(To, Label, Payload) -> To ! {self(), Label, Payload}.
+dir_send(To, Label) -> dir_send(To, Label, "").
+
 
 %% callback functions (intended for user -> monitor -> comonitor -> couser)
 

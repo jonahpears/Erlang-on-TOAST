@@ -42,17 +42,17 @@ start_link(List) when is_list(List) ->
 
   #{name := Name} = Data,
   #{role := Role} = Data,
-  show({Name, "~p, role name: ~p.", [?FUNCTION_NAME, Role], Data}),
+  show({Name, "~p,\n\trole name: ~p.", [?FUNCTION_NAME, Role], Data}),
 
   RegID = maps:get(reg_id,Data,err_no_role_id),
-  show({Name, "~p, reg_id: ~p.", [?FUNCTION_NAME, RegID], Data}),
+  show({Name, "~p,\n\treg_id: ~p.", [?FUNCTION_NAME, RegID], Data}),
 
   case RegID of
     err_no_role_id -> 
-      show({Name, "~p, ~p, registering locally.", [?FUNCTION_NAME, RegID], Data}),
+      show({Name, "~p,\n\t~p, registering locally.", [?FUNCTION_NAME, RegID], Data}),
       {ok,PID} = gen_statem:start_link({local, ?MODULE}, ?MODULE, [Data], []);
     _ ->
-      show({Name, "~p, registering globally as: ~p.", [?FUNCTION_NAME, Name], Data}),
+      show({Name, "~p,\n\tregistering globally as: ~p.", [?FUNCTION_NAME, Name], Data}),
       {ok,PID} = gen_statem:start_link({global, Name}, ?MODULE, [Data], [])
   end,
   show({Name, "leaving ~p as ~p.", [?FUNCTION_NAME, PID], Data}),
@@ -77,13 +77,13 @@ init([Data]) when is_map(Data) ->
   %% get name and role from data
   #{name := Name} = Data,
   #{role := Role} = Data,
-  show({Name, "~p, finished process params.", [?FUNCTION_NAME], Data}),
+  show({Name, "~p,\n\tfinished process params.", [?FUNCTION_NAME], Data}),
   show({Name, "~p,\n\tdata: ~p.", [?FUNCTION_NAME, Data], Data}),
 
   %% get app ID and send self()
   [{app_id,AppID}|_T] = ets:lookup(tpri,app_id),
   AppID ! {role, Role, mon, self()},
-  show({Name, "~p, registered with app.", [?FUNCTION_NAME], Data}),
+  show({Name, "~p,\n\tregistered with app.", [?FUNCTION_NAME], Data}),
 
   {ok, init_setup_state, Data}.
 
@@ -98,10 +98,10 @@ stop() ->
 
 
 terminate(Reason, issue_timeout=_State, #{name:=Name}=Data) ->
-  show({Name, "~p, (timeout)...\n\treason: ~p,\n\tdata: ~p.", [?FUNCTION_NAME, Reason, Data], Data});
+  show({Name, "~p,\n\t(timeout)...\n\treason: ~p,\n\tdata: ~p.", [?FUNCTION_NAME, Reason, Data], Data});
 
 terminate(Reason, State, #{name:=Name}=Data) ->
-  show({Name, "~p, (~p)...\n\treason: ~p,\n\tdata: ~p.", [?FUNCTION_NAME, State, Reason, Data], Data}).
+  show({Name, "~p,\n\t(~p)...\n\treason: ~p,\n\tdata: ~p.", [?FUNCTION_NAME, State, Reason, Data], Data}).
 
 
 
@@ -122,7 +122,7 @@ recv(Label) -> gen_statem:call(?MODULE, {recv, Label}).
 %% normal sending actions (when in a proper state)
 handle_event(info, {act, send, Label, Payload, Meta}, State, #{name:=Name,fsm:=#{map:=Map}}=Data) 
 when is_map_key(State, Map) ->
-  show({Name, "~p, instruction, send:\n\t{~p, ~p, ~p}", [State, Label, Payload, Meta], Data}),
+  show({Name, "~p,\n\tinstruction, send:\n\t{~p, ~p, ~p}.", [State, Label, Payload, Meta], Data}),
   Meta1 = maps:from_list(Meta),
   %% make sure special "from_queue" is not inserted
   Meta2 = maps:remove(from_queue, Meta1),
@@ -130,13 +130,13 @@ when is_map_key(State, Map) ->
 
 %% normal sending actions (but caught when other actions are being processed) -- postpone
 handle_event(info, {act, send, _Label, _Payload, _Meta}, State, #{name:=Name}=Data) ->
-  show(verbose, {Name, "~p, postponing send instruction...", [State], Data}),
+  show(verbose, {Name, "~p,\n\tpostponing send instruction...", [State], Data}),
   {keep_state_and_data, [postpone]};
 
 
 %% mistakingly try to request message received under label
 handle_event(info, {act, recv, Label}, State, #{name:=Name}=Data) ->
-  show({Name, "~p, {recv, ~p},\n\n\tThis is a mistake! To retrieve messages use:\n\t\t\"gen_statem:call(?THIS_PID, {recv, ~p}).\"", [State, Label, Label], Data}),
+  show({Name, "~p,\n\t{recv, ~p},\n\n\tThis is a mistake! To retrieve messages use:\n\t\t\"gen_statem:call(?THIS_PID, {recv, ~p}).\"", [State, Label, Label], Data}),
   keep_state_and_data;
 
 
@@ -156,11 +156,11 @@ handle_event(enter, _OldState, init_setup_state=State, #{name:=Name,coparty_id:=
 
 handle_event(state_timeout, wait_to_finish, init_setup_state=State, 
 #{name:=Name,coparty_id:=undefined,fsm:=#{init:=Init},options:=Options}=Data) ->
-  show({Name, "~p, waiting to finish setup.", [State], Data}),
+  show({Name, "~p,\n\twaiting to finish setup.", [State], Data}),
   receive
     {_SupID, sup_init, CoPartyID} ->
-      show({Name, "~p, received coparty ID (~p).", [State,CoPartyID], Data}),
-      show(verbose, {Name, "~p, options:\n\t~p.", [State,Options], Data}),
+      show({Name, "~p,\n\treceived coparty ID (~p).", [State,CoPartyID], Data}),
+      show(verbose, {Name, "~p,\n\toptions:\n\t~p.", [State,Options], Data}),
       Data1 = Data#{coparty_id => CoPartyID, trace => [Init]},
       show(verbose, {Name, "leaving ~p, entering ~p.", [State,Init], Data1}),
       {next_state, Init, Data1}
@@ -171,8 +171,8 @@ handle_event(enter, _OldState, stop_state=State, #{data:=#{name:=Name}=Data}=Sto
   show({Name, "(->) ~p.", [State], Data}),
   {keep_state, StopData, [{state_timeout, 0, exit_deferral}]};
 
-handle_event(state_timeout, exit_deferral, stop_state=State, #{reason:=Reason,data:=#{name:=Name}=Data}=_StopData) -> 
-  show({Name, "~p, ~p, Data: \n\t~p.", [State, Reason, Data], Data}),
+handle_event(state_timeout, exit_deferral, stop_state=_State, #{reason:=Reason,data:=#{name:=_Name}=Data}=_StopData) -> 
+  % show({Name, "~p,\n\t~p, Data: \n\t~p.", [State, Reason, Data], Data}),
   {stop, Reason, Data};
 
 
@@ -187,7 +187,7 @@ handle_event(state_timeout, exit_deferral, stop_state=State, #{reason:=Reason,da
 %% state enter, issue timeout (stop and cause supervisor to notice)
 handle_event(enter, _OldState, issue_timeout=State, #{name:=Name}=Data) ->
   show({Name, "(->) ~p.", [State], Data}),
-  StopData = stop_data([{reason, error_exceeded_throttling_capacity}, {data, Data}]),
+  StopData = stop_data([{reason, protocol_issued_timeout}, {data, Data}]),
   {keep_state, StopData, [{state_timeout, 0, goto_stop}]};
 
 handle_event(state_timeout, goto_stop, issue_timeout=_State, Data) ->
@@ -219,7 +219,7 @@ when is_map_key(State, Timeouts) ->
   %% if no actions, this is unusual (and likely unintended)
   case Actions==none of
     true -> 
-      show({Name, "~p, unusual, no actions from this state:\n\t~p.", [State, Map], Data});
+      show({Name, "~p,\n\tunusual, no actions from this state:\n\t~p.", [State, Map], Data});
     _ -> ok
   end,
   {keep_state, Data, [{state_timeout, TimeoutDuration, TimeoutState}]};
@@ -247,7 +247,7 @@ handle_event(enter, _OldState, State, #{name:=Name,fsm:=#{map:=Map},queue:=#{sta
   %% if no actions, this is unusual (and likely unintended)
   case Actions==none of
     true -> 
-      show({Name, "~p, unusual, no actions from this state: ~p.", [State, Map], Data});
+      show({Name, "~p,\n\tunusual, no actions from this state: ~p.", [State, Map], Data});
     _ -> ok
   end,
   %% since any queued actions have been processed, clear 'check_recvs'
@@ -331,7 +331,7 @@ handle_event(state_timeout, continue_process_queue, State,
 handle_event(cast, {send, dont_care=Label, Payload, Meta}, State, #{name:=Name,fsm:=#{map:=Map},queue:=#{off:=Off}=Queue,options:=#{queue:=#{enabled:=QueueEnabled}}}=Data) 
 when is_map_key(State, Map) and is_map(Meta) and is_map_key(auto_label, Meta) and map_get(enabled, map_get(auto_label, Meta))
  ->
-  show(verbose, {Name, "~p, attempting to auto-label.", [State], Data}),
+  show(verbose, {Name, "~p,\n\tattempting to auto-label.", [State], Data}),
   #{State:=Directions} = Map,
   case lists:member(send,maps:keys(Directions)) of
     true -> %% this should correspond, therefore use this label
@@ -339,10 +339,10 @@ when is_map_key(State, Map) and is_map(Meta) and is_map_key(auto_label, Meta) an
       #{send:=Actions} = Directions,
       Label1 = lists:nth(1, maps:keys(Actions)),
       % io:format("\n"),
-      show({Name, "~p, auto-labelled:\n\t(~p, ~p), ~p.", [State, Label1, Payload, Meta], Data}),
+      show({Name, "~p,\n\tauto-labelled:\n\t(~p, ~p), ~p.", [State, Label1, Payload, Meta], Data}),
       {keep_state_and_data, [{next_event, cast, {send, Label1, Payload, Meta}}]};
     _ -> %% then this is a recv? add to queue
-      show(verbose, {Name, "~p, cannot auto-label, adding to queue.", [State], Data}),
+      show(verbose, {Name, "~p,\n\tcannot auto-label, adding to queue.", [State], Data}),
       %% if no queue in meta, use global option
       case lists:member(queue, maps:keys(Meta)) of
         true -> Meta1 = Meta;
@@ -362,7 +362,7 @@ when is_map_key(State, Map) and is_map(Meta) and is_map_key(auto_label, Meta) an
       end,
       Queue1 = Queue#{off=>Off1},
       Data1 = Data#{queue=>Queue1},
-      show(verbose, {Name, "~p, successfully added to queue:\n\t~p.", [State,maps:get(queue,Data1)], Data}),
+      show(verbose, {Name, "~p,\n\tsuccessfully added to queue:\n\t~p.", [State,maps:get(queue,Data1)], Data}),
       {keep_state, Data1}
   end;
 
@@ -374,8 +374,9 @@ when is_map_key(State, Map) and is_atom(map_get(Label, map_get(send, map_get(Sta
   %% get next state
   #{State:=#{send:=#{Label:=NextState}}} = Map,
   %% update trace
-  Data1 = Data#{trace=>[NextState] ++ Trace},
-  show({Name, "~p, send (~p: ~p),\n\ttrace: ~p.", [State, Label, Payload, maps:get(trace, Data1)], Data1}),
+  Trace1 = [NextState] ++ Trace,
+  Data1 = maps:put(trace,Trace1,Data),
+  show({Name, "~p,\n\tsend (~p: ~p),\n\ttrace: ~p.", [State, Label, Payload, Trace1], Data1}),
   {next_state, NextState, Data1};
 
 %% from wrong states, and queue enabled 
@@ -391,7 +392,7 @@ when is_map_key(State, Map) and is_map(Meta) ->
   #{meta:=#{queue:=#{enabled:=ActionQueueEnabled}}} = Action,
   case ActionQueueEnabled of
     true -> %% this message is flagged to be queued 
-      show(verbose, {Name, "~p, wrong state to send (~p: ~p),\n\tand global-queue option set to true,\n\tand message can be queued,\n\taction: ~p.", [State, Label, Payload, Action], Data}),
+      show(verbose, {Name, "~p,\n\twrong state to send (~p: ~p),\n\tand global-queue option set to true,\n\tand message can be queued,\n\taction: ~p.", [State, Label, Payload, Action], Data}),
       Off1 = Off ++ [Action];
     _ -> %% this message has been specifically flagged to not be queued
       Off1 = Off,
@@ -437,14 +438,14 @@ when is_map_key(State, Map) and is_map(Meta) ->
 %% % % % % % %
 
 %% from correct states
-handle_event(info, {CoPartyID, Label, Payload}, State, #{name:=Name,coparty_id:=CoPartyID,fsm:=#{map:=Map},msgs:=Msgs,queue:=Queue,options:=#{forward_receptions:=#{enabled:=ForwardingEnabled,to:=ForwardTo,any:=ForwardAny,labels:=ForwardLabels},queue:=#{flush_after_recv:=#{enabled:=FlushingEnabled,after_any:=FlushAfterAny,after_labels:=FlushAfterLabels}}}}=Data) 
+handle_event(info, {CoPartyID, Label, Payload}, State, #{name:=Name,coparty_id:=CoPartyID,fsm:=#{map:=Map},msgs:=Msgs,trace:=Trace,queue:=Queue,options:=#{forward_receptions:=#{enabled:=ForwardingEnabled,to:=ForwardTo,any:=ForwardAny,labels:=ForwardLabels},queue:=#{flush_after_recv:=#{enabled:=FlushingEnabled,after_any:=FlushAfterAny,after_labels:=FlushAfterLabels}}}}=Data) 
 when is_map_key(State, Map) and is_atom(map_get(Label, map_get(recv, map_get(State, Map)))) ->  
   %% forward if necessary
   case ForwardingEnabled of
     true ->
       case ForwardAny or lists:member(Label, ForwardLabels) of
         true ->
-          show(verbose, {Name, "~p, forwarding msg to ~p.", [State, ForwardTo], Data}),
+          show(verbose, {Name, "~p,\n\tforwarding msg to ~p.", [State, ForwardTo], Data}),
           ForwardTo ! {self(), Label, Payload};
         _ -> ok
       end;
@@ -455,7 +456,7 @@ when is_map_key(State, Map) and is_atom(map_get(Label, map_get(recv, map_get(Sta
     true -> %% check when to flush
       case FlushAfterAny or lists:member(Label, FlushAfterLabels) of
         true -> 
-          show(verbose, {Name, "~p, flushing queue after receiving.", [State], Data}),
+          show(verbose, {Name, "~p,\n\tflushing queue after receiving.", [State], Data}),
           Queue1 = Queue#{on=>[],off=>[]};
         _ -> Queue1 = Queue
       end; 
@@ -470,9 +471,11 @@ when is_map_key(State, Map) and is_atom(map_get(Label, map_get(recv, map_get(Sta
   Msgs1 = Msgs#{Label => Payloads1},
   %% get next state
   #{State:=#{recv:=#{Label:=NextState}}} = Map,
+  %% update trace
+  Trace1 = [NextState] ++ Trace,
   %% update data
-  Data1 = Data#{msgs=>Msgs1,queue=>Queue2},
-  show({Name, "~p, recv (~p: ~p) -> ~p.", [State, Label, Payload, NextState], Data1}),
+  Data1 = Data#{msgs=>Msgs1,queue=>Queue2,trace=>Trace1},
+  show({Name, "~p,\n\trecv (~p: ~p) -> ~p.", [State, Label, Payload, NextState], Data1}),
   {next_state, NextState, Data1};
 
 %% from wrong states 
@@ -491,12 +494,12 @@ handle_event(info, {CoPartyID, Label, Payload}, State, #{name:=Name,coparty_id:=
 
 %% during processing
 handle_event(state_timeout, NextState, State, #{name:=Name}=Data) when NextState=:=State ->
-  show(verbose, {Name, "~p, internal timeout (~p),\n\tdata: ~p.", [State, NextState, Data], Data}),
+  show(verbose, {Name, "~p,\n\tinternal timeout (~p),\n\tdata: ~p.", [State, NextState, Data], Data}),
   {next_state, NextState, Data};
 
 %% mixed-choice
 handle_event(state_timeout, NextState, State, #{name:=Name}=Data) ->
-  show({Name, "~p, internal timeout (~p).", [State, NextState], Data}),
+  show({Name, "~p,\n\tinternal timeout (~p).", [State, NextState], Data}),
   {next_state, NextState, Data};
 
 
@@ -508,7 +511,7 @@ handle_event(state_timeout, NextState, State, #{name:=Name}=Data) ->
 %% retreive latest message of given label
 %% % % % % % %
 handle_event({call, From}, {recv, Label}, State, #{name:=Name,msgs:=Msgs}=Data) -> 
-  show({Name, "~p, looking for msg with label (~p).", [State, Label], Data}),
+  show({Name, "~p,\n\tlooking for msg with label (~p).", [State, Label], Data}),
   case maps:get(Label, Msgs, no_msg_found_under_label) of
     no_msg_found_under_label=Err -> 
       show({"~p, no msgs with label (~p) found.", [State, Label], Data}),
@@ -533,27 +536,27 @@ handle_event({call, From}, {recv, Label}, State, #{name:=Name,msgs:=Msgs}=Data) 
 %% change options (single surface level key-val)
 handle_event({call, From}, {options, OptionKey, Map}, State, #{name:=Name,options:=Options}=Data) 
 when is_map_key(OptionKey, Options) and is_map(Map) ->    
-  show({Name, "~p, changing option:\n\t~p => ~p.", [State, OptionKey, Map], Data}),
+  show({Name, "~p,\n\tchanging option:\n\t~p => ~p.", [State, OptionKey, Map], Data}),
   CurrentOption = maps:get(OptionKey, Options),
   NewOption = nested_map_merger(CurrentOption, Map),
   Options1 = maps:put(OptionKey, NewOption, Options),
   Data1 = Data#{options=>Options1},
-  show(verbose, {Name, "~p,\n\tupdated: ~p => ~p,\n\told: ~p\n\tnew: ~p.", [State,OptionKey, Map,Options,Options1], Data1}),
+  % show(verbose, {Name, "~p,\n\tupdated: ~p => ~p,\n\told: ~p\n\tnew: ~p.", [State,OptionKey, Map,Options,Options1], Data1}),
   {keep_state, Data1, [{reply, From, ok}]};
     
 %% request copy of options
 handle_event({call, From}, get_options, State, #{name:=Name,options:=Options}=Data) ->    
-  show(verbose, {Name, "~p, sharing options with ~p,\n\tOptions: ~p.", [State, From, Options], Data}),
+  show(verbose, {Name, "~p,\n\tsharing options with ~p,\n\tOptions: ~p.", [State, From, Options], Data}),
   {keep_state, Data, [{reply, From, {ok, Options}}]};
 
 %% request copy of data
 handle_event({call, From}, get_data, State, #{name:=Name}=Data) ->    
-  show(verbose, {Name, "~p, sharing data with ~p,\n\tData: ~p.", [State, From, Data], Data}),
+  show(verbose, {Name, "~p,\n\tsharing data with ~p,\n\tData: ~p.", [State, From, Data], Data}),
   {keep_state, Data, [{reply, From, {ok, Data}}]};
 
 %% request fsm terminate
 handle_event({call, _From}, {terminate, Reason}, State, #{name:=Name}=Data) ->
-  show({Name, "~p, instructed to terminate,\n\treason: ~p.", [State, Reason], Data}),
+  show({Name, "~p,\n\tinstructed to terminate,\n\treason: ~p.", [State, Reason], Data}),
   StopData = stop_data([{reason, Reason}, {data, Data}]), 
   {next_state, stop_state, StopData};
 
@@ -566,7 +569,7 @@ handle_event({call, _From}, {terminate, Reason}, State, #{name:=Name}=Data) ->
 %% anything else
 %% % % % % % %
 handle_event(EventType, EventContent, State, #{name:=Name}=Data) ->
-  show({Name, "~p, error, reached unhandled event...\n\tEventType: ~p,\n\tEventContent: ~p,\n\tData: ~p.", [State, EventType, EventContent, Data], Data}),
+  show({Name, "~p,\n\terror, reached unhandled event...\n\tEventType: ~p,\n\tEventContent: ~p,\n\tData: ~p.", [State, EventType, EventContent, Data], Data}),
   StopData = stop_data([{reason, unhandled_event}, {data, Data}]), 
   {next_state, stop_state, StopData}.
 
