@@ -1,4 +1,20 @@
 
+# Examples
+
+## default
+```erl
+c(tpri_app), c(tpri_server), c(tpri_sup), c(role_sup), c(role_tmp), c(role_fsm_ali), c(role_imp_ali), c(role_fsm_bob), c(role_imp_bob), tpri_app:start(), tpri_app:run().
+```
+
+## ali and bob
+```erl
+c(tpri_app), c(tpri_server), c(tpri_sup), c(role_sup), c(role_tmp), c(role_fsm_ali), c(role_imp_ali), c(role_fsm_bob), c(role_imp_bob), tpri_app:start([{use_preset,default}]), tpri_app:run().
+```
+
+## cal and bob
+```erl
+c(tpri_app), c(tpri_server), c(tpri_sup), c(role_sup), c(role_tmp), c(role_imp_cal), c(role_fsm_bob), c(role_imp_bob), tpri_app:start([{use_preset,asym_direct_imp}]), tpri_app:run().
+```
 
 
 # Compiling Application
