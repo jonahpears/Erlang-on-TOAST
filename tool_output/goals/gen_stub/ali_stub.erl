@@ -2,10 +2,7 @@
 
 -include_lib("stdlib/include/assert.hrl").
 
-%% exported from within stub.hrl
--export([ % start_link/0,
-          % start_link/1,
-          % init/1 
+-export([ main/1
         ]).
 
 %% @doc determines if start_link/0/1 creates monitor in the same node

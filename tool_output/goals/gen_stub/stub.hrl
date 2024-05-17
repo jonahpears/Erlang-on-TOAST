@@ -3,8 +3,8 @@
           init/1,
           send/2,
           recv/2,
-          send_before/4, 
-          recv_before/4
+          send_before/3, 
+          recv_before/3
         ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -112,13 +112,16 @@ send_before(CoPartyID, {Label, {Fun, Args}}, Timeout) ->
   end.
 
 %% @doc 
+recv_before(MonitorID, Label, Timeout) when ?MONITORED and  is_atom(Label) -> gen_statem:call(MonitorID, {recv, Label, Timeout});
+
+%% @doc 
 recv_before(CoPartyID, Label, Timeout) when is_atom(Label) -> receive {CoPartyID, Label, Payload} -> {ok, PayLoad} after Timeout -> {ko, timeout} end.
 
 %% @doc Wrapper function for sending messages asynchronously via synchronous Monitor
-send(MonitorID, Msg) when ?MONITORED -> gen_statem:call(MontiorID, {send, Msg});
+send(MonitorID, {Label, _Payload}=Msg) when ?MONITORED and is_atom(Label) -> gen_statem:call(MontiorID, {send, Msg});
 
 %% @doc Wrapper function for sending messages asynchronously
-send(CoPartyID, Msg) -> CoPartyID ! {self(), Msg}, ok.
+send(CoPartyID, {Label, _Payload}=Msg) when is_atom(Label) -> CoPartyID ! {self(), Msg}, ok.
 
 %% @doc Wrapper function for receiving message asynchronously via synchronous Monitor
 recv(MonitorID, Label) when is_atom(Label) -> gen_statem:call(MonitorID, {recv, Label});
