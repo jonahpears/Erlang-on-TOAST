@@ -69,8 +69,8 @@ init(Args) when ?MONITORED==true ->
       ok = gen_statem:call(MonitorID, {options, support_auto_label, #{enabled=>true}}),
       %% wait for monitor to receive coparty id 
       {ok, CoPartyID} = gen_statem:call(MonitorID, {get_coparty_id}),
-      %% enter main phase of program with monitor
-      MainID = erlang:spawn_link(?MODULE, main, [MonitorID]),
+      %% enter run phase of program with monitor
+      MainID = erlang:spawn_link(?MODULE, run, [MonitorID]),
       {ok, CoPartyID} = gen_statem:call(MonitorID, {leave_setup, #{party_id => MainID}});
     Err -> {error, Err}
   end;
@@ -92,7 +92,7 @@ init(Args) ->
     CoPartyID ! {PID, init},
     receive {CoPartyID, init} -> ok end,
     %% wait for signal from session
-    receive {SessionID, start} -> main(CoPartyID) end 
+    receive {SessionID, start} -> run(CoPartyID) end 
   end.
 
 %% @doc Calls Fun with Args and forwards the result, if Fun completes within Timeout milliseconds, otherwise signals PID 

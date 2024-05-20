@@ -2,7 +2,7 @@
 
 -include_lib("stdlib/include/assert.hrl").
 
--export([ main/1
+-export([ run/1, run/2, main/2
         ]).
 
 %% @doc determines if start_link/0/1 creates monitor in the same node
@@ -12,7 +12,10 @@
 
 -include("tool_output/goals/gen_stub/stub.hrl").
 
-main(_CoParty) -> ok.
+run(CoParty) -> run(CoParty, []).
+run(_CoParty, Data) -> ok.
+
+main(_CoParty, Data) -> ok.
 
   
 

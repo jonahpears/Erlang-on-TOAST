@@ -1010,7 +1010,8 @@ gen_module(FileName, P) ->
     %              {ok, state1, {}}
     %           "]),
 
-    {Edges, Nodes} = build_fsm:to_fsm(P),
+    % {Edges, Nodes} = build_fsm:to_fsm(P),
+    {Edges, Nodes, _RecMap} = build_fsm:to_fsm(P),
 
     %     ok.
 

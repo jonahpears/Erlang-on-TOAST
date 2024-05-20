@@ -23,7 +23,7 @@ unknown_state() -> unknown_state.
 
 %% @doc wrapper function that initializes the main to_fsm function
 %% takes a protocol and returns a list of transitions/edges and nodes/states
--spec to_fsm(interleave:protocol()) -> {list(), map()}.
+-spec to_fsm(interleave:protocol()) -> {list(), map(), map()}.
 to_fsm(P) ->
     Edge = #edge{
         from = 0,
@@ -37,7 +37,7 @@ to_fsm(P) ->
         is_custom_end = false
     },
 
-    {Edges, Nodes, _, _, _, _, _} = to_fsm(
+    {Edges, Nodes, RecMap, _, _, _, _} = to_fsm(
         P,
         [Edge],
         maps:put(0, init_state, maps:new()),
@@ -59,7 +59,7 @@ to_fsm(P) ->
         )
     ),
 
-    {Edges, Nodes}.
+    {Edges, Nodes, RecMap}.
 
 %% @doc processes the actions and labels names and sets the event,
 %% variable name and action accordingly. When the name starts with r_ that
