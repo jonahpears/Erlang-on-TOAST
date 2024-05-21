@@ -21,10 +21,10 @@ gen(Protocol, FileName) ->
   Fsm = build_fsm(Protocol),
   ?SHOW("Build Fsm: Success.", []),
 
-  % _MonitorSpec = build_monitor_spec(Fsm, FileName),
-  % ?SHOW("Build Module Spec: Success.", []),
+  _MonitorSpec = build_monitor_spec(Fsm, FileName),
+  ?SHOW("Build Module Spec: Success.", []),
 
-  ModuleForms = build_module_forms(Fsm, ModuleName),
+  {ok, ModuleForms} = build_module_forms(Fsm, ModuleName),
   ?SHOW("Build Module Forms: Success.", []),
 
   SyntaxTree = erl_syntax:form_list(ModuleForms),
@@ -43,16 +43,20 @@ build_fsm(Protocol) -> build_fsm:to_fsm(Protocol).
 %% @doc Wrapper for build_spec:to_monitor_spec(Fsm)
 -spec build_monitor_spec({list(), map()}, string()) -> map().
 build_monitor_spec(Fsm,FileName) -> 
-  MonitorSpec = build_spec:to_monitor_spec(Fsm),
-  %% write to file
-  OutputPath = output_location() ++ FileName ++ "_mon_spec.txt",
-  case file:write_file(OutputPath, MonitorSpec) of
-    ok -> ?SHOW("file:write_file success: ~p.", [OutputPath]);
-    Else -> ?SHOW("file:write_file failed: ~p.", [Else])
-  end,
-  MonitorSpec.
+  {Status, MonitorSpec} = build_spec:to_monitor_spec(Fsm),
+  case Status of
+    pass -> ok; %% skip while developing tool
+    _ ->
+      %% write to file
+      OutputPath = output_location() ++ FileName ++ "_mon_spec.txt",
+      case file:write_file(OutputPath, MonitorSpec) of
+        ok -> ?SHOW("file:write_file success: ~p.", [OutputPath]);
+        Else -> ?SHOW("file:write_file failed: ~p.", [Else])
+      end,
+      MonitorSpec
+  end.
 
--spec build_module_forms({list(), map()}, atom()) -> list().
+% -spec build_module_forms({list(), map()}, atom()) -> tree_or_trees().
 %% @doc Takes Fsm, returns list for Forms
 build_module_forms(Fsm, ModuleName) -> 
   % Func = merl:var(list_to_atom("?FUNCTION_NAME")),
@@ -65,17 +69,17 @@ build_module_forms(Fsm, ModuleName) ->
 
   %% for each state, generate corresponding snippet
   % StateFuns = maps:fold(fun(K, V, AccIn) -> AccIn ++ [state_fun(K, V, Edges, States, RecMap)] end, [], States),
-  StateFuns = state_funs(Edges, States, RecMap),
+  Funs = build_funs(Edges, States, RecMap),
 
   %% get edges of communication
-  ActionEdges = lists:filter(fun(Edge) -> (Edge#edge.edge_data#edge_data.trans_type==action) and ((not Edge#edge.is_silent) and (not Edge#edge.is_custom_end)) end, Edges),
+  _ActionEdges = lists:filter(fun(Edge) -> (Edge#edge.edge_data#edge_data.trans_type==action) and ((not Edge#edge.is_silent) and (not Edge#edge.is_custom_end)) end, Edges),
 
   %% for each edge, generate corresponding snippet.
   %% function edge_fun 
   % _EdgeFuns = lists:foldl(fun(Edge, AccIn) -> AccIn ++ [edge_fun(Edge, ?MOD)] end, [], ActionEdges),
 
   %% add other mandatory functions (following type module_rep())
-  Funs = StateFuns,
+  % Funs = StateFuns,
   % Funs = [ {true, start_link, []},
   %          {true, start_link, []},
   %          {true, send, []},
@@ -97,102 +101,36 @@ build_module_forms(Fsm, ModuleName) ->
   AddFuns = fun({X, Name, Cs}, S) -> merl_build:add_function(X, Name, Cs, S) end,
   ModuleForm = merl_build:module_forms(lists:foldl(AddFuns, Forms, Funs)),
   %% return module (list of forms)
-  ModuleForm.
+  {ok, ModuleForm}.
 
 
 %% TODO go through each state, add their actions as clauses to the current "scope_fun" IFF they are not in the recmap. otherwise, start a new "scope_fun" that is called at the appropriate time
 
-%% @doc
-%% @returns a list of module_rep => [ {true, atom_name, [Clauses]}, ... ]
--spec state_funs(list(), map(), map()) -> list().
-state_funs(Edges, States, RecMap) -> 
-  {_NextID, _Clauses, Funs, _FunNames} = state_funs(Edges, States, RecMap, 0, -1, [], []),
-  ?SHOW("(should be no clauses): ~p.", [_Clauses]),
-  ?SHOW("fun names: ~p.", [_FunNames]),
-  ?SHOW("funs: ~p.", [Funs]),
-  ?assert(length(_Clauses)==0),
-  Funs.
+%% @doc builds all functions corresponding to protocol behaviour.
+%% goes through each state in states, starting from 0 and builds them.
+%% depending on the state type, a different snippet is used.
+%% each outgoing edge is performed within the same function, followed by their next state.
+%% if the next state is a point of recursive reentry, then a call to a new function is placed within this scope instead, and a new function created containing all proceeding behaviour described by the protocol.
+%% otherwise, all proceeding behaviour remains within the same scope.
+%% @returns list of functions 
+-spec build_funs(list(), map(), map()) -> list().
+build_funs(Edges, States, RecMap) -> build_state_fun(Edges,States,RecMap,0,-1).
 
-%% @doc 
-%% takes a list of clauses (of current scope) to add to
-% -spec state_funs(list(), map(), map(), integer(), integer(), list(), list()) -> {list(), list(), list()}.
-state_funs(Edges, States, RecMap, StateID, ScopeID, Clauses, FunNames) -> 
-
-  Funs = [],
-
+%% @doc states building program functions.
+%% if stateID is init then create run() function, which always leads to main() -- this is expected when no clauses or funs currently provided
+build_state_fun(Edges, States, RecMap, StateID, ScopeID) ->
   %% get state
   State = maps:get(StateID, States),
-
-  ?GAP(),
-  ?SHOW("'~p': '~p'.", [StateID, State]),
-
-  %% get outgoing edges from stateID
-  IsRelevant = fun(Edge) -> Edge#edge.from =:= StateID end, 
-  RelevantEdges = lists:filter(IsRelevant, Edges),
-
+  %% if non-standard state, then get special snippet
   case lists:any(fun(Elem) -> Elem=:=State end, special_funs()) of
-    true -> %% if special fun, then force new function scope, and continue on child
-      {{_,FunName,_}=Fun, NextID} = gen_snippets:special_state(State, StateID, RelevantEdges, States),
-      case NextID==-1 of %% is finished?
-        true -> {Clauses, Fun, FunNames++[FunName]};
-        _ -> %% continue on child
-          {NextClauses, NextFuns, NextFunNames} = state_funs(Edges, States, RecMap, NextID, NextID, Clauses, FunNames++[FunName]),
-          {NextClauses, [Fun]++NextFuns, NextFunNames}
-      end;
-    _ -> %% not a special state, so allow to continue in same function scope
-      %% check if recursive state (appears in map and clauses are empty)
-      RecStates = maps:filter(fun(_K, V) -> V=:=StateID end, RecMap),
-      IsRec = lists:foldl(fun(Elem, AccIn) -> AccIn and Elem end, true, RecStates),
-      case (IsRec and ((length(Clauses)==0) and (StateID=:=ScopeID))) of 
-        true -> %% is a recursive state
-          %% start new function scope
-          {RecFunName, RecEnterClauses} = gen_snippets:state_enter(State, StateID, Edges, State),
-          %% reenter function body (with nonempty clauses)
-          {RecClauses, RecFuns, RecFunNames} = state_funs(Edges, States, RecMap, StateID, ScopeID, RecEnterClauses, FunNames++[RecFunName]),
-          %% return after child 
-          {[], RecFuns++[{true,RecFunName,RecClauses}], RecFunNames};
-        _ -> %% this is the body of a function
-          %% TODO: check how to detect what kind of pattern is this state (send-before-recv, recv-before-send)
-          %% go through outgoing edges
-
-          %% call on next state
-
-          %% return as part of scope
-          ok
-      end
-  end.
-
-  % %% if scope and state are the same, then no need to check for new rec state
-  % case ScopeID==StateID of
-  %   true -> 
-  %     IsRec = false,
-  %     FunNames1 = [State] ++ FunNames;
-  %   _ -> %% determine if this state should be made its own (recursive) function
-  %     RecStates = maps:filter(fun(_K, V) -> V=:=StateID end, RecMap),
-  %     IsRec = lists:foldl(fun(Elem, AccIn) -> AccIn and Elem end, true, RecStates),
-  %     FunNames1 = FunNames;
-  % end,
-  % case IsRec of
-  %   true ->
-  %     %% renter state as new scope
-  %     {_, InnerClauses, [{_,RecName,_}|_T]=RecFuns} = state_funs(Edges, States, RecMap, StateID, StateID, [], FunNames1),
-  %     %% add inner funs
-  %     NewFuns = RecFuns ++ Funs,
-  %     NewFunNames = FunNames1 ++ [RecName],
-  %     %% add call in current scope
-  %     RecClause = merl_commented(pre, ["% below is recursive loop"], ["'@RecName@'(CoParty, Data)"]),
-  %     NewClauses = Clauses ++ RecClause;
-  %   _ ->
-  %     %% explore all edges in current state
-  %     {EdgeClauses, InnerFuns} = 
-  %     InnerFunNames = lists:foldl(fun({_,FunName,_}=_Elem, AccIn) -> AccIn ++ [FunName] end, [], InnerFuns),
-  %     NewFunNames = FunNames1 ++ InnerFunNames,
-
-  %     NewFuns = InnerFuns ++ Funs,
-
-
-  %     NewClauses = Clauses ++ state_clause(StateID, State, Edges, States, RecMap)
-
-  % end,
-  % {-1, NewClauses, NewFuns, NewFunNames}.
-
+    true -> %% get snippet, go to next
+      {{_,_FunName,_}=Fun, NextStateID} = gen_snippets:special_state(State),
+      % FunMap = #{StateID => InitFunName},
+      Funs = [Fun]++build_state_fun(Edges,States,RecMap,NextStateID,NextStateID);
+    _ -> %% normal state, build snippets,
+      {StateFun, NextStates} = gen_snippets:state(Edges, States, RecMap, StateID, ScopeID),
+      %% build remaining state funs needed (corresponding to states reached)
+      Funs = lists:foldl(fun({NextStateID, _NextStateFunName}, AccIn) -> AccIn++build_state_fun(Edges,States,RecMap,NextStateID,NextStateID) end, [StateFun], NextStates)
+  end,
+  %% funs contains list of [{true, FunName, FunClauses}, ...]
+  Funs.

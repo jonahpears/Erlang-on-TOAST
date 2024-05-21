@@ -4,4 +4,4 @@
 -export([to_monitor_spec/1]).
 
 -spec to_monitor_spec({list(), map()}) -> map().
-to_monitor_spec(_Fsm) -> #{}.
+to_monitor_spec(_Fsm) -> {pass, #{}}.

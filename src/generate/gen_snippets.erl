@@ -54,7 +54,11 @@ get_next_state_trans(To, NextID) ->
 %% @doc 
 edge_clauses() -> ok.
 
-state_enter(State, StateID, [_Edge|_Edges], _States) ->
+%% @doc 
+%% @returns tuple 
+state_enter(State, StateID, Edges, States, RecMap) ->
+  %% check if current state is recursive
+
   %% get next state after the transition
   % To = maps:get(Edge#edge.to, States),
   % NextID = integer_to_list(Edge#edge.to),
@@ -69,8 +73,10 @@ state_enter(State, StateID, [_Edge|_Edges], _States) ->
 
   {Name, Clauses}.
 
+
+
 %% @doc state with a single outgoing transition
-state_clauses(standard_state=State, StateID, [Edge|_Edges], States) ->
+state_clauses(standard_state=State, StateID, [Edge|_Edges], States, RecMap) ->
   %% get next state after the transition
   To = maps:get(Edge#edge.to, States),
   NextID = integer_to_list(Edge#edge.to),
@@ -103,7 +109,7 @@ state_clauses(standard_state=State, StateID, [Edge|_Edges], States) ->
   Name = get_state_name(State, StateID),
   Clauses = [Clause],
 
-  Clauses.
+  {Clauses, RecStates}.
 
 
 %% @doc 

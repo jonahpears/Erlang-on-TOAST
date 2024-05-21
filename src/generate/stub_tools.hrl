@@ -29,7 +29,7 @@ merl_commented(Comments, Node) -> merl_commented(pre, Comments, Node).
 merl_commented(pre, Comments, Node) ->
   erl_syntax:add_precomments(
     lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Comments), Node
-  ).
+  );
 merl_commented(post, Comments, Node) ->
   erl_syntax:add_postcomments(
     lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Comments), Node
