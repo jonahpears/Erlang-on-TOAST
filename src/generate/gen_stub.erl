@@ -9,7 +9,7 @@
 -include("stub_tools.hrl").
 
 
-prettypr_options() -> [{paper, 160}].
+prettypr_options() -> [{paper, 160},{ribbon,160}].
 output_location() -> "tool_output/".
 
 %% @doc Given a Protocol, first generates FSM and then starts building the module
@@ -24,10 +24,11 @@ gen(Protocol, FileName) ->
   _MonitorSpec = build_monitor_spec(Fsm, FileName),
   ?SHOW("Build Module Spec: Success.", []),
 
-  {ok, ModuleForms} = build_module_forms(Fsm, ModuleName),
+  ModuleForms = build_module_forms(Fsm, ModuleName),
   ?SHOW("Build Module Forms: Success.", []),
 
   SyntaxTree = erl_syntax:form_list(ModuleForms),
+  % ?SHOW("Module Syntax Tree: Success:\n~p.", [SyntaxTree]),
   ?SHOW("Module Syntax Tree: Success.", []),
 
   Program = erl_prettypr:format(SyntaxTree, prettypr_options()),
@@ -70,7 +71,7 @@ build_module_forms(Fsm, ModuleName) ->
   % StateFuns = maps:fold(fun(K, V, AccIn) -> AccIn ++ [state_fun(K, V, Edges, States, RecMap)] end, [], States),
   Funs = build_funs(Edges, States, RecMap),
 
-  ?SHOW("funs: \n~p.", [Funs]),
+  % ?SHOW("funs: \n~p.", [Funs]),
 
   %% get edges of communication
   _ActionEdges = lists:filter(fun(Edge) -> (Edge#edge.edge_data#edge_data.trans_type==action) and ((not Edge#edge.is_silent) and (not Edge#edge.is_custom_end)) end, Edges),
@@ -82,13 +83,21 @@ build_module_forms(Fsm, ModuleName) ->
   %% create basic form for module
   Form = merl_build:init_module(ModuleName),
 
-  Forms = merl_build:add_attribute(define, [merl:var('MONITORED'), false], Form),
+  ?SHOW("Form: ~p.",[Form]),
+
+  Forms = merl_build:add_attribute(define, [merl:var('MONITORED'), merl:var('false')], Form),
+
+  ?SHOW("Forms: ~p.",[Forms]),
 
   %% add the functions to the module
-  AddFuns = fun({X, Name, Cs}, S) -> merl_build:add_function(X, Name, Cs, S) end,
-  ModuleForm = merl_build:module_forms(lists:foldl(AddFuns, Forms, Funs)),
+  AddFuns = fun({Exported, Name, Clauses}=Fun, AccForm) -> 
+    ?SHOW("AddFun:\n\t~p.",[Fun]),
+    _F = merl_build:add_function(Exported, Name, Clauses, AccForm), ?SHOW("Returning:\n\t~p.",[_F]), _F end,
+  _ModuleForm = merl_build:module_forms(lists:foldl(AddFuns, Forms, Funs)),
+  % ?SHOW("_ModuleForm:\n\t~p.", [_ModuleForm]),
+  _ModuleForm.
   %% return module (list of forms)
-  {ok, ModuleForm}.
+  % {ok, ModuleForm}.
 %%
 
 %% TODO go through each state, add their actions as clauses to the current "scope_fun" IFF they are not in the recmap. otherwise, start a new "scope_fun" that is called at the appropriate time
@@ -101,11 +110,11 @@ build_module_forms(Fsm, ModuleName) ->
 %% otherwise, all proceeding behaviour remains within the same scope.
 %% @returns list of functions 
 -spec build_funs(list(), map(), map()) -> list().
-build_funs(Edges, States, RecMap) -> build_state_fun(Edges,States,RecMap,0,{-1, none}).
+build_funs(Edges, States, RecMap) -> build_state_fun(Edges,States,RecMap,0,{-1, none,"Data"}).
 
 %% @doc states building program functions.
 %% if stateID is init then create run() function, which always leads to main() -- this is expected when no clauses or funs currently provided
-build_state_fun(Edges, States, RecMap, StateID, {ScopeID, ScopeName}=Scope) ->
+build_state_fun(Edges, States, RecMap, StateID, {ScopeID, ScopeName, _ScopeData}=Scope) ->
   %% using assertions rather than guards for debugging purposes
   ?assert(is_list(Edges)),
   ?assert(is_map(States)),
@@ -120,20 +129,37 @@ build_state_fun(Edges, States, RecMap, StateID, {ScopeID, ScopeName}=Scope) ->
   %% if non-standard state, then get special snippet
   case lists:any(fun(Elem) -> Elem=:=State end, special_funs()) of
     true -> %% get snippet, go to next
-      {Signal, {_,_FunName,_FunClauses}=Fun, NextState} = gen_snippets:special_state(State, StateID, Edges),
+      {Signal, SpecialFuns, NextState} = gen_snippets:special_state(State, StateID, Edges),
       case Signal of
         next_state -> %% e.g.: state=:=init_state
-          {NextStateID, _NextStateFunName} = NextState,
-          Funs = [Fun]++build_state_fun(Edges,States,RecMap,NextStateID,NextState);
+          {NextStateID, NextStateFunName} = NextState,
+          NextFuns = build_state_fun(Edges,States,RecMap,NextStateID,{-1,NextStateFunName,"Data"}),
+          % ?SHOW("NextFuns: ~p.",[NextFuns]),
+          Funs = SpecialFuns++NextFuns;
         none -> %% e.g.: state=:=custom_end_state
-          Funs = [Fun];
+          Funs = SpecialFuns;
         _ -> %% unknown/other
-          Funs = [Fun]
+          Funs = SpecialFuns
         end;
     _ -> %% normal state, build snippets,
-      {StateFuns, NextStateFuns} = gen_snippets:state(State, StateID, Scope, Edges, States, RecMap),
+      % {StateFuns, NextStateFuns} = gen_snippets:state(State, StateID, Scope, Edges, States, RecMap),
+      StateFuns = gen_snippets:state(State, StateID, Scope, Edges, States, RecMap),
+      %% make each clause of each function ?Q
+      WrapClause = fun(Clause, AccClauses) -> 
+          % ?SHOW("WrapClause:\n\t~p.",[Clause]),
+          _AccClauses = AccClauses++[?Q(Clause)],
+          % ?SHOW("_AccClauses:\n\t~p.",[_AccClauses]),
+          _AccClauses
+        end,
+      WrapClauses = fun({Exported, FunName, Clauses}, AccFuns) -> 
+          % ?GAP(),?SHOW("WrapClauses.",[]),
+          _AccFuns = AccFuns++[{Exported,FunName,lists:foldl(WrapClause, [], Clauses)}], 
+          % ?SHOW("_AccFuns:\n\t~p.",[_AccFuns]),
+          _AccFuns
+        end,
+      Funs = lists:foldl(WrapClauses, [], StateFuns)
       %% build remaining state funs needed (corresponding to states reached)
-      Funs = lists:foldl(fun({NextStateID, _NextStateFunName}=NextStateScope, AccIn) -> AccIn++build_state_fun(Edges,States,RecMap,NextStateID,NextStateScope) end, StateFuns, NextStateFuns)
+      % Funs = lists:foldl(fun({NextStateID, _NextStateFunName}=NextStateScope, AccIn) -> AccIn++build_state_fun(Edges,States,RecMap,NextStateID,NextStateScope) end, StateFuns, NextStateFuns)
   end,
   %% funs contains list of [{true, FunName, FunClauses}, ...]
   Funs.

@@ -46,7 +46,7 @@ init_module(Name) when is_atom(Name) ->
 module_forms(#module{name=Name,
                      exports=Xs,
                      imports=Is,
-                    %  files=Fs,
+                     file=Fl,
                      records=Rs,
                      attributes=As,
                      functions=Fs})
@@ -63,13 +63,17 @@ module_forms(#module{name=Name,
     Attrs = [?Q("'@_Ts'() -> [].")
              || {_File, N, T} <- lists:reverse(As),
              Ts <- [erl_syntax:attribute(term(N), T)]],
-    [{Fl, _N, _Es}|_T] = lists:reverse(Rs),
     File = [?Q("-file(\"'@Fl@\",1).")],
-    Records = [?Q("-record('@N@',{'@_RFs'=[]}).")
-               || {_File, N, Es} <- lists:reverse(Rs),
-                  RFs <- [[erl_syntax:record_field(term(F), V)
-                           || {F,V} <- Es]]
-              ],
+    case length(Rs)>0 of
+      true ->
+        [{_Fl, _N, _Es}|_T] = lists:reverse(Rs),
+        Records = [?Q("-record('@N@',{'@_RFs'=[]}).")
+                  || {_File, N, Es} <- lists:reverse(Rs),
+                      RFs <- [[erl_syntax:record_field(term(F), V)
+                              || {F,V} <- Es]]
+                  ];
+      _ -> Records = []
+    end,
     % Records = [?Q("-file(\"'@File@\",1). -record('@N@',{'@_RFs'=[]}).")
     %            || {File, N, Es} <- lists:reverse(Rs),
     %               RFs <- [[erl_syntax:record_field(term(F), V)
@@ -98,7 +102,7 @@ add_function(Exported, Name, Clauses,
 
 %% @doc Add a record declaration to a module representation.
 add_record(Name, Fields, #module{file=File, records=Rs}=M)
-  when is_atom(Name) ->
+  when is_atom(Name) and is_list(Fields) ->
     M#module{records=[{File, Name, Fields} | Rs]}.
 
 %% @doc Add a "wild" attribute, such as `-compile(Opts)' to a module
