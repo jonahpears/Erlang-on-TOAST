@@ -4,7 +4,7 @@
 
 -define(MONITORED, false).
 
--export([main/2, run/1, run/2]).
+-export([loop_state2_std/2, main/2, run/1, run/2]).
 
 %% @doc Adds default empty list for Data.
 %% @see run/2.
@@ -18,6 +18,16 @@ run(CoParty, Data) -> main(CoParty, Data). %% add any init/start preperations be
 
 main(CoParty, Data) ->
     Data1 = Data,
+    receive
+        {CoParty, msg1, Payload_Msg1} ->
+            Data2 = Data1,
+            Payload_Msg1 = ok,
+            CoParty ! {self(), msg1, Payload_Msg1},
+            loop_state2_std(CoParty, Data2)
+    end.
+
+loop_state2_std(CoParty, Data2) ->
+    Data2_2 = Data2,
     Payload_Msg1 = ok,
     CoParty ! {self(), msg1, Payload_Msg1},
-    loop_state2_std(CoParty, Data1).
+    loop_state2_std(CoParty, Data2_2).

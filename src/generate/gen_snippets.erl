@@ -157,7 +157,7 @@ state(standard_state=State, StateID, {ScopeID, ScopeName, ScopeData}=Scope, Edge
   case is_state_recursive(StateID, RecMap) and (StateID=/=ScopeID) of
     true -> %% add to list of next states and add call to function to clauses
       LoopName = get_loop_name(atom_to_list(NextState)),
-      ?SHOW("~p, ~p, new loop: ~p.",[Scope,{StateID,LoopName}]),
+      ?SHOW("~p, ~p, new loop: ~p.",[Scope,{StateID},{StateID,LoopName}]),
       %% do not add {NextID,ScopeName} since these will be built within scope next time
       % NextStateFuns = [{StateID,LoopName}],
       % StateFunsTail = [],
@@ -176,7 +176,7 @@ state(standard_state=State, StateID, {ScopeID, ScopeName, ScopeData}=Scope, Edge
       ?SHOW("~p, ~p, continuing to next state: ~p.",[Scope,{StateID},{NextID,NextState,ToState}]),
       % {_StateFuns, _NextStateFuns} = state(NextState, NextID, Scope, Edges,States,RecMap),
       %% check if next state is recursive
-      case is_state_recursive(NextID, RecMap) of
+      case is_state_recursive(NextID, RecMap) and (StateID=:=ScopeID) of
         true -> %% reconstruct function to go back
           _NextStateFuns = [{true,ScopeName,[%"%% recursive loop \n",
       atom_to_list(get_loop_name(NextState))++"(CoParty, "++StateData++")"]}];

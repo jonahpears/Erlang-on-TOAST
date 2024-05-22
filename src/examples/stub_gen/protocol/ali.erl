@@ -3,7 +3,7 @@
 -compile(nowarn_export_all).
 
 %% change this one for protocol
--define(PROTOCOL, basic_send_recv_loop).
+-define(PROTOCOL, basic_recv_send_loop).
 
 %% use this
 %% gen_stub:gen(ali:spec(),"_ali_test.erl").
