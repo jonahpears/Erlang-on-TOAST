@@ -59,7 +59,6 @@ build_monitor_spec(Fsm,FileName) ->
 % -spec build_module_forms({list(), map()}, atom()) -> tree_or_trees().
 %% @doc Takes Fsm, returns list for Forms
 build_module_forms(Fsm, ModuleName) -> 
-  % Func = merl:var(list_to_atom("?FUNCTION_NAME")),
   
   %% fsm is composed of list of edges and map of states to edges.
   %% mixed-states have both sending and receiving actions/edges.
@@ -71,6 +70,8 @@ build_module_forms(Fsm, ModuleName) ->
   % StateFuns = maps:fold(fun(K, V, AccIn) -> AccIn ++ [state_fun(K, V, Edges, States, RecMap)] end, [], States),
   Funs = build_funs(Edges, States, RecMap),
 
+  ?SHOW("funs: \n~p.", [Funs]),
+
   %% get edges of communication
   _ActionEdges = lists:filter(fun(Edge) -> (Edge#edge.edge_data#edge_data.trans_type==action) and ((not Edge#edge.is_silent) and (not Edge#edge.is_custom_end)) end, Edges),
 
@@ -78,22 +79,8 @@ build_module_forms(Fsm, ModuleName) ->
   %% function edge_fun 
   % _EdgeFuns = lists:foldl(fun(Edge, AccIn) -> AccIn ++ [edge_fun(Edge, ?MOD)] end, [], ActionEdges),
 
-  %% add other mandatory functions (following type module_rep())
-  % Funs = StateFuns,
-  % Funs = [ {true, start_link, []},
-  %          {true, start_link, []},
-  %          {true, send, []},
-  %          {true, recv, []},
-  %          {true, protocol_violated, []}
-  %          | StateFuns ] ++ lists:usort(EdgeFuns) ++ [],
-
-  % lists:foreach(fun(F) -> ?SHOW("...f:  ~p.", [F]) end,StateFuns),
-
   %% create basic form for module
   Form = merl_build:init_module(ModuleName),
-
-  %% ? build erlang module when behaviour `gen_statem' 
-  % Forms = merl_build:add_attribute(behaviour, [merl:term('gen_statem')], Form),
 
   Forms = merl_build:add_attribute(define, [merl:var('MONITORED'), false], Form),
 
@@ -102,7 +89,7 @@ build_module_forms(Fsm, ModuleName) ->
   ModuleForm = merl_build:module_forms(lists:foldl(AddFuns, Forms, Funs)),
   %% return module (list of forms)
   {ok, ModuleForm}.
-
+%%
 
 %% TODO go through each state, add their actions as clauses to the current "scope_fun" IFF they are not in the recmap. otherwise, start a new "scope_fun" that is called at the appropriate time
 
@@ -114,23 +101,39 @@ build_module_forms(Fsm, ModuleName) ->
 %% otherwise, all proceeding behaviour remains within the same scope.
 %% @returns list of functions 
 -spec build_funs(list(), map(), map()) -> list().
-build_funs(Edges, States, RecMap) -> build_state_fun(Edges,States,RecMap,0,-1).
+build_funs(Edges, States, RecMap) -> build_state_fun(Edges,States,RecMap,0,{-1, none}).
 
 %% @doc states building program functions.
 %% if stateID is init then create run() function, which always leads to main() -- this is expected when no clauses or funs currently provided
-build_state_fun(Edges, States, RecMap, StateID, ScopeID) ->
+build_state_fun(Edges, States, RecMap, StateID, {ScopeID, ScopeName}=Scope) ->
+  %% using assertions rather than guards for debugging purposes
+  ?assert(is_list(Edges)),
+  ?assert(is_map(States)),
+  ?assert(is_map(RecMap)),
+  ?assert(is_atom(ScopeName)),
+  ?assert(is_integer(ScopeID)),
+  ?assert(is_integer(StateID)),
+  %% 
+  ?GAP(),?SHOW("scope: ~p.", [Scope]),
   %% get state
   State = maps:get(StateID, States),
   %% if non-standard state, then get special snippet
   case lists:any(fun(Elem) -> Elem=:=State end, special_funs()) of
     true -> %% get snippet, go to next
-      {{_,_FunName,_}=Fun, NextStateID} = gen_snippets:special_state(State),
-      % FunMap = #{StateID => InitFunName},
-      Funs = [Fun]++build_state_fun(Edges,States,RecMap,NextStateID,NextStateID);
+      {Signal, {_,_FunName,_FunClauses}=Fun, NextState} = gen_snippets:special_state(State, StateID, Edges),
+      case Signal of
+        next_state -> %% e.g.: state=:=init_state
+          {NextStateID, _NextStateFunName} = NextState,
+          Funs = [Fun]++build_state_fun(Edges,States,RecMap,NextStateID,NextState);
+        none -> %% e.g.: state=:=custom_end_state
+          Funs = [Fun];
+        _ -> %% unknown/other
+          Funs = [Fun]
+        end;
     _ -> %% normal state, build snippets,
-      {StateFun, NextStates} = gen_snippets:state(Edges, States, RecMap, StateID, ScopeID),
+      {StateFuns, NextStateFuns} = gen_snippets:state(State, StateID, Scope, Edges, States, RecMap),
       %% build remaining state funs needed (corresponding to states reached)
-      Funs = lists:foldl(fun({NextStateID, _NextStateFunName}, AccIn) -> AccIn++build_state_fun(Edges,States,RecMap,NextStateID,NextStateID) end, [StateFun], NextStates)
+      Funs = lists:foldl(fun({NextStateID, _NextStateFunName}=NextStateScope, AccIn) -> AccIn++build_state_fun(Edges,States,RecMap,NextStateID,NextStateScope) end, StateFuns, NextStateFuns)
   end,
   %% funs contains list of [{true, FunName, FunClauses}, ...]
   Funs.

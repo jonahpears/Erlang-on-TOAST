@@ -1,4 +1,4 @@
--compile({nowarn_unused_function, [ {reng_show,2} ]}).
+-compile({nowarn_unused_function, [ {reng_show,2}, {reng_show,3} ]}).
 
 -record(graph, {graph_ref, name, type}).
 
@@ -11,6 +11,16 @@
 
 -record(clock_value, {is_abs, lower_bound, upper_bound}).
 -record(clock, {label, value, is_global}).
+
+reng_show(edges,Edges,HeadString) -> 
+  io:format(HeadString),
+  reng_show(edges,Edges);
+reng_show(edge,Edge,HeadString) -> 
+  io:format(HeadString),
+  reng_show(edge,Edge).
+
+reng_show(edges, Edges) ->
+  lists:foreach(fun(Edge) -> reng_show(edge,Edge) end, Edges);
 
 reng_show(edge, Edge) -> 
   io:format("edge.from: ~p.\n", [Edge#edge.from]),

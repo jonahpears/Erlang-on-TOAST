@@ -1,8 +1,14 @@
 Protocol re-engineering artifact
 
-GitHub  https://github.com/LauraVoinea/protocol-reengineering-implementation
+GitHub  <https://github.com/LauraVoinea/protocol-reengineering-implementation>
 
 Commit Hash: 57a3d55ee0a236ea578bd182be007427fe950747
+
+## 0. updates
+
+```erl
+gen_stub:gen(ali:spec(),"_ali_test.erl").
+```
 
 ## 1. Getting started guide
 
@@ -13,13 +19,14 @@ The protocol type is defined within interleave.erl. This file also contains a fe
 examples together with the algorithm for protocol composition.
 
 ### Prerequisites
+
 The following software needs to be installed:
 
 - Erlang: Erlang/OTP 24 Erts 12.2.1
 - rebar3: rebar 3.17.0
 
-
 ### Building
+
 The tool can be built using rebar3:
 
     rebar3 compile
@@ -27,13 +34,14 @@ The tool can be built using rebar3:
 ## 2. Step-by-Step Instructions
 
 ### Running
+
 Enter the rebar3 shell:
 
-		rebar3 shell
+  rebar3 shell
 Protocol Composition:
 Strong:
 
-		interleave:interleave(Protocol1, Protocol2).
+  interleave:interleave(Protocol1, Protocol2).
 
 Weak:
 
@@ -41,11 +49,11 @@ Weak:
 
 Correlating:
 
-		interleave:interleaveCorrelating(Protocol1, Protocol2).
+  interleave:interleaveCorrelating(Protocol1, Protocol2).
 
 All:
 
-		interleave:interleaveAll(Protocol1, Protocol2).
+  interleave:interleaveAll(Protocol1, Protocol2).
 
 For example:
 
@@ -53,13 +61,11 @@ For example:
 
 Code Generation:
 
-
     generate:gen(Protocol, FileName).
 
 For example:
 
     generate:gen(examples:pin(),"pin.erl").
-
 
 Protocol Extraction:
 
@@ -71,19 +77,19 @@ For example:
 
 To obtain Table 1 from the paper run:
 
-		examples:table().
+  examples:table().
 
 ## 2. Overview of the claims
 
 Claims supported by the artifact:
 
-	1. Protocol Composition: Strong, Weak, Correlating, All
-	2. Protocol Generation
-	3. Protocol Extraction
+ 1. Protocol Composition: Strong, Weak, Correlating, All
+ 2. Protocol Generation
+ 3. Protocol Extraction
 
 Results presented in Table 1 should be obtained on any machine.
 To obtain Table 1 from the paper run:
 
-		examples:table().
+  examples:table().
 
 The examples can be found under src/examples/

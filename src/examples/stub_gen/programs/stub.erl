@@ -6,7 +6,7 @@
 -export([ run/1, run/2, main/2
         ]).
 
--include("tool_output/goals/gen_stub/stub.hrl").
+-include("stub.hrl").
 
 
 run(CoParty) -> run(CoParty, []).

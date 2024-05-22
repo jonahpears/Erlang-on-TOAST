@@ -105,26 +105,26 @@ send_after(Func, Args, PID, Timeout) ->
   end ).
 
 %% @doc Wrapper function for sending the result of Fun with Label if it finished within Timeout milliseconds
-send_before(CoPartyID, {Label, {Fun, Args}}, Timeout) -> 
+send_before(CoPartyID, {Label, {Fun, Args}}, Timeout) when is_pid(CoPartyID) and is_atom(Label) -> 
   NonBlocking = send_after(Fun, Args, self(), Timeout),
   receive {NonBlocking, ok, Result} -> send(CoPartyID, {Label, Result});
     {NonBlocking, ko} -> ko
   end.
 
 %% @doc 
-recv_before(MonitorID, Label, Timeout) when ?MONITORED and  is_atom(Label) -> gen_statem:call(MonitorID, {recv, Label, Timeout});
+recv_before(MonitorID, Label, Timeout) when ?MONITORED and is_pid(MonitorID) and is_atom(Label) -> gen_statem:call(MonitorID, {recv, Label, Timeout});
 
 %% @doc 
-recv_before(CoPartyID, Label, Timeout) when is_atom(Label) -> receive {CoPartyID, Label, Payload} -> {ok, PayLoad} after Timeout -> {ko, timeout} end.
+recv_before(CoPartyID, Label, Timeout) when is_pid(CoPartyID) and is_atom(Label) -> receive {CoPartyID, Label, Payload} -> {ok, Payload} after Timeout -> {ko, timeout} end.
 
 %% @doc Wrapper function for sending messages asynchronously via synchronous Monitor
-send(MonitorID, {Label, _Payload}=Msg) when ?MONITORED and is_atom(Label) -> gen_statem:call(MontiorID, {send, Msg});
+send(MonitorID, {Label, _Payload}=Msg) when ?MONITORED and is_pid(MonitorID) and is_atom(Label) -> gen_statem:call(MonitorID, {send, Msg});
 
 %% @doc Wrapper function for sending messages asynchronously
-send(CoPartyID, {Label, _Payload}=Msg) when is_atom(Label) -> CoPartyID ! {self(), Msg}, ok.
+send(CoPartyID, {Label, _Payload}=Msg) when is_pid(CoPartyID) and is_atom(Label) -> CoPartyID ! {self(), Msg}, ok.
 
 %% @doc Wrapper function for receiving message asynchronously via synchronous Monitor
-recv(MonitorID, Label) when is_atom(Label) -> gen_statem:call(MonitorID, {recv, Label});
+recv(MonitorID, Label) when is_pid(MonitorID) and is_atom(Label) -> gen_statem:call(MonitorID, {recv, Label});
 
 %% @doc Wrapper function for receiving message asynchronously
-recv(CoPartyID, Label) when is_atom(Label) -> receive {CoPartyID, Label, Payload} -> {ok, Payload} end.
+recv(CoPartyID, Label) when is_pid(CoPartyID) and is_atom(Label) -> receive {CoPartyID, Label, Payload} -> {ok, Payload} end.
