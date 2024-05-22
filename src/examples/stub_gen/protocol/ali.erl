@@ -11,6 +11,7 @@
 
 spec() -> spec(?PROTOCOL).
 
+spec(default) -> spec(?PROTOCOL);
 
 spec(basic_send) -> {act, s_msg1, endP};
 spec(basic_send_loop) -> {rec, "a", {act, s_msg1, {rvar, "a"}}};

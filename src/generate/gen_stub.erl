@@ -1,7 +1,7 @@
 %% @doc Generate Erlang stub program from FSM generated from protocol sturcture
 -module(gen_stub).
 
--export([gen/2]).
+-export([gen/3,gen/4]).
 
 -include_lib("syntax_tools/include/merl.hrl").
 -include_lib("stdlib/include/assert.hrl").
@@ -13,8 +13,17 @@ prettypr_options() -> [{paper, 160},{ribbon,160}].
 output_location() -> "tool_output/".
 
 %% @doc Given a Protocol, first generates FSM and then starts building the module
--spec gen(interleave:protocol(), string()) -> none().
-gen(Protocol, FileName) ->
+-spec gen(atom(), atom(), atom(), string()) -> none().
+gen(ProtocolModule, ProtocolFun, ProtocolName, FileName) ->
+  %% get protocol
+  Protocol = ProtocolModule:ProtocolFun(ProtocolName),
+  gen(ProtocolName,Protocol,FileName).
+%%
+
+%% @doc Given a Protocol, first generates FSM and then starts building the module
+-spec gen(atom(), atom(), string()) -> none().
+gen(ProtocolName, Protocol, FileName) ->
+
   ModuleName = list_to_atom(lists:last(lists:droplast(string:tokens(FileName, "/.")))),
   ?SHOW("Module Name: ~p", [ModuleName]),
 
@@ -34,7 +43,7 @@ gen(Protocol, FileName) ->
   Program = erl_prettypr:format(SyntaxTree, prettypr_options()),
   ?SHOW("Format to Program: Success.", []),
 
-  OutputPath = output_location() ++ FileName ++ ".erl",
+  OutputPath = output_location() ++ atom_to_list(ProtocolName)++"_"++FileName,
   file:write_file(OutputPath, Program).
 
 %% @doc Wrapper for build_fsm:to_fsm(Protocol)
@@ -127,8 +136,8 @@ build_state_fun(Edges, States, RecMap, StateID, {ScopeID, ScopeName, _ScopeData}
   %% get state
   State = maps:get(StateID, States),
   %% if non-standard state, then get special snippet
-  case lists:any(fun(Elem) -> Elem=:=State end, special_funs()) of
-    true -> %% get snippet, go to next
+  case State of
+    init_state -> %% get snippet, go to next
       {Signal, SpecialFuns, NextState} = gen_snippets:special_state(State, StateID, Edges),
       case Signal of
         next_state -> %% e.g.: state=:=init_state
@@ -141,6 +150,8 @@ build_state_fun(Edges, States, RecMap, StateID, {ScopeID, ScopeName, _ScopeData}
         _ -> %% unknown/other
           Funs = SpecialFuns
         end;
+    custom_end_state -> %% return nothing
+      Funs = gen_snippets:state(State, StateID, {-1,main,"Data"}, Edges, States, RecMap);
     _ -> %% normal state, build snippets,
       % {StateFuns, NextStateFuns} = gen_snippets:state(State, StateID, Scope, Edges, States, RecMap),
       StateFuns = gen_snippets:state(State, StateID, Scope, Edges, States, RecMap),

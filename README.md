@@ -7,7 +7,7 @@ Commit Hash: 57a3d55ee0a236ea578bd182be007427fe950747
 ## 0. updates
 
 ```erl
-gen_stub:gen(ali:spec(),"_ali_test.erl").
+gen_stub:gen(ali,spec,default,"_ali_test.erl").
 ```
 
 ## 1. Getting started guide
