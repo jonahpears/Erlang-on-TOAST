@@ -6,7 +6,7 @@
 -define(PROTOCOL, basic_recv_send_loop).
 
 %% use this
-%% gen_stub:gen(ali:spec(),"_ali_test.erl").
+%% gen_stub:gen(ali,spec,default,"_ali_test.erl").
 
 
 spec() -> spec(?PROTOCOL).
