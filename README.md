@@ -16,6 +16,7 @@ gen_stub:gen(ali,spec,default,"_ali_test.erl").
 
 - examples of how to encode TOAST into protocol:
   - mixed-choice with gaps between sending and receiving regions
+    - either add delays to protocols, or show how these can be accomodated for in protocol
   - single-direction cascading time constraints
 - explanation of diagonal constraints
 
