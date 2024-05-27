@@ -1,9 +1,9 @@
-Erlang on TOAST artifact
+Erlang on TOAST artifact,
 
 GitHub <https://github.com/jonahpears/Erlang-on-TOAST-timeout-protocol-reengineering-implementation->
 
 An extension (fork) of:
-Protocol re-engineering artifact
+Protocol re-engineering artifact,
 GitHub  <https://github.com/LauraVoinea/protocol-reengineering-implementation>
 
 ## 0. updates
@@ -11,6 +11,13 @@ GitHub  <https://github.com/LauraVoinea/protocol-reengineering-implementation>
 ```erl
 gen_stub:gen(ali,spec,default,"_ali_test.erl").
 ```
+
+### todo
+
+- examples of how to encode TOAST into protocol:
+  - mixed-choice with gaps between sending and receiving regions
+  - single-direction cascading time constraints
+- explanation of diagonal constraints
 
 ## 1. Getting started guide
 
