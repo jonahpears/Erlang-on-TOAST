@@ -1,8 +1,10 @@
+Erlang on TOAST artifact
+
+GitHub <https://github.com/jonahpears/Erlang-on-TOAST-timeout-protocol-reengineering-implementation->
+
+An extension (fork) of:
 Protocol re-engineering artifact
-
 GitHub  <https://github.com/LauraVoinea/protocol-reengineering-implementation>
-
-Commit Hash: 57a3d55ee0a236ea578bd182be007427fe950747
 
 ## 0. updates
 
