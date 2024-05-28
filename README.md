@@ -18,7 +18,10 @@ gen_stub:gen(ali,spec,default,"_ali_test.erl").
   - mixed-choice with gaps between sending and receiving regions
     - either add delays to protocols, or show how these can be accomodated for in protocol
   - single-direction cascading time constraints
+    - time-consuming data with ability to skip if it takes too long. how to signal that an action is time consuming?
 - explanation of diagonal constraints
+- add `sample_app` directory for easy testing
+- update readme properly
 
 ## 1. Getting started guide
 
