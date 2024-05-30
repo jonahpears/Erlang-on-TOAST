@@ -3,6 +3,8 @@
 -compile(export_all).
 -compile(nowarn_export_all).
 
+-type time () :: timeout() | string().
+
 %% @doc Protocol format
 %% Notes:
 %%   - Recursion variables are represented as string()
@@ -10,20 +12,22 @@
 %%   - Control branches are represented as a list of atom/protocol pairs
 %%   - The atom endP is used to end a protocol because "end" is a reserved keyword.
 -type protocol () :: {'act', atom(), protocol()}
-                   | {'act', atom(), protocol(), 'aft', number(), protocol()}
+                   | {'act', atom(), protocol(), 'aft', time(), protocol()}
                    | {'branch', [ {atom(), protocol()} ]}
-                   | {'branch', [ {atom(), protocol()} ], 'aft', number(), protocol()}
-                   | {'aft', number(), protocol()}
-                   | {'roles', [ atom() ], protocol()}
-                   | {'error', atom()}
-                   | {'from', atom(), 'to', atom()}
+                   | {'branch', [ {atom(), protocol()} ], 'aft', time(), protocol()}
+                   | {'aft', time(), protocol()}
+                   | {'timer', string(), number(), protocol()}
+                   | {'delay', time(), protocol()}
+                  %  | {'roles', [ atom() ], protocol()}
+                  %  | {'error', atom()}
+                  %  | {'from', atom(), 'to', atom()}
                   %  | {'set', atom(), protocol()}
                   %  | {'delay', time_region(), protocol()}
                   %  | {'iff', time_constraint(), protocol()}
                   %  | {'iff', time_constraint(), protocol(), 'else', protocol()}
-                   | {'assert', atom(), protocol()}
-                   | {'require', atom(), protocol()}
-                   | {'consume', atom(), protocol()}
+                  %  | {'assert', atom(), protocol()}
+                  %  | {'require', atom(), protocol()}
+                  %  | {'consume', atom(), protocol()}
                    | {'rec', string(), protocol()}
                    | {'rvar', string()}
                    | 'issue_timeout'

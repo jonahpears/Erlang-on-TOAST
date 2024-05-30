@@ -436,47 +436,50 @@ to_fsm(endP, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
             Edges1 = lists:droplast(Edges) ++ [Edge],
             {Edges1, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks}
     end;
-to_fsm({assert, N, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
-    LastEdge = lists:last(Edges),
-    EdgeData = LastEdge#edge.edge_data#edge_data{
-        comments = LastEdge#edge.edge_data#edge_data.comments ++ [{assert, N}]
-    },
-    Edge = LastEdge#edge{edge_data = EdgeData},
-    Edges1 = lists:droplast(Edges) ++ [Edge],
-    to_fsm(P, Edges1, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks);
-to_fsm({require, N, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
-    LastEdge = lists:last(Edges),
-    EdgeData = LastEdge#edge.edge_data#edge_data{
-        comments = LastEdge#edge.edge_data#edge_data.comments ++ [{require, N}]
-    },
-    Edge = LastEdge#edge{edge_data = EdgeData},
-    Edges1 = lists:droplast(Edges) ++ [Edge],
-    to_fsm(P, Edges1, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks);
-to_fsm({consume, N, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
-    LastEdge = lists:last(Edges),
-    EdgeData = LastEdge#edge.edge_data#edge_data{
-        comments = LastEdge#edge.edge_data#edge_data.comments ++ [{consume, N}]
-    },
-    Edge = LastEdge#edge{edge_data = EdgeData},
-    Edges1 = lists:droplast(Edges) ++ [Edge],
-    to_fsm(P, Edges1, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks);
-to_fsm({set, Name, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
-    %% TODO apply reset on
-    %% ! (1: last act if above),
-    %% ! (2: all incoming actions to state if rec)
-    ClockName = "c_" ++ Name,
-    Clocks1 = maps:put(
-        ClockName,
-        #clock{
-            label = Name,
-            is_global = false,
-            value = #clock_value{is_abs = true, upper_bound = 0}
-        },
-        Clocks
-    ),
-    to_fsm(P, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks1);
-to_fsm({delay, _N, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
-    % ? skip
+% to_fsm({assert, N, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
+%     LastEdge = lists:last(Edges),
+%     EdgeData = LastEdge#edge.edge_data#edge_data{
+%         comments = LastEdge#edge.edge_data#edge_data.comments ++ [{assert, N}]
+%     },
+%     Edge = LastEdge#edge{edge_data = EdgeData},
+%     Edges1 = lists:droplast(Edges) ++ [Edge],
+%     to_fsm(P, Edges1, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks);
+% to_fsm({require, N, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
+%     LastEdge = lists:last(Edges),
+%     EdgeData = LastEdge#edge.edge_data#edge_data{
+%         comments = LastEdge#edge.edge_data#edge_data.comments ++ [{require, N}]
+%     },
+%     Edge = LastEdge#edge{edge_data = EdgeData},
+%     Edges1 = lists:droplast(Edges) ++ [Edge],
+%     to_fsm(P, Edges1, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks);
+% to_fsm({consume, N, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
+%     LastEdge = lists:last(Edges),
+%     EdgeData = LastEdge#edge.edge_data#edge_data{
+%         comments = LastEdge#edge.edge_data#edge_data.comments ++ [{consume, N}]
+%     },
+%     Edge = LastEdge#edge{edge_data = EdgeData},
+%     Edges1 = lists:droplast(Edges) ++ [Edge],
+%     to_fsm(P, Edges1, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks);
+% to_fsm({set, Name, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
+%     %% TODO apply reset on
+%     %% ! (1: last act if above),
+%     %% ! (2: all incoming actions to state if rec)
+%     ClockName = "c_" ++ Name,
+%     Clocks1 = maps:put(
+%         ClockName,
+%         #clock{
+%             label = Name,
+%             is_global = false,
+%             value = #clock_value{is_abs = true, upper_bound = 0}
+%         },
+%         Clocks
+%     ),
+%     to_fsm(P, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks1);
+to_fsm({timer, _Name, _Duration, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
+    % add time-consuming silent transition to next state
+    to_fsm(P, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks);
+to_fsm({delay, _Duration, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
+    % add time-consuming silent transition to next state
     %     ClockName = "c_" ++ Name,
     %     Clocks1 = maps:new(),
     %     maps:foreach(fun(Key,Value) ->
@@ -493,16 +496,16 @@ to_fsm({delay, _N, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clock
     %                           {ClockValue, _Map} -> #clock_value{is_abs = ClockValue#clock_value.is_abs}
     %                           end}),
     to_fsm(P, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks);
-to_fsm({iff, _C, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
-    % TODO add constraint to immediate inner act/branch
-    % ? account for someone resetting timer before sending (likely to be another timer, maybe reorder these prior?)
-    to_fsm(P, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks);
-to_fsm({iff, _C, P, else, _Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
-    % TODO add constraint to immediate inner act/branch
-    % TODO add inverse constraint to immediate inner act in Q (if any)
-    to_fsm(P, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks);
-% to_fsm(error, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex) ->
-%     to_fsm(P, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex);
+% to_fsm({iff, _C, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
+%     % TODO add constraint to immediate inner act/branch
+%     % ? account for someone resetting timer before sending (likely to be another timer, maybe reorder these prior?)
+%     to_fsm(P, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks);
+% to_fsm({iff, _C, P, else, _Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
+%     % TODO add constraint to immediate inner act/branch
+%     % TODO add inverse constraint to immediate inner act in Q (if any)
+%     to_fsm(P, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks);
+% % to_fsm(error, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex) ->
+% %     to_fsm(P, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex);
 
 to_fsm({_, _, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
     to_fsm(P, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks).
