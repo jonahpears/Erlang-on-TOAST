@@ -21,7 +21,10 @@ gen_stub:gen(ali,spec,default,"_ali_test.erl").
     - time-consuming data with ability to skip if it takes too long. how to signal that an action is time consuming?
 - explanation of diagonal constraints
 - add `sample_app` directory for easy testing
+- add sample `configuration presets` for monitors (verify only, enforce light, enforce strong)
 - update readme properly
+- smooth out session instantiation, using `tpri_session`
+- add delay protocol atom
 
 ## 1. Getting started guide
 
