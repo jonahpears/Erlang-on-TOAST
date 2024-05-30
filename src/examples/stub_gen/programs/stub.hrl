@@ -37,7 +37,8 @@ start_link(Args) when ?MONITORED==true ->
     _ -> MonitorSpec = ?MONITOR_SPEC
   end,
 
-  {MonitorID, _MonitorRef} = spawn_monitor(gen_monitor, start_link, [MonitorSpec]),
+  %% spawn monitor within same node 
+  {MonitorID, _MonitorRef} = spawn_monitor(node(), gen_monitor, start_link, [MonitorSpec]),
 
   %% exchange IDs with monitor
   PID = self(),
@@ -95,18 +96,33 @@ init(Args) ->
     receive {SessionID, start} -> run(CoPartyID) end 
   end.
 
-%% @doc Calls Fun with Args and forwards the result, if Fun completes within Timeout milliseconds, otherwise signals PID 
-send_after(Func, Args, PID, Timeout) ->
+%% @doc Calls Fun with Args and forwards the result to PID.
+%% If Fun completes within Timeout milliseconds, returns Result.
+%% Otherwise signals PID 'ko' since it took too long.
+%% @see nonblocking_waiter(_,_,_,T) when is_pid(T) for use with timers
+nonblocking_waiter(Func, Args, PID, Timeout) when is_integer(Timeout) ->
   spawn( fun() -> 
     Waiter = self(),
     TimeConsumer = spawn( fun() -> Waiter ! {self(), ok, Func(Args)} end ),
     receive {TimeConsumer, ok, Result} -> PID ! {self(), ok, Result}
-    after Timeout -> PID ! {self(), ko} end 
+    after Timeout -> PID ! {self(), ko}, exit(TimeConsumer, too_late) end 
+  end );
+
+%% @doc Calls Fun with Args and forwards the result to PID.
+%% If Fun completes before Timer finishes, returns Result.
+%% Otherwise signals PID 'ko' since it took too long.
+nonblocking_waiter(Func, Args, PID, Timer) when is_pid(Timer) ->
+  spawn( fun() -> 
+    Waiter = self(),
+    TimeConsumer = spawn( fun() -> Waiter ! {self(), ok, Func(Args)} end ),
+    receive 
+      {TimeConsumer, ok, Result} -> PID ! {self(), ok, Result}
+      {timeout, Timer, _Msg} -> PID ! {self(), ko}, exit(TimeConsumer, too_late) end 
   end ).
 
 %% @doc Wrapper function for sending the result of Fun with Label if it finished within Timeout milliseconds
 send_before(CoPartyID, {Label, {Fun, Args}}, Timeout) when is_pid(CoPartyID) and is_atom(Label) -> 
-  NonBlocking = send_after(Fun, Args, self(), Timeout),
+  NonBlocking = nonblcking_waiter(Fun, Args, self(), Timeout),
   receive {NonBlocking, ok, Result} -> send(CoPartyID, {Label, Result});
     {NonBlocking, ko} -> ko
   end.

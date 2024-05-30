@@ -57,7 +57,7 @@ get_next_state_trans(To, NextID) when is_atom(To) and is_integer(NextID) ->
 %% TODO: recursion: add more data too states/nodes, to signify if part of loop
 
 %% @doc generates clause for actions/outgoing edges
-edge(#edge{from=_From,to=_To,edge_data=#edge_data{event_type = _EventType,event = Event,trans_type = TransType,pattern = _Pattern,args = _Args,guard = _Guard,code = _Code,attributes = _Attributes,comments = _Comments}=_EdgeData,is_silent=_IsSilent,is_delayable_send = _IsDelayableSend,is_custom_end = _IsCustomEnd,is_internal_timeout_to_supervisor = _IsInternalTimeoutToSupervisor}=_Edge) -> 
+edge(#edge{from=_From,to=_To,edge_data=#edge_data{event_type = _EventType,event = Event,trans_type = TransType,pattern = _Pattern,args = _Args,guard = _Guard,code = _Code,attributes = _Attributes,comments = _Comments}=_EdgeData,is_silent=_IsSilent,is_delay = _IsDelay,is_custom_end = _IsCustomEnd,is_internal_timeout_to_supervisor = _IsInternalTimeoutToSupervisor}=_Edge) -> 
 
   % reng_show(edge, Edge, "\nbuilding edge snippet:\n"),
 

@@ -2,15 +2,15 @@
 
 -record(graph, {graph_ref, name, type}).
 
--record(edge_data, {event_type, event, trans_type, timeout, pattern, args, guard, code, attributes, comments = []}).
--record(edge, {from, to, edge_data, is_silent = false, is_delayable_send = false, is_custom_end = false, is_internal_timeout_to_supervisor = false }).
+-record(edge_data, {event_type, event, trans_type, timeout, pattern, args, guard, code, attributes, comments = [], timer = #{duration=>-1,name=>undefined}, delay = #{ref=>undefined}}).
+-record(edge, {from, to, edge_data, is_silent = false, is_delay = false,  is_custom_end = false, is_internal_timeout_to_supervisor = false }).
 
 -record(trans, {from, to, data}).
 -record(data, {action, var, event, cons = []}).
 
 
--record(clock_value, {is_abs, lower_bound, upper_bound}).
--record(clock, {label, value, is_global}).
+% -record(clock_value, {is_abs, lower_bound, upper_bound}).
+% -record(clock, {label, value, is_global}).
 
 reng_show(edges,Edges,HeadString) -> 
   io:format(HeadString),
@@ -26,7 +26,7 @@ reng_show(edge, Edge) ->
   io:format("edge.from: ~p.\n", [Edge#edge.from]),
   io:format("edge.to: ~p.\n", [Edge#edge.to]),
   io:format("edge.is_silent: ~p.\n", [Edge#edge.is_silent]),
-  io:format("edge.is_delayable_send: ~p.\n", [Edge#edge.is_delayable_send]),
+  io:format("edge.is_delay: ~p.\n", [Edge#edge.is_delay]),
   io:format("edge.is_custom_end: ~p.\n", [Edge#edge.is_custom_end]),
   io:format("edge.is_internal_timeout_to_supervisor: ~p.\n", [Edge#edge.is_internal_timeout_to_supervisor]),
   reng_show(edge_data, Edge#edge.edge_data);

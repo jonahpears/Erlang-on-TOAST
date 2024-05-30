@@ -24,7 +24,8 @@ gen_stub:gen(ali,spec,default,"_ali_test.erl").
 - add sample `configuration presets` for monitors (verify only, enforce light, enforce strong)
 - update readme properly
 - smooth out session instantiation, using `tpri_session`
-- add delay protocol atom
+- add functionality for delay and timers
+- look into using parse_transform to swap out certain functions for the ones in stub.hrl
 
 ## 1. Getting started guide
 
