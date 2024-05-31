@@ -31,6 +31,7 @@
                    | {'rec', string(), protocol()}
                    | {'rvar', string()}
                    | 'issue_timeout'
+                   | 'error'
                    | 'endP'.
                   %  | 'error'.
 

@@ -4,6 +4,7 @@
 -export([to_fsm/1]).
 
 -include("reng.hrl").
+error_state() -> error_state.
 timer_start_state() -> timer_start_state.
 delay_state() -> delay_state.
 fatal_timeout_state() -> fatal_timeout_state.
@@ -424,6 +425,11 @@ to_fsm(endP, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
   end,
   %% reached termination
   {Edges1, Nodes2, RecMap, PrevIndex, PrevVis, PrevVis, Clocks};
+
+%% @doc error state
+to_fsm(error, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
+  Nodes1 = maps:put(PrevVis, error_state(), Nodes),
+  {Edges, Nodes1, RecMap, PrevIndex, PrevVis, EndIndex, Clocks};
 
 %% @doc 
 to_fsm({timer, Name, Duration, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
