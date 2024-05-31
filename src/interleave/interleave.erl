@@ -4,6 +4,7 @@
 -compile(nowarn_export_all).
 
 -type time () :: timeout() | string().
+-type condition () :: boolean() | string().
 
 %% @doc Protocol format
 %% Notes:
@@ -23,8 +24,8 @@
                   %  | {'from', atom(), 'to', atom()}
                   %  | {'set', atom(), protocol()}
                   %  | {'delay', time_region(), protocol()}
-                  %  | {'iff', time_constraint(), protocol()}
-                  %  | {'iff', time_constraint(), protocol(), 'else', protocol()}
+                   | {'iff', condition(), protocol()}
+                   | {'iff', condition(), protocol(), 'else', protocol()}
                   %  | {'assert', atom(), protocol()}
                   %  | {'require', atom(), protocol()}
                   %  | {'consume', atom(), protocol()}

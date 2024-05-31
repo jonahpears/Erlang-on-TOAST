@@ -468,6 +468,9 @@ to_fsm({delay, Duration, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex,
   %% move to P
   to_fsm(P, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks);
 
+%% @doc
+%% TODO add both kinds of iff protocols here
+
 %% @doc unhandled protocol
 to_fsm({_, _, P}=S, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
   io:format("~p, unhandled protocol: ~p.", [?FUNCTION_NAME, S]),
