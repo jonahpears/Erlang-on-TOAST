@@ -946,28 +946,28 @@ cb_fun(Edge, NameMacro) ->
     {Act, Var} = Data#edge_data.event,
     Event = Data#edge_data.event_type,
     Var1 = merl:var(Var),
-    if
-        Edge#edge.is_delayable_send ->
-            Timeout = Data#edge_data.timeout,
-            Clause = ?Q([
-                "(_@Var1) -> TimeDelay = rand:uniform('@Timeout@' * 2), timer:send_after(TimeDelay, self(), {delay_stop, TimeDelay, []}), receive {delay_stop, TimeDelay, _MoreData} -> io:format(\"[send_accept]: delay(~p) stopped.\n\", [TimeDelay]) end, gen_statem:'@Event@'(_@NameMacro, {'@Act@',  _@Var1})"
-            ]),
-            Comms = [
-                io_lib:format("% Timeout (~p)", [Timeout]),
-                "% Duration `TimeDelay` may be long enough to trigger a timeout.",
-                "% Timer represents some time consuming task that must be completed before performing send.",
-                io_lib:format("% If TimeDelay>~p then timeout will trigger.", [Timeout]),
-                "% Otherwise, send action is performed."
-            ],
-            Clauses = [
-                erl_syntax:add_precomments(
-                    lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Comms), Clause
-                )
-            ];
-        true ->
+    % if
+        % Edge#edge.is_delayable_send ->
+        %     Timeout = Data#edge_data.timeout,
+        %     Clause = ?Q([
+        %         "(_@Var1) -> TimeDelay = rand:uniform('@Timeout@' * 2), timer:send_after(TimeDelay, self(), {delay_stop, TimeDelay, []}), receive {delay_stop, TimeDelay, _MoreData} -> io:format(\"[send_accept]: delay(~p) stopped.\n\", [TimeDelay]) end, gen_statem:'@Event@'(_@NameMacro, {'@Act@',  _@Var1})"
+        %     ]),
+        %     Comms = [
+        %         io_lib:format("% Timeout (~p)", [Timeout]),
+        %         "% Duration `TimeDelay` may be long enough to trigger a timeout.",
+        %         "% Timer represents some time consuming task that must be completed before performing send.",
+        %         io_lib:format("% If TimeDelay>~p then timeout will trigger.", [Timeout]),
+        %         "% Otherwise, send action is performed."
+        %     ],
+        %     Clauses = [
+        %         erl_syntax:add_precomments(
+        %             lists:map(fun(Com) -> erl_syntax:comment([Com]) end, Comms), Clause
+        %         )
+        %     ];
+        % true ->
             Clause = ?Q(["(_@Var1) -> gen_statem:'@Event@'(_@NameMacro, {'@Act@',  _@Var1})"]),
-            Clauses = [Clause]
-    end,
+            Clauses = [Clause],
+    % end,
     
     % {true, Act, [Clause]}.
     {true, Act, Clauses}.

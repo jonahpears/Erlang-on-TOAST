@@ -93,7 +93,39 @@ init(Args) ->
     CoPartyID ! {PID, init},
     receive {CoPartyID, init} -> ok end,
     %% wait for signal from session
-    receive {SessionID, start} -> run(CoPartyID) end 
+    receive {SessionID, start} -> ?MODULE:run(CoPartyID, default_map()) end 
+  end.
+
+%% @docs default map for stubs
+default_map() -> #{timers=>maps:new(),msgs=>maps:new()}.
+
+%% @docs resets timer that already exists
+set_timer(Name, Duration, #{timers:=Timers}=Data) when is_map_key(Name,Timers) -> 
+  %% cancel timer
+  erlang:cancel_timer(maps:get(Name,Timers)),
+  %% start new timer
+  maps:put(timers, maps:put(Name, erlang:start_timer(Duration, self(), {timer, Name}), Timers), Data);
+%% @docs starts new timer that did not exist
+set_timer(Name, Duration, #{timers:=Timers}=Data) -> 
+  maps:put(timers, maps:put(Name, erlang:start_timer(Duration, self(), {timer, Name}), Timers), Data).
+
+%% @doc saves message to data to front of list under that label
+save_msg(Label, Payload, #{msgs:=Msgs}=Data) ->
+  %% add to head of corresponding list
+  maps:put(msgs, maps:put(Label, [Payload]++maps:get(Label,Msgs,[]), Msgs), Data).
+
+%% @doc retrieves message from front of list
+get_msg(Label, #{msgs:=Msgs}=_Data) ->
+  case maps:get(Label, Msgs, []) of
+    [] -> undefined;
+    [H|_T] -> H
+  end.
+  
+%% @doc retrieves all messages under label
+get_msgs(Label, #{msgs:=Msgs}=_Data) ->
+  case maps:get(Label, Msgs, []) of
+    [] -> undefined;
+    [H|_T]=All -> All
   end.
 
 %% @doc Calls Fun with Args and forwards the result to PID.
@@ -116,13 +148,13 @@ nonblocking_waiter(Func, Args, PID, Timer) when is_pid(Timer) ->
     Waiter = self(),
     TimeConsumer = spawn( fun() -> Waiter ! {self(), ok, Func(Args)} end ),
     receive 
-      {TimeConsumer, ok, Result} -> PID ! {self(), ok, Result}
+      {TimeConsumer, ok, Result} -> PID ! {self(), ok, Result};
       {timeout, Timer, _Msg} -> PID ! {self(), ko}, exit(TimeConsumer, too_late) end 
   end ).
 
 %% @doc Wrapper function for sending the result of Fun with Label if it finished within Timeout milliseconds
 send_before(CoPartyID, {Label, {Fun, Args}}, Timeout) when is_pid(CoPartyID) and is_atom(Label) -> 
-  NonBlocking = nonblcking_waiter(Fun, Args, self(), Timeout),
+  NonBlocking = nonblocking_waiter(Fun, Args, self(), Timeout),
   receive {NonBlocking, ok, Result} -> send(CoPartyID, {Label, Result});
     {NonBlocking, ko} -> ko
   end.

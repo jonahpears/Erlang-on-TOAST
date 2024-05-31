@@ -442,7 +442,8 @@ to_fsm({timer, Name, Duration, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, End
                   to = Index,
                   edge_data = #edge_data{timer=#{duration=>Duration,name=>Name}},
                   is_silent = true,
-                  is_delay = true,
+                  is_delay = false,
+                  is_timer = true,
                   is_custom_end = false },
     %% add edge to edges
     Edges1 = Edges ++ [Edge],

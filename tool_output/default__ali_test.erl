@@ -18,17 +18,17 @@ run(CoParty, Data) -> main(CoParty, Data). %% add any init/start preperations be
 
 main(CoParty, Data) ->
     Data1 = Data,
-    Payload_MsgA = payload,
-    CoParty ! {self(), msgA, Payload_MsgA},
     receive
         {CoParty, msg1, Payload_Msg1} ->
-            Data2 = save_msg(msg1, Payload_Msg1, Data1),
+            Data1 = save_msg(msg1, Payload_Msg1, Data),
+            Data2 = Data1,
+            Payload_MsgA = payload,
+            CoParty ! {self(), msgA, Payload_MsgA},
             loop_state2_std(CoParty, Data2)
     end.
 
 loop_state2_std(CoParty, Data2) ->
-    receive
-        {CoParty, msg1, Payload_Msg1} ->
-            Data2_2 = save_msg(msg1, Payload_Msg1, Data2),
-            loop_state2_std(CoParty, Data2_2)
-    end.
+    Data2_2 = Data2,
+    Payload_MsgA = payload,
+    CoParty ! {self(), msgA, Payload_MsgA},
+    loop_state2_std(CoParty, Data2_2).

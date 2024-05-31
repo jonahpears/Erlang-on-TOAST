@@ -18,9 +18,10 @@ run(CoParty, Data) -> main(CoParty, Data). %% add any init/start preperations be
 
 main(CoParty, Data) ->
     Data1 = Data,
-    Payload_MsgA = payload,
-    CoParty ! {self(), msgA, Payload_MsgA},
-    stopping(CoParty, Data1).
+    Payload_Before_t = payload,
+    CoParty ! {self(), before_t, Payload_Before_t},
+    Data2 = set_timer(timer_t, 5000, Data1),
+    stopping(CoParty, Data2).
 
 %% @doc Adds default reason 'normal' for stopping.
 %% @see stopping/3.

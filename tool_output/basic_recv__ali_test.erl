@@ -17,8 +17,11 @@ run(CoParty) -> run(CoParty, []).
 run(CoParty, Data) -> main(CoParty, Data). %% add any init/start preperations below, before entering main
 
 main(CoParty, Data) ->
-    Data1 = Data,
-    receive {CoParty, msg1, Payload_Msg1} -> stopping(CoParty, Data1) end.
+    receive
+        {CoParty, msg1, Payload_Msg1} ->
+            Data1 = save_msg(msg1, Payload_Msg1, Data),
+            stopping(CoParty, Data1)
+    end.
 
 %% @doc Adds default reason 'normal' for stopping.
 %% @see stopping/3.

@@ -153,7 +153,6 @@ build_state_fun(Edges, States, RecMap, StateID, {ScopeID, ScopeName, _ScopeData}
     custom_end_state -> %% return nothing
       Funs = gen_snippets:state(State, StateID, {-1,main,"Data"}, Edges, States, RecMap);
     _ -> %% normal state, build snippets,
-      % {StateFuns, NextStateFuns} = gen_snippets:state(State, StateID, Scope, Edges, States, RecMap),
       StateFuns = gen_snippets:state(State, StateID, Scope, Edges, States, RecMap),
       %% make each clause of each function ?Q
       WrapClause = fun(Clause, AccClauses) -> 
@@ -169,8 +168,6 @@ build_state_fun(Edges, States, RecMap, StateID, {ScopeID, ScopeName, _ScopeData}
           _AccFuns
         end,
       Funs = lists:foldl(WrapClauses, [], StateFuns)
-      %% build remaining state funs needed (corresponding to states reached)
-      % Funs = lists:foldl(fun({NextStateID, _NextStateFunName}=NextStateScope, AccIn) -> AccIn++build_state_fun(Edges,States,RecMap,NextStateID,NextStateScope) end, StateFuns, NextStateFuns)
   end,
   %% funs contains list of [{true, FunName, FunClauses}, ...]
   Funs.

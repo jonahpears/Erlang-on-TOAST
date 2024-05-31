@@ -9,7 +9,7 @@
 -include("stub.hrl").
 
 
-run(CoParty) -> run(CoParty, []).
+run(CoParty) -> run(CoParty, default_map()).
 run(_CoParty, Data) -> ok.
 
 main(_CoParty, Data) -> ok.

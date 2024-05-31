@@ -3,7 +3,7 @@
 -record(graph, {graph_ref, name, type}).
 
 -record(edge_data, {event_type, event, trans_type, timeout, pattern, args, guard, code, attributes, comments = [], timer = #{duration=>-1,name=>undefined}, delay = #{ref=>undefined}}).
--record(edge, {from, to, edge_data, is_silent = false, is_delay = false,  is_custom_end = false, is_internal_timeout_to_supervisor = false }).
+-record(edge, {from, to, edge_data, is_silent = false, is_timer = false, is_delay = false,  is_custom_end = false, is_internal_timeout_to_supervisor = false }).
 
 -record(trans, {from, to, data}).
 -record(data, {action, var, event, cons = []}).
