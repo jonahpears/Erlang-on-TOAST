@@ -6,7 +6,7 @@
     event_type,
     event,
     trans_type,
-    timeout,
+    timeout = #{ref=>undefined},
     pattern,
     args,
     guard,
@@ -14,17 +14,20 @@
     attributes,
     comments = [],
     timer = #{duration => -1, name => undefined},
-    delay = #{ref => undefined}
+    delay = #{ref => undefined},
+    error_reason = undefined
 }).
 -record(edge, {
     from,
     to,
     edge_data,
+    is_error = false,
+    is_custom_end = false,
+    is_internal_timeout_to_supervisor = false,
+    is_choice = false,
     is_silent = false,
     is_timer = false,
-    is_delay = false,
-    is_custom_end = false,
-    is_internal_timeout_to_supervisor = false
+    is_delay = false
 }).
 
 -record(trans, {from, to, data}).

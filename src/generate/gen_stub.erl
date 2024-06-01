@@ -23,17 +23,18 @@ gen(ProtocolModule, ProtocolFun, ProtocolName, FileName) ->
 %% @doc Given a Protocol, first generates FSM and then starts building the module
 -spec gen(atom(), atom(), string()) -> none().
 gen(ProtocolName, Protocol, FileName) ->
+  ?GAP(),
 
-  ModuleName = list_to_atom(lists:last(lists:droplast(string:tokens(FileName, "/.")))),
+  ModuleName = atom_to_list(ProtocolName)++"_"++FileName,
   ?SHOW("Module Name: ~p", [ModuleName]),
 
   Fsm = build_fsm(Protocol),
   ?SHOW("Build Fsm: Success.", []),
 
-  _MonitorSpec = build_monitor_spec(Fsm, FileName),
+  MonitorSpec = build_monitor_spec(Fsm, ModuleName),
   ?SHOW("Build Module Spec: Success.", []),
 
-  ModuleForms = build_module_forms(Fsm, ModuleName),
+  ModuleForms = build_module_forms(Fsm, list_to_atom(ModuleName), MonitorSpec),
   ?SHOW("Build Module Forms: Success.", []),
 
   SyntaxTree = erl_syntax:form_list(ModuleForms),
@@ -43,8 +44,12 @@ gen(ProtocolName, Protocol, FileName) ->
   Program = erl_prettypr:format(SyntaxTree, prettypr_options()),
   ?SHOW("Format to Program: Success.", []),
 
-  OutputPath = output_location() ++ atom_to_list(ProtocolName)++"_"++FileName,
-  file:write_file(OutputPath, Program).
+  OutputPath = output_location() ++ ModuleName,
+  file:write_file(OutputPath, Program),
+  
+  ?GAP(),
+  ?SHOW("Finished. Output path: ~p.",[OutputPath]),
+  ok.
 
 %% @doc Wrapper for build_fsm:to_fsm(Protocol)
 -spec build_fsm(interleave:protocol()) -> {list(), map()}.
@@ -55,7 +60,7 @@ build_fsm(Protocol) -> build_fsm:to_fsm(Protocol).
 build_monitor_spec(Fsm,FileName) -> 
   {Status, MonitorSpec} = build_spec:to_monitor_spec(Fsm),
   case Status of
-    pass -> ok; %% skip while developing tool
+    pass -> MonitorSpec; %% skip while developing tool
     _ ->
       %% write to file
       OutputPath = output_location() ++ FileName ++ "_mon_spec.txt",
@@ -68,7 +73,7 @@ build_monitor_spec(Fsm,FileName) ->
 
 % -spec build_module_forms({list(), map()}, atom()) -> tree_or_trees().
 %% @doc Takes Fsm, returns list for Forms
-build_module_forms(Fsm, ModuleName) -> 
+build_module_forms(Fsm, ModuleName,MonitorSpec) -> 
   
   %% fsm is composed of list of edges and map of states to edges.
   %% mixed-states have both sending and receiving actions/edges.
@@ -96,13 +101,21 @@ build_module_forms(Fsm, ModuleName) ->
 
   Forms = merl_build:add_attribute(define, [merl:var('MONITORED'), merl:var('false')], Form),
 
-  ?SHOW("Forms: ~p.",[Forms]),
+  Forms1 = merl_build:add_attribute(define, [merl:var('MONITOR_SPEC'),merl:term(MonitorSpec)],Forms),
+
+  Forms2 = merl_build:add_attribute(include, [merl:term("stub.hrl")],Forms1),
+
+  %% export function found in stub.hrl
+
+  MainForms = Forms2,
+
+  ?SHOW("Forms: ~p.",[MainForms]),
 
   %% add the functions to the module
   AddFuns = fun({Exported, Name, Clauses}=Fun, AccForm) -> 
     ?SHOW("AddFun:\n\t~p.",[Fun]),
     _F = merl_build:add_function(Exported, Name, Clauses, AccForm), ?SHOW("Returning:\n\t~p.",[_F]), _F end,
-  _ModuleForm = merl_build:module_forms(lists:foldl(AddFuns, Forms, Funs)),
+  _ModuleForm = merl_build:module_forms(lists:foldl(AddFuns, MainForms, Funs)),
   % ?SHOW("_ModuleForm:\n\t~p.", [_ModuleForm]),
   _ModuleForm.
   %% return module (list of forms)

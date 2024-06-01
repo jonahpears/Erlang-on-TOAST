@@ -1,6 +1,6 @@
--module('basic_send__ali_test.erl').
+-module('basic_recv_after__ali_test.erl').
 
--file("basic_send__ali_test.erl", 1).
+-file("basic_recv_after__ali_test.erl", 1).
 
 -define(MONITORED, false).
 
@@ -21,10 +21,12 @@ run(CoParty) -> run(CoParty, []).
 run(CoParty, Data) -> main(CoParty, Data). %% add any init/start preperations below, before entering main
 
 main(CoParty, Data) ->
-    Data1 = Data,
-    Payload_MsgA = payload,
-    CoParty ! {self(), msgA, Payload_MsgA},
-    stopping(CoParty, Data1).
+    receive
+        {CoParty, before_5s, Payload_Before_5s} ->
+            Data1 = save_msg(before_5s, Payload_Before_5s, Data),
+            stopping(CoParty, Data1)
+        after 5000 -> Data3 = Data1, Payload_After_5s = payload, CoParty ! {self(), after_5s, Payload_After_5s}, stopping(CoParty, Data3)
+    end.
 
 %% @doc Adds default reason 'normal' for stopping.
 %% @see stopping/3.

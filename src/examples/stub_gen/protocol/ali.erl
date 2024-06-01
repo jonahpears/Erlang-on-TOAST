@@ -9,6 +9,8 @@
 %% gen_stub:gen(ali,spec,default,"_ali_test.erl").
 
 
+%% ali:gentest(tests).
+%% ali:gentest(implemented).
 %% ali:gentest(all).
 
 gentest() -> gen_stub:gen(ali,spec,default,"_ali_test.erl").
@@ -35,11 +37,59 @@ gentest(basic_delays) ->
   gen_stub:gen(ali,spec,basic_timer_delay,"_ali_test.erl"),
   ok;
   
+gentest(basic_timeouts) -> 
+  gen_stub:gen(ali,spec,basic_recv_after,"_ali_test.erl"),
+  gen_stub:gen(ali,spec,basic_recv_after_timer,"_ali_test.erl"),
+  ok;
+  
+gentest(basic_cotimeouts) -> 
+  gen_stub:gen(ali,spec,basic_send_after,"_ali_test.erl"),
+  gen_stub:gen(ali,spec,basic_send_after_timer,"_ali_test.erl"),
+  ok;
+
+gentest(basic_choices) ->
+  gen_stub:gen(ali,spec,basic_branch,"_ali_test.erl"),
+  gen_stub:gen(ali,spec,basic_select,"_ali_test.erl"),
+  ok;
+
+gentest(advanced_timeouts) ->
+  gen_stub:gen(ali,spec,basic_branch_after,"_ali_test.erl"),
+  gen_stub:gen(ali,spec,basic_branch_after_timer,"_ali_test.erl"),
+  ok;
+
+gentest(advanced_cotimeouts) ->
+  gen_stub:gen(ali,spec,basic_select_after,"_ali_test.erl"),
+  gen_stub:gen(ali,spec,basic_select_after_timer,"_ali_test.erl"),
+  ok;
+
+gentest(implemented) -> 
+  ok=gentest(basic_actions),
+  ok=gentest(basic_loops),
+  ok=gentest(basic_timers),
+  ok=gentest(basic_delays),
+  ok=gentest(basic_timeouts),
+  % gentest(basic_cotimeouts),
+  % gentest(basic_choices),
+  % gentest(advanced_timeouts),
+  % gentest(advanced_cotimeouts),
+  ok;
+
+gentest(tests) -> 
+  gentest(basic_timeouts),
+  gentest(basic_cotimeouts),
+  % gentest(basic_choices),
+  % gentest(advanced_timeouts),
+  % gentest(advanced_cotimeouts),
+  ok;
+
 gentest(all) -> 
-  gentest(basic_actions),
-  gentest(basic_loops),
-  gentest(basic_timers),
-  gentest(basic_delays),
+  gentest(implemented),
+  gentest(tests),
+  % gentest(basic_timeouts),
+  % gentest(basic_cotimeouts),
+  % gentest(basic_choices),
+  % gentest(advanced_timeouts),
+  % gentest(advanced_cotimeouts),
   ok;
 
 gentest(_) -> gen_stub:gen(ali,spec,default,"_ali_test.erl").
@@ -72,51 +122,51 @@ spec(basic_timer_delay) -> {timer, "t", 5000, {act, s_before_t, {delay, "t", {ac
 
 %% new tests
 spec(basic_branch) -> {branch, [
-                            {act, r_msg1, {act, s_msgA, endP}},
-                            {act, r_msg2, {act, s_msgB, endP}},
-                            {act, r_msg3, {act, s_msgC, endP}}
+                            {act, r_msg1, endP, {act, s_msgA, endP}},
+                            {act, r_msg2, endP, {act, s_msgB, endP}},
+                            {act, r_msg3, endP, {act, s_msgC, endP}}
                           ]};
 
 spec(basic_select) -> {select, [
-                            {act, s_msgA, {act, r_msg1, endP}},
-                            {act, s_msgB, {act, r_msg2, endP}},
-                            {act, s_msgC, {act, r_msg3, endP}}
+                            {act, s_msgA, endP, {act, r_msg1, endP}},
+                            {act, s_msgB, endP, {act, r_msg2, endP}},
+                            {act, s_msgC, endP, {act, r_msg3, endP}}
                           ]};
 
 %% timeouts / co-timeouts
-spec(basic_send_after) -> {act, s_before_5s, aft, 5000, {act, s_after_5s, endP}};
+spec(basic_send_after) -> {act, s_before_5s, endP, aft, 5000, {act, r_after_5s, endP}};
 
-spec(basic_recv_after) -> {act, s_before_5s, aft, 5000, {act, s_after_5s, endP}};
+spec(basic_recv_after) -> {act, r_before_5s, endP, aft, 5000, {act, s_after_5s, endP}};
 
 
-spec(basic_send_after_timer) -> {timer, "t", 5000, {act, s_before_5s, aft, "t", {act, s_after_5s, endP}}};
+spec(basic_send_after_timer) -> {timer, "t", 5000, {act, s_before_5s, endP, aft, "t", {act, r_after_5s, endP}}};
 
-spec(basic_recv_after_timer) -> {timer, "t", 5000, {act, s_before_5s, aft, "t", {act, s_after_5s, endP}}};
+spec(basic_recv_after_timer) -> {timer, "t", 5000, {act, r_before_5s, endP, aft, "t", {act, s_after_5s, endP}}};
 
 
 spec(basic_branch_after) -> {branch, [
-                            {act, r_msg1, {act, s_msgA, endP}},
-                            {act, r_msg2, {act, s_msgB, endP}},
-                            {act, r_msg3, {act, s_msgC, endP}}
+                            {act, r_msg1, endP, {act, s_msgA, endP}},
+                            {act, r_msg2, endP, {act, s_msgB, endP}},
+                            {act, r_msg3, endP, {act, s_msgC, endP}}
                           ], aft, 5000, {act, s_timeout, endP}};
 
 spec(basic_select_acter) -> {select, [
-                            {act, s_msgA, {act, r_msg1, endP}},
-                            {act, s_msgB, {act, r_msg2, endP}},
-                            {act, s_msgC, {act, r_msg3, endP}}
+                            {act, s_msgA, endP, {act, r_msg1, endP}},
+                            {act, s_msgB, endP, {act, r_msg2, endP}},
+                            {act, s_msgC, endP, {act, r_msg3, endP}}
                           ], aft, 5000, {act, s_timeout, endP}};
 
 
 spec(basic_branch_after_timer) -> {timer, "t", 5000, {branch, [
-                            {act, r_msg1, {act, s_msgA, endP}},
-                            {act, r_msg2, {act, s_msgB, endP}},
-                            {act, r_msg3, {act, s_msgC, endP}}
+                            {act, r_msg1, endP, {act, s_msgA, endP}},
+                            {act, r_msg2, endP, {act, s_msgB, endP}},
+                            {act, r_msg3, endP, {act, s_msgC, endP}}
                           ], aft, "t", {act, s_timeout, endP}}};
 
 spec(basic_select_after_timer) -> {timer, "t", 5000, {select, [
-                            {act, s_msgA, {act, r_msg1, endP}},
-                            {act, s_msgB, {act, r_msg2, endP}},
-                            {act, s_msgC, {act, r_msg3, endP}}
+                            {act, s_msgA, endP, {act, r_msg1, endP}},
+                            {act, s_msgB, endP, {act, r_msg2, endP}},
+                            {act, s_msgC, endP, {act, r_msg3, endP}}
                           ], aft, "t", {act, s_timeout, endP}}};
 
 

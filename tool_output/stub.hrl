@@ -104,13 +104,10 @@ set_timer(Name, Duration, #{timers:=Timers}=Data) when is_map_key(Name,Timers) -
   %% cancel timer
   erlang:cancel_timer(maps:get(Name,Timers)),
   %% start new timer
-  TID = erlang:start_timer(Duration, self(), {timer, Name}),
-  {maps:put(timers, maps:put(Name, TID, Timers), Data), TID};
+  maps:put(timers, maps:put(Name, erlang:start_timer(Duration, self(), {timer, Name}), Timers), Data);
 %% @docs starts new timer that did not exist
 set_timer(Name, Duration, #{timers:=Timers}=Data) -> 
-  %% start new timer
-  TID = erlang:start_timer(Duration, self(), {timer, Name}),
-  {maps:put(timers, maps:put(Name, TID, Timers), Data), TID}.
+  maps:put(timers, maps:put(Name, erlang:start_timer(Duration, self(), {timer, Name}), Timers), Data).
 
 %% @doc retrieves timer pid from data if exists
 get_timer(Name, #{timers:=Timers}=_Data) when is_map_key(Name, Timers) -> {ok, maps:get(Name, Timers)};

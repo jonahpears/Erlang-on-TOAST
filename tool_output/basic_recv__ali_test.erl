@@ -1,10 +1,14 @@
--module('_ali_test').
+-module('basic_recv__ali_test.erl').
 
--file("_ali_test", 1).
+-file("basic_recv__ali_test.erl", 1).
 
 -define(MONITORED, false).
 
--export([main/2, run/1, run/2, stopping/2, stopping/3]).
+-define(MONITOR_SPEC, #{}).
+
+-include("stub.hrl").
+
+-export([]).
 
 %% @doc Adds default empty list for Data.
 %% @see run/2.
@@ -29,7 +33,7 @@ stopping(CoParty, Data) -> stopping(normal, CoParty, Data).
 
 %% @doc Adds default reason 'normal' for stopping.
 %% @param Reason is either atom like 'normal' or tuple like {error, more_details_or_data}.
-stopping(normal = Reason, _CoParty, _Data) -> exit(normal);
+stopping(normal = _Reason, _CoParty, _Data) -> exit(normal);
 %% @doc stopping with error.
 %% @param Reason is either atom like 'normal' or tuple like {error, Reason, Details}.
 %% @param CoParty is the process ID of the other party in this binary session.

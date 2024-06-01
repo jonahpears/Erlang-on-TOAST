@@ -3,7 +3,7 @@
 -compile(export_all).
 -compile(nowarn_export_all).
 
--type time () :: timeout() | string().
+-type time () :: number() | timeout() | string().
 -type condition () :: boolean() | string().
 
 %% @doc Protocol format
@@ -33,6 +33,7 @@
                    | {'rvar', string()}
                    | 'issue_timeout'
                    | 'error'
+                   | {'error', atom()}
                    | 'endP'.
                   %  | 'error'.
 

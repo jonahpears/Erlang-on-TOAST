@@ -1,10 +1,14 @@
--module('_ali_test').
+-module('basic_send_recv_loop__ali_test.erl').
 
--file("_ali_test", 1).
+-file("basic_send_recv_loop__ali_test.erl", 1).
 
 -define(MONITORED, false).
 
--export([loop_state2_std/2, main/2, run/1, run/2]).
+-define(MONITOR_SPEC, #{}).
+
+-include("stub.hrl").
+
+-export([]).
 
 %% @doc Adds default empty list for Data.
 %% @see run/2.
