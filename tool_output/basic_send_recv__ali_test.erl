@@ -4,7 +4,7 @@
 
 -define(MONITORED, false).
 
--export([main/2, run/1, run/2, stopping/2]).
+-export([main/2, run/1, run/2, stopping/2, stopping/3]).
 
 %% @doc Adds default empty list for Data.
 %% @see run/2.
@@ -28,7 +28,8 @@ main(CoParty, Data) ->
 
 %% @doc Adds default reason 'normal' for stopping.
 %% @see stopping/3.
-stopping(CoParty, Data) -> stopping(normal, CoParty, Data);
+stopping(CoParty, Data) -> stopping(normal, CoParty, Data).
+
 %% @doc Adds default reason 'normal' for stopping.
 %% @param Reason is either atom like 'normal' or tuple like {error, more_details_or_data}.
 stopping(normal = Reason, _CoParty, _Data) -> exit(normal);

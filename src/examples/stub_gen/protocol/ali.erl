@@ -8,20 +8,38 @@
 %% use this
 %% gen_stub:gen(ali,spec,default,"_ali_test.erl").
 
+
+%% ali:gentest(all).
+
 gentest() -> gen_stub:gen(ali,spec,default,"_ali_test.erl").
 
-gentest(basic_actions) -> gen_stub:gen(ali,spec,basic_recv,"_ali_test.erl"),gen_stub:gen(ali,spec,basic_send,"_ali_test.erl"),gen_stub:gen(ali,spec,basic_send_recv,"_ali_test.erl"),gen_stub:gen(ali,spec,basic_recv_send,"_ali_test.erl");
+gentest(basic_actions) -> 
+  gen_stub:gen(ali,spec,basic_recv,"_ali_test.erl"),
+  gen_stub:gen(ali,spec,basic_send,"_ali_test.erl"),
+  gen_stub:gen(ali,spec,basic_send_recv,"_ali_test.erl"),
+  gen_stub:gen(ali,spec,basic_recv_send,"_ali_test.erl"),
+  ok;
 
-gentest(basic_loops) -> gen_stub:gen(ali,spec,basic_send_recv_loop,"_ali_test.erl"),gen_stub:gen(ali,spec,basic_recv_send_loop,"_ali_test.erl");
+gentest(basic_loops) -> 
+  gen_stub:gen(ali,spec,basic_send_recv_loop,"_ali_test.erl"),
+  gen_stub:gen(ali,spec,basic_recv_send_loop,"_ali_test.erl"),
+  ok;
 
-gentest(basic_timers) -> gen_stub:gen(ali,spec,basic_timer_before,"_ali_test.erl"),gen_stub:gen(ali,spec,basic_timer_after,"_ali_test.erl");
+gentest(basic_timers) -> 
+  gen_stub:gen(ali,spec,basic_timer_before,"_ali_test.erl"),
+  gen_stub:gen(ali,spec,basic_timer_after,"_ali_test.erl"),
+  ok;
 
+gentest(basic_delays) -> 
+  gen_stub:gen(ali,spec,basic_delay,"_ali_test.erl"),
+  gen_stub:gen(ali,spec,basic_timer_delay,"_ali_test.erl"),
+  ok;
+  
 gentest(all) -> 
   gentest(basic_actions),
   gentest(basic_loops),
   gentest(basic_timers),
-  % gentest(basic_timers),
-  % gentest(basic_timers),
+  gentest(basic_delays),
   ok;
 
 gentest(_) -> gen_stub:gen(ali,spec,default,"_ali_test.erl").

@@ -17,10 +17,18 @@ run(CoParty) -> run(CoParty, []).
 run(CoParty, Data) -> main(CoParty, Data). %% add any init/start preperations below, before entering main
 
 main(CoParty, Data) ->
-    Data1 = Data,
-    Payload_MsgA = payload,
-    CoParty ! {self(), msgA, Payload_MsgA},
-    stopping(CoParty, Data1).
+    Data1 = set_timer(timer_t, 5000, Data),
+    Data2 = Data1,
+    Payload_Before_t = payload,
+    CoParty ! {self(), before_t, Payload_Before_t},
+    case get_timer(timer_t, Data2) of
+        {ok, TID_t} -> receive {timeout, TID_t, {timer, t}} -> ok end;
+        {ko, no_such_timer} -> error(no_such_timer)
+    end,
+    Data4 = Data2,
+    Payload_After_t = payload,
+    CoParty ! {self(), after_t, Payload_After_t},
+    stopping(CoParty, Data4).
 
 %% @doc Adds default reason 'normal' for stopping.
 %% @see stopping/3.

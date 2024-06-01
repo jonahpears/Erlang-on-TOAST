@@ -157,7 +157,13 @@ build_state_fun(Edges, States, RecMap, StateID, {ScopeID, ScopeName, _ScopeData}
       %% make each clause of each function ?Q
       WrapClause = fun(Clause, AccClauses) -> 
           % ?SHOW("WrapClause:\n\t~p.",[Clause]),
-          _AccClauses = AccClauses++[?Q(Clause)],
+          %% check if ?Q returns list already (if comments are present, then 1st elem is clauses and 2nd is comments)
+          QClause=?Q(Clause),
+          if 
+            is_list(QClause) -> _AccClauses = AccClauses++[lists:nth(1,QClause)],?SHOW("QClause, removed comments from clauses to avoid issues:\n\t~p.",[lists:nthtail(1,QClause)]);
+            is_tuple(QClause) -> _AccClauses = AccClauses++[QClause];
+            true -> ?SHOW("QClause, unexpected return: (not list or tuple):\n\t~p.",[QClause]), _AccClauses= AccClauses++[QClause]
+          end,
           % ?SHOW("_AccClauses:\n\t~p.",[_AccClauses]),
           _AccClauses
         end,

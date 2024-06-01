@@ -80,19 +80,26 @@ get_next_state_trans(To, NextID) when is_atom(To) and is_integer(NextID) ->
   end.
 %%
 
+%% @doc returns timer name
+timer_name(Name) when is_list(Name) -> "timer_"++Name;
+timer_name(Name) when is_atom(Name) -> "timer_"++atom_to_list(Name).
+
 %% @doc generates clause for actions/outgoing edges
 
 %% @doc for defining new timers and adding them to data
-edge(#edge{edge_data=#edge_data{timer=#{duration:=Duration,name:=Name}},is_timer=_IsTimer}, {StateData,NextStateData}) when _IsTimer=:=true ->
-  TimerName = "timer_"++Name,
-  EdgeClause = NextStateData++" = set_timer("++TimerName++", "++integer_to_list(Duration)++", "++StateData++"), ",
+edge(#edge{edge_data=#edge_data{timer=#{duration:=Duration,name:=Name}},is_timer=true,is_delay=false}, {StateData,NextStateData}) ->
+  EdgeClause = NextStateData++" = set_timer("++timer_name(Name)++", "++integer_to_list(Duration)++", "++StateData++"), ",
   {[EdgeClause], []};
 
-%% @doc for waiting for a timer to expire (delay)
-edge(#edge{edge_data=#edge_data{timer=#{duration:=Duration,name:=Name}},is_delay=_IsDelay}, {StateData,NextStateData}) when _IsDelay=:=true ->
-  %% TODO FROM HERE
-  TimerName = "timer_"++Name,
-  EdgeClause = NextStateData++" = set_timer("++TimerName++", "++integer_to_list(Duration)++", "++StateData++"), ",
+%% @doc for delay (via timer)
+edge(#edge{edge_data=#edge_data{delay=#{ref:=Timer}},is_delay=true,is_timer=false}, {StateData,_NextStateData}) when is_list(Timer) ->
+  ?SHOW("timer ref: ~p.",[Timer]),
+  EdgeClause = "% (delay until "++timer_name(Timer)++" completes, error if does not exist) \n case get_timer("++timer_name(Timer)++", "++StateData++") of {ok, TID_"++Timer++"} -> receive {timeout, TID_"++Timer++", {timer, "++Timer++"}} -> ok end; {ko, no_such_timer} -> error(no_such_timer) end,",
+  {[EdgeClause], []};
+
+%% @doc for delay (via delay)
+edge(#edge{edge_data=#edge_data{delay=#{ref:=Delay}},is_delay=true,is_timer=false}, {_StateData,_NextStateData}) when is_number(Delay) ->
+  EdgeClause = "timer:sleep("++integer_to_list(floor(Delay))++"),",
   {[EdgeClause], []};
 
 edge(#edge{from=_From,to=_To,edge_data=#edge_data{event_type = _EventType,event = Event,trans_type = TransType,pattern = _Pattern,args = _Args,guard = _Guard,code = _Code,attributes = _Attributes,comments = _Comments}=_EdgeData,is_silent=_IsSilent,is_delay = _IsDelay,is_timer = _IsTimer, is_custom_end = _IsCustomEnd,is_internal_timeout_to_supervisor = _IsInternalTimeoutToSupervisor}=_Edge, {StateData,NextStateData}) -> 
@@ -370,8 +377,12 @@ state(standard_state=State, StateID, {ScopeID, ScopeName, ScopeData}=Scope, Edge
 
 %% @doc 
 state(custom_end_state=State, StateID, {_ScopeID, ScopeName, ScopeData}=_Scope, Edges, __States, _RecMap) ->
-  {_, {_,FunName,_}=Fun, _} = special_state(State,StateID, Edges),
-  [{true,ScopeName,[atom_to_list(FunName)++"(CoParty, "++ScopeData++")"]},Fun];
+  % {_, {_,FunName,_}=Fun, _} = special_state(State,StateID, Edges),
+  % [{true,ScopeName,[atom_to_list(FunName)++"(CoParty, "++ScopeData++")"]},Fun];
+  {_, Funs, _} = special_state(State,StateID, Edges),
+  Fun=lists:nth(1,Funs),
+  {_,FunName,_}=Fun,
+  [{true,ScopeName,[atom_to_list(FunName)++"(CoParty, "++ScopeData++")"]}]++Funs;
 %% 
 
 %% @doc 
@@ -481,7 +492,7 @@ special_state(custom_end_state=_State, _StateID, _Edges) ->
   ClauseNormal = [
       "%% @doc Adds default reason 'normal' for stopping. \n",
       "%% @param Reason is either atom like 'normal' or tuple like {error, more_details_or_data}. \n",
-      "(normal=Reason, _CoParty, _Data) -> ",
+      "(normal=_Reason, _CoParty, _Data) -> ",
       "exit(normal)"
     ],
 
@@ -530,9 +541,10 @@ special_state(custom_end_state=_State, _StateID, _Edges) ->
       "exit(Reason)"
     ],
 
-  Clauses = [ClauseDefault, ClauseNormal, ClauseError, ClausePartialError, ClauseUnknown],
+  %% clausedefault uses different multi-despatch
+  Clauses = [ClauseNormal, ClauseError, ClausePartialError, ClauseUnknown],
 
-  {none, {true, Name, Clauses}, ok};
+  {none, [{true, Name, [ClauseDefault]},{true,Name,Clauses}], ok};
 %%
 
 special_state(Kind, StateID, Edges) when is_atom(Kind) ->

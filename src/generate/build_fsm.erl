@@ -462,7 +462,8 @@ to_fsm({delay, Duration, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex,
                 edge_data = #edge_data{delay=#{ref=>Duration}}, %% since delays can use timers too
                 is_silent = true,
                 is_delay = true,
-                is_custom_end = false },
+                  is_timer = false,
+                  is_custom_end = false },
   %% add edge to edges
   Edges1 = Edges ++ [Edge],
   %% move to P

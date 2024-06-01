@@ -109,6 +109,10 @@ set_timer(Name, Duration, #{timers:=Timers}=Data) when is_map_key(Name,Timers) -
 set_timer(Name, Duration, #{timers:=Timers}=Data) -> 
   maps:put(timers, maps:put(Name, erlang:start_timer(Duration, self(), {timer, Name}), Timers), Data).
 
+%% @doc retrieves timer pid from data if exists
+get_timer(Name, #{timers:=Timers}=_Data) when is_map_key(Name, Timers) -> {ok, maps:get(Name, Timers)};
+get_timer(Name, #{timers:=Timers}=_Data) -> {ko, no_such_timer}.
+
 %% @doc saves message to data to front of list under that label
 save_msg(Label, Payload, #{msgs:=Msgs}=Data) ->
   %% add to head of corresponding list
