@@ -78,7 +78,7 @@ gentest(tests) ->
   ok=gentest(basic_timeouts),
   % ok=gentest(basic_cotimeouts),
   ok=gentest(basic_choices),
-  % ok=gentest(advanced_timeouts),
+  ok=gentest(advanced_timeouts),
   % ok=gentest(advanced_cotimeouts),
   ok;
 
