@@ -17,6 +17,8 @@ select_state() -> select_state.
 % mixed_choice_state() -> mixed_choice_state.
 end_state() -> end_state.
 custom_end_state() -> custom_end_state.
+if_then_else_state() -> if_then_else_state.
+if_state() -> if_state.
 
 recv_after_state() -> recv_after_state.
 branch_after_state() -> branch_after_state.
@@ -527,6 +529,58 @@ to_fsm({delay, Duration, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex,
 
 %% @doc
 %% TODO add both kinds of iff protocols here
+
+%% @doc 
+to_fsm({if_timer, Name, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
+    % add new state that is a if_state
+    Nodes1 = maps:put(PrevVis, if_state(), Nodes),
+    %% get index of P
+    Index = PrevIndex + 1,
+    %% create edge from current if_timer to P
+    Edge = #edge{ from = PrevVis,
+                  to = Index,
+                  edge_data = #edge_data{if_true=#{is_timer=>true,ref=>Name,is_else=>false}},
+                  is_silent = true,
+                  is_delay = false,
+                  is_timer = false,
+                  is_custom_end = false },
+    %% add edge to edges
+    Edges1 = Edges ++ [Edge],
+    %% move to P
+    to_fsm(P, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks);
+
+%% @doc 
+to_fsm({if_timer, Name, P, else, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
+  % add new state that is a if_then_else_state
+  Nodes1 = maps:put(PrevVis, if_then_else_state(), Nodes),
+  %% get index of P
+  Index = PrevIndex + 1,
+  %% create edge from current if_timer to P
+  Edge = #edge{ from = PrevVis,
+                to = Index,
+                edge_data = #edge_data{if_true=#{is_timer=>true,ref=>Name,is_else=>false}},
+                is_silent = true,
+                is_delay = false,
+                is_timer = false,
+                is_custom_end = false },
+  %% add edge to edges
+  Edges1 = Edges ++ [Edge],
+  %% move to P
+  {QEdges, QNodes, QRecMap, QPrevIndex, QPrevVis, QEndIndex, QClocks} = to_fsm(P, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks),
+  %% get index of Q
+  QIndex = QPrevIndex + 1,
+  %% create edge from current timer_state_state to Q
+  QEdge = #edge{ from = QPrevVis,
+                to = QIndex,
+                edge_data = #edge_data{if_true=#{is_timer=>true,ref=>Name,is_else=>true}},
+                is_silent = true,
+                is_delay = false,
+                is_timer = false,
+                is_custom_end = false },
+  %% add edge to edges
+  QEdges1 = QEdges ++ [QEdge],
+  %% move to Q
+  to_fsm(Q, QEdges1, QNodes, QRecMap, QPrevIndex, QPrevVis, QEndIndex, QClocks);
 
 %% @doc unhandled protocol
 to_fsm(S, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->

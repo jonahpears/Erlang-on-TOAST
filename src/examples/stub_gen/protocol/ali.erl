@@ -62,6 +62,11 @@ gentest(advanced_cotimeouts) ->
   gen_stub:gen(ali,spec,basic_select_after_timer,"_ali_test.erl"),
   ok;
 
+gentest(basic_if_statements) ->
+  gen_stub:gen(ali,spec,basic_if_then,"_ali_test.erl"),
+  gen_stub:gen(ali,spec,basic_if_then_else,"_ali_test.erl"),
+  ok;
+
 gentest(implemented) -> 
   ok=gentest(basic_actions),
   ok=gentest(basic_loops),
@@ -75,6 +80,7 @@ gentest(implemented) ->
   ok;
 
 gentest(tests) -> 
+  ok=gentest(basic_if_statements),
   ok;
 
 gentest(all) -> 
@@ -159,6 +165,12 @@ spec(basic_select_after_timer) -> {timer, "t", 5000, {select, [
                             {s_msgC, {act, r_msg3, endP}}
                           ], aft, "t", {act, s_timeout, endP}}};
 
+%% if statements
+spec(basic_if_then) -> {timer, "t", 5000, {rec, "a", 
+                          { if_timer, "t", {act, s_finished, endP} }}};
 
+spec(basic_if_then_else) -> {timer, "t", 5000, {rec, "a", 
+                          { if_timer, "t", {act, s_finished, endP},
+                            else, {act, s_data, {rvar, "a"}} }}};
 
 spec(nothing) -> endP.

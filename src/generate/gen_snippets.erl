@@ -445,6 +445,19 @@ next_state_data(StateID, {ScopeID, _ScopeName, _ScopeData}=_Scope)
 next_state_data(StateID, {_ScopeID, _ScopeName, ScopeData}=_Scope) -> 
   {ScopeData++"_"++integer_to_list(StateID), StateID}.
 
+
+%% @doc if then else statement
+state(if_then_else_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope, Edges, States, RecMap) ->
+  %% TODO: use 0ms timeout for else
+  ok;
+%%
+
+%% @doc if statement
+state(if_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope, Edges, States, RecMap) ->
+  %% TODO: use 0ms timeout for else -> error
+  ok;
+%%
+
 %% @doc select 
 state(select_after_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope, Edges, States, RecMap) ->
   RelevantEdges = get_relevant_edges(StateID, Edges),
