@@ -1,6 +1,6 @@
--module('basic_timer_before__ali_test.erl').
+-module('basic_branch__ali_test.erl').
 
--file("basic_timer_before__ali_test.erl", 1).
+-file("basic_branch__ali_test.erl", 1).
 
 -define(MONITORED, false).
 
@@ -21,11 +21,26 @@ run(CoParty) -> run(CoParty, []).
 run(CoParty, Data) -> main(CoParty, Data). %% add any init/start preperations below, before entering main
 
 main(CoParty, Data) ->
-    {Data1, _TID_t} = set_timer(t, 5000, Data),
-    Data2 = Data1,
-    Payload_After_t = payload,
-    CoParty ! {self(), after_t, Payload_After_t},
-    stopping(CoParty, Data2).
+    receive
+        {CoParty, msg1, Payload_Msg1} ->
+            Data1 = save_msg(msg1, Payload_Msg1, Data),
+            Data2 = Data1,
+            Payload_MsgA = payload,
+            CoParty ! {self(), msgA, Payload_MsgA},
+            stopping(CoParty, Data2);
+        {CoParty, msg2, Payload_Msg2} ->
+            Data1 = save_msg(msg2, Payload_Msg2, Data),
+            Data5 = Data1,
+            Payload_MsgB = payload,
+            CoParty ! {self(), msgB, Payload_MsgB},
+            stopping(CoParty, Data5);
+        {CoParty, msg3, Payload_Msg3} ->
+            Data1 = save_msg(msg3, Payload_Msg3, Data),
+            Data7 = Data1,
+            Payload_MsgC = payload,
+            CoParty ! {self(), msgC, Payload_MsgC},
+            stopping(CoParty, Data7)
+    end.
 
 %% @doc Adds default reason 'normal' for stopping.
 %% @see stopping/3.

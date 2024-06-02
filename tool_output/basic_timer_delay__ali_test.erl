@@ -21,11 +21,11 @@ run(CoParty) -> run(CoParty, []).
 run(CoParty, Data) -> main(CoParty, Data). %% add any init/start preperations below, before entering main
 
 main(CoParty, Data) ->
-    Data1 = set_timer(timer_t, 5000, Data),
+    {Data1, _TID_t} = set_timer(t, 5000, Data),
     Data2 = Data1,
     Payload_Before_t = payload,
     CoParty ! {self(), before_t, Payload_Before_t},
-    case get_timer(timer_t, Data2) of
+    case get_timer(t, Data2) of
         {ok, TID_t} -> receive {timeout, TID_t, {timer, t}} -> ok end;
         {ko, no_such_timer} -> error(no_such_timer)
     end,

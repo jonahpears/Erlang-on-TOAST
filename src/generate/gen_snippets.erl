@@ -19,8 +19,12 @@
 %% @doc checks if _NextStateFuns head corresponds to current scope, and returns current state funs adn next state funs accordingly
 resolve_clauses({_ScopeID, ScopeName, _ScopeData}=Scope,StateID,EnterClause,LaterStateFuns,DataClause,EdgeClause,PostClauses) ->
   %% check if head of next state funs is the same scope, and add clauses to 
-  {_, HeadStateFunName, HeadStateFunClauses} = lists:nth(1,LaterStateFuns),
+  case length(LaterStateFuns)==0 of
+    true -> StateClause = EnterClause++DataClause++EdgeClause++PostClauses,
+    NextStateFuns = LaterStateFuns;
+  _ ->
   ?SHOW("~p, ~p, LaterStateFuns:\n\t~p.",[Scope,{StateID},LaterStateFuns]),
+  {_, HeadStateFunName, HeadStateFunClauses} = lists:nth(1,LaterStateFuns),
   ?SHOW("~p, ~p, HeadStateFunName: ~p.",[Scope,{StateID},HeadStateFunName]),
   ?GAP(),?SHOW("~p, ~p, HeadStateFunClauses:\n\t~p.",[Scope, {StateID},HeadStateFunClauses]),?GAP(),
   case HeadStateFunName=:=ScopeName of
@@ -40,7 +44,8 @@ resolve_clauses({_ScopeID, ScopeName, _ScopeData}=Scope,StateID,EnterClause,Late
     _ -> %% different scope, add all to state funs
       StateClause = EnterClause++DataClause++EdgeClause++PostClauses,
       NextStateFuns = LaterStateFuns
-  end,
+  end
+end,
   {StateClause,NextStateFuns}.
 
 %% @doc 
@@ -160,9 +165,76 @@ edge(#edge{edge_data=#edge_data{trans_type = TransType},is_silent=false,is_choic
   end.
 %%
 
+
+merge_next_state_funs(Primary, ToMerge) -> 
+  %% get names of next state funs from r
+  NextStateFunNames = lists:foldl(fun({_,Name,_}=_Elem,AccIn) when is_atom(Name) -> 
+    case lists:member(Name,AccIn) of 
+      true -> AccIn; 
+      _ -> AccIn++[Name] 
+    end 
+  end, [], Primary),
+
+  %% merge nextstatefuns
+  NextStateFuns = lists:foldl(fun({_,T_Name,_}=Elem,AccIn) -> 
+      case lists:member(T_Name,NextStateFunNames) of
+        true -> AccIn;
+        _ -> AccIn++[Elem]
+      end
+    end, Primary, ToMerge),
+
+  NextStateFuns.
+
+
+%% @doc edge clauses (list of edges)
+%% @returns resovled_clauses for all _Es
+edge_clauses([_H|_T]=_Es, State, StateID, {_ScopeID, _ScopeName, _ScopeData}=Scope, Edges, States, RecMap) when is_list(_Es) ->
+
+  %% separate to order (should be ordered anyway, but just to make sure)
+  SilentEdges = lists:filter(fun is_edge_silent/1, _Es),
+  NonSilentEdges = lists:filter(fun is_edge_not_silent/1, _Es),
+  Es = NonSilentEdges ++ SilentEdges,
+
+  ResolveClauses = fun(Edge, {_StateClause,_NextStateFuns}=_AccIn) ->
+    %% get edge clause
+    {_DataClause, EdgeClause, LaterStateFuns, PostEdgeClause, _PostClause} = edge_clause(Edge, State, StateID, Scope, Edges, States, RecMap),
+    %% get resolved
+    {ElemStateClause,ElemNextStateFuns} = resolve_clauses(Scope,StateID,[],LaterStateFuns,[],EdgeClause,PostEdgeClause),
+    ?GAP(),
+    ?SHOW("~p, ~p, _StateClause:\n\t~p.",[Scope,{StateID},_StateClause]),
+    ?GAP(),
+    ?SHOW("~p, ~p, ElemStateClause:\n\t~p.",[Scope,{StateID},ElemStateClause]),
+    ?GAP(),
+    ?SHOW("~p, ~p, ElemNextStateFuns:\n\t~p.",[Scope,{StateID},ElemNextStateFuns]),
+    ?GAP(),
+    %% add resolved to StateClause 
+    case is_edge_not_silent(Edge) and (length(_StateClause)>0) of
+      true -> StateClause = _StateClause ++ [";"] ++ ElemStateClause; %% silent edges take this into account by default
+      false -> StateClause = _StateClause ++ElemStateClause
+    end,
+    %% merge nextstatefuns
+    NextStateFuns = merge_next_state_funs(_NextStateFuns,ElemNextStateFuns),
+    %% return 
+    {StateClause,NextStateFuns}
+  end,
+
+  %% resolve each in Es
+  {EsStateClause,EsNextStateFuns} = lists:foldl(ResolveClauses, {[],[]}, Es),
+
+  ?GAP(),
+  ?SHOW("~p, ~p, EsStateClause:\n\t~p.",[Scope,{StateID},EsStateClause]),
+  ?GAP(),
+  ?SHOW("~p, ~p, EsNextStateFuns:\n\t~p.",[Scope,{StateID},EsNextStateFuns]),
+  ?GAP(),
+
+  StateClause = ["receive"]++EsStateClause++["end"],
+
+  {StateClause,EsNextStateFuns}.
+
+
 %% @doc edge clause
 %% @returns 4-tuple for edgeclause, nextstatefuns postedgeclause, postclause
-edge_clause(Edge, State, StateID, {ScopeID, _ScopeName, ScopeData}=Scope, Edges, States,RecMap) ->
+edge_clause(Edge, State, StateID, {ScopeID, _ScopeName, ScopeData}=Scope, Edges, States, RecMap) ->
   %% get next state after the transition
   NextID = Edge#edge.to,
   ToState = maps:get(NextID, States),
@@ -254,8 +326,46 @@ next_state_data(StateID, {ScopeID, _ScopeName, _ScopeData}=_Scope)
 next_state_data(StateID, {_ScopeID, _ScopeName, ScopeData}=_Scope) -> 
   {ScopeData++"_"++integer_to_list(StateID), StateID}.
 
+% %% @doc branch 
+% state(select_after_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope, Edges, States, RecMap) ->
+%   ok;
+% %%
 
-%% @doc send after
+% %% @doc branch 
+% state(select_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope, Edges, States, RecMap) ->
+%   ok;
+% %%
+
+% %% @doc branch after
+% state(branch_after_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope, Edges, States, RecMap) ->
+%   ok;
+%%
+
+%% @doc branch 
+state(branch_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope, Edges, States, RecMap) ->
+  %% 
+  RelevantEdges = get_relevant_edges(StateID, Edges),
+  ?SHOW("~p, ~p, Checkpoint: RelevantEdges:\n\t~p",[Scope,{StateID},RelevantEdges]),
+  %% standard state should only have single action
+  ?assert(length(RelevantEdges)>0),
+
+  {StateClause, NextStateFuns} = edge_clauses(RelevantEdges, State, StateID, Scope, Edges, States, RecMap),
+
+  EnterClause = enter_clause(State, StateID, Scope),
+  ?SHOW("~p, ~p, Checkpoint: EnterClause.",[Scope,{StateID}]),
+
+  StateClauses = [EnterClause++StateClause],
+
+  %% prepare to return state funs
+  StateFun = {?EXPORT_DEFAULT,ScopeName,StateClauses},
+  StateFuns = [StateFun]++NextStateFuns,
+  % ?SHOW("~p, ~p, StateFuns:\n\t~p.",[Scope,{StateID},StateFuns]),
+  StateFuns;
+%%
+
+
+
+%% @doc recv after
 state(recv_after_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope, Edges, States, RecMap) ->
 
   ?GAP(),
@@ -270,125 +380,74 @@ state(recv_after_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope, 
   ?SHOW("~p, ~p, Checkpoint: RelevantEdges:\n\t~p",[Scope,{StateID},RelevantEdges]),
   %% standard state should only have single action
   ?assert(length(RelevantEdges)==2),
-  RecvEdge = lists:nth(1, RelevantEdges),
-  ToutEdge = lists:nth(2, RelevantEdges),
+  % RecvEdge = lists:nth(1, RelevantEdges),
+  % ToutEdge = lists:nth(2, RelevantEdges),
 
   EnterClause = enter_clause(State, StateID, Scope),
   ?SHOW("~p, ~p, Checkpoint: EnterClause.",[Scope,{StateID}]),
 
-  %% treat each one separately
-  {_R_DataClause, R_EdgeClause, R_LaterStateFuns, R_PostEdgeClause, _R_PostClause} = edge_clause(RecvEdge, State, StateID, Scope, Edges, States, RecMap),
+  % %% treat each one separately
+  % {_R_DataClause, R_EdgeClause, R_LaterStateFuns, R_PostEdgeClause, _R_PostClause} = edge_clause(RecvEdge, State, StateID, Scope, Edges, States, RecMap),
 
-  {_T_DataClause, T_EdgeClause, T_LaterStateFuns, T_PostEdgeClause, _T_PostClause} = edge_clause(ToutEdge, State, StateID, Scope, Edges, States, RecMap),
+  % {_T_DataClause, T_EdgeClause, T_LaterStateFuns, T_PostEdgeClause, _T_PostClause} = edge_clause(ToutEdge, State, StateID, Scope, Edges, States, RecMap),
 
-  %% post and data clauses will be handled differently
-  R_DataClause = [], R_PostClause = [],
-  T_DataClause = [], T_PostClause = [],
+  % %% post and data clauses will be handled differently
+  % R_DataClause = [], R_PostClause = [],
+  % T_DataClause = [], T_PostClause = [],
 
-  ?GAP(),
-  ?SHOW("~p, ~p, _R_DataClause:\n\t~p.",[Scope, {StateID},_R_DataClause]),
-  ?SHOW("~p, ~p, R_EdgeClause:\n\t~p.",[Scope, {StateID},R_EdgeClause]),
-  ?SHOW("~p, ~p, R_LaterStateFuns:\n\t~p.",[Scope, {StateID},R_LaterStateFuns]),
-  ?SHOW("~p, ~p, R_PostEdgeClause:\n\t~p.",[Scope, {StateID},R_PostEdgeClause]),
-  ?SHOW("~p, ~p, _R_PostClause:\n\t~p.",[Scope, {StateID},_R_PostClause]),
+  % ?GAP(),
+  % ?SHOW("~p, ~p, _R_DataClause:\n\t~p.",[Scope, {StateID},_R_DataClause]),
+  % ?SHOW("~p, ~p, R_EdgeClause:\n\t~p.",[Scope, {StateID},R_EdgeClause]),
+  % ?SHOW("~p, ~p, R_LaterStateFuns:\n\t~p.",[Scope, {StateID},R_LaterStateFuns]),
+  % ?SHOW("~p, ~p, R_PostEdgeClause:\n\t~p.",[Scope, {StateID},R_PostEdgeClause]),
+  % ?SHOW("~p, ~p, _R_PostClause:\n\t~p.",[Scope, {StateID},_R_PostClause]),
 
-  ?GAP(),
-  ?SHOW("~p, ~p, _T_DataClause:\n\t~p.",[Scope, {StateID},_T_DataClause]),
-  ?SHOW("~p, ~p, T_EdgeClause:\n\t~p.",[Scope, {StateID},T_EdgeClause]),
-  ?SHOW("~p, ~p, T_LaterStateFuns:\n\t~p.",[Scope, {StateID},T_LaterStateFuns]),
-  ?SHOW("~p, ~p, T_PostEdgeClause:\n\t~p.",[Scope, {StateID},T_PostEdgeClause]),
-  ?SHOW("~p, ~p, _T_PostClause:\n\t~p.",[Scope, {StateID},_T_PostClause]),
-  ?GAP(),
+  % ?GAP(),
+  % ?SHOW("~p, ~p, _T_DataClause:\n\t~p.",[Scope, {StateID},_T_DataClause]),
+  % ?SHOW("~p, ~p, T_EdgeClause:\n\t~p.",[Scope, {StateID},T_EdgeClause]),
+  % ?SHOW("~p, ~p, T_LaterStateFuns:\n\t~p.",[Scope, {StateID},T_LaterStateFuns]),
+  % ?SHOW("~p, ~p, T_PostEdgeClause:\n\t~p.",[Scope, {StateID},T_PostEdgeClause]),
+  % ?SHOW("~p, ~p, _T_PostClause:\n\t~p.",[Scope, {StateID},_T_PostClause]),
+  % ?GAP(),
 
-  %% resolve each separately
-  {R_StateClause,R_NextStateFuns} = resolve_clauses(Scope,StateID,[],R_LaterStateFuns,R_DataClause,R_EdgeClause,R_PostClause),
+  % %% resolve each separately
+  % {R_StateClause,R_NextStateFuns} = resolve_clauses(Scope,StateID,[],R_LaterStateFuns,R_DataClause,R_EdgeClause,R_PostClause),
 
-  {T_StateClause,T_NextStateFuns} = resolve_clauses(Scope,StateID,[],T_LaterStateFuns,T_DataClause,T_EdgeClause,T_PostClause),
+  % {T_StateClause,T_NextStateFuns} = resolve_clauses(Scope,StateID,[],T_LaterStateFuns,T_DataClause,T_EdgeClause,T_PostClause),
 
-  ?GAP(),
-  ?SHOW("~p, ~p, R_StateClause:\n\t~p.",[Scope, {StateID},R_StateClause]),
-  ?SHOW("~p, ~p, R_NextStateFuns:\n\t~p.",[Scope, {StateID},R_NextStateFuns]),
-  ?GAP(),
-  ?SHOW("~p, ~p, T_StateClause:\n\t~p.",[Scope, {StateID},T_StateClause]),
-  ?SHOW("~p, ~p, T_NextStateFuns:\n\t~p.",[Scope, {StateID},T_NextStateFuns]),
-  ?GAP(),
+  % ?GAP(),
+  % ?SHOW("~p, ~p, R_StateClause:\n\t~p.",[Scope, {StateID},R_StateClause]),
+  % ?SHOW("~p, ~p, R_NextStateFuns:\n\t~p.",[Scope, {StateID},R_NextStateFuns]),
+  % ?GAP(),
+  % ?SHOW("~p, ~p, T_StateClause:\n\t~p.",[Scope, {StateID},T_StateClause]),
+  % ?SHOW("~p, ~p, T_NextStateFuns:\n\t~p.",[Scope, {StateID},T_NextStateFuns]),
+  % ?GAP(),
 
-  %% TODO for banching, you would connect each of the R_StateClause with ;
+  % %% TODO for banching, you would connect each of the R_StateClause with ;
 
-  %% join each of the clauses under the same 
-  StateClause = EnterClause++["receive"]++R_StateClause++T_StateClause++["end"],
-
-
-  %% get names of next state funs from r
-  R_NextStateFunNames = lists:foldl(fun({_,Name,_}=_Elem,AccIn) when is_atom(Name) -> 
-    case lists:member(Name,AccIn) of 
-      true -> AccIn; 
-      _ -> AccIn++[Name] 
-    end 
-  end, [], R_NextStateFuns),
-
-  %% merge nextstatefuns
-  NextStateFuns = lists:foldl(fun({_,T_Name,_}=Elem,AccIn) -> 
-      case lists:member(T_Name,R_NextStateFunNames) of
-        true -> AccIn;
-        _ -> AccIn++[Elem]
-      end
-    end, R_NextStateFuns, T_NextStateFuns),
+  % %% join each of the clauses under the same 
+  % StateClause = EnterClause++["receive"]++R_StateClause++T_StateClause++["end"],
 
 
-  % %% merge edge, headof laterstatefuns and postedges together
-  % R_Head_LaterStateFuns = lists:nth(1,R_LaterStateFuns),
-  % case R_Head_LaterStateFuns of
-  %   {_, ScopeName, R_Head_Clauses} -> ok;
-  %   _ -> R_Head_Clauses=[]
-  % end,
-  % T_Head_LaterStateFuns = lists:nth(1,T_LaterStateFuns),
-  % case T_Head_LaterStateFuns of
-  %   {_, ScopeName, T_Head_StateClauses} -> 
-  %     T_Head_Clauses = lists:nthtail(1,T_Head_StateClauses);
-  %   _ -> T_Head_Clauses=[]
-  % end,
-  % R_EdgeClauses = R_EdgeClause++R_Head_Clauses++R_PostEdgeClause,
-  % % ?SHOW("~p, ~p, R_EdgeClauses:\n\t~p.",[Scope, {StateID},R_EdgeClauses]),
+  % %% get names of next state funs from r
+  % R_NextStateFunNames = lists:foldl(fun({_,Name,_}=_Elem,AccIn) when is_atom(Name) -> 
+  %   case lists:member(Name,AccIn) of 
+  %     true -> AccIn; 
+  %     _ -> AccIn++[Name] 
+  %   end 
+  % end, [], R_NextStateFuns),
 
-  % T_EdgeClauses = T_EdgeClause++T_Head_Clauses++T_PostEdgeClause,
-  % % ?SHOW("~p, ~p, T_EdgeClauses:\n\t~p.",[Scope, {StateID},T_EdgeClauses]),
+  % %% merge nextstatefuns
+  % NextStateFuns = lists:foldl(fun({_,T_Name,_}=Elem,AccIn) -> 
+  %     case lists:member(T_Name,R_NextStateFunNames) of
+  %       true -> AccIn;
+  %       _ -> AccIn++[Elem]
+  %     end
+  %   end, R_NextStateFuns, T_NextStateFuns),
 
-  % %% T_EdgeClause will be "after ..." or "{timer } ->" automatically
-  % %% edge clause are just both together, wrapped in "receive" "end"
-  % EdgeClause = lists:foldl(fun(Elem, AccIn) -> AccIn++Elem end, ["receive "], [R_EdgeClauses,T_EdgeClauses]),%%++[" end "],
-  % %% post clause will be empty since "end" included above
-  % PostClause = [],
+  {StateClause, NextStateFuns} = edge_clauses(RelevantEdges, State, StateID, Scope, Edges, States, RecMap),
 
-  % %% remove duplicate defs
-  % _LaterStateFunNames = [],
-  % LaterStateFuns = lists:foldl(fun({_,Name,_}=Elem, AccIn) ->
-  %   case lists:member(Name,_LaterStateFunNames) of
-  %     true -> AccIn; %% skip since already added
-  %     _ -> AccIn++[Elem]
-  %   end
-  % end, R_LaterStateFuns, T_LaterStateFuns),
-
-  % %% dataclause will be decided by state (recv is empty)
-  % DataClause = [],
-
-  % % ?GAP(),
-  % % ?SHOW("~p, ~p, EdgeClause:\n\t~p.",[Scope, {StateID},EdgeClause]),
-  % % ?SHOW("~p, ~p, LaterStateFuns:\n\t~p.",[Scope, {StateID},LaterStateFuns]),
-  % % ?GAP(),
-
-
-  % {StateClause,NextStateFuns} = resolve_clauses(Scope,StateID,EnterClause,LaterStateFuns,DataClause,EdgeClause,PostClause),
-
-  StateClauses = [StateClause],
-
-
-  % ?SHOW("~p, ~p, Checkpoint: StateClauses.",[Scope,{StateID}]),
-
-  % ?SHOW("~p, ~p, EnterClause:\n\t~p.",[Scope,{StateID},EnterClause]),
-  % ?SHOW("~p, ~p, EdgeClause:\n\t~p.",[Scope,{StateID},EdgeClause]),
-  % ?SHOW("~p, ~p, StateClause:\n\t~p.",[Scope,{StateID},StateClause]),
-  % ?SHOW("~p, ~p, NextStateFuns:\n\t~p.",[Scope,{StateID},NextStateFuns]),
+  StateClauses = [EnterClause++StateClause],
 
 
   %% prepare to return state funs
@@ -736,6 +795,10 @@ get_relevant_edges(StateID, Edges) ->
   RelevantEdges = lists:filter(IsRelevant, Edges),
   RelevantEdges.
 %%
+
+%% @doc returns true if edge is silent
+is_edge_silent(Edge) -> Edge#edge.is_silent.
+is_edge_not_silent(Edge) -> not is_edge_silent(Edge).
 
 %% @doc retrieves all recursive variables bound to StateID.
 %% @returns list of recursive variable names bound to StateID

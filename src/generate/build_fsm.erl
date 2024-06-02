@@ -8,8 +8,12 @@ error_state() -> error_state.
 timer_start_state() -> timer_start_state.
 delay_state() -> delay_state.
 fatal_timeout_state() -> fatal_timeout_state.
-standard_state() -> standard_state.
-choice_state() -> choice_state.
+send_state() -> standard_state.%send_state.
+recv_state() -> standard_state.%recv_state.
+branch_state() -> branch_state.
+select_state() -> select_state.
+% standard_state() -> standard_state.
+% choice_state() -> choice_state.
 % mixed_choice_state() -> mixed_choice_state.
 end_state() -> end_state.
 custom_end_state() -> custom_end_state.
@@ -148,16 +152,21 @@ to_fsm(issue_timeout, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks
 %% @doc 
 to_fsm({act, Act, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
     Index = PrevIndex + 1,
+    EdgeData = data(Act),
     Edge = #edge{
         from = PrevVis,
         to = Index,
-        edge_data = data(Act),
+        edge_data = EdgeData,
         is_silent = false,
         is_delay = false,
         is_custom_end = false
     },
     Edges1 = Edges ++ [Edge],
-    Nodes1 = maps:put(PrevVis, standard_state(), Nodes),
+    %% determine 
+    case EdgeData#edge_data.trans_type of
+      recv -> Nodes1 = maps:put(PrevVis, recv_state(), Nodes);
+      send -> Nodes1 = maps:put(PrevVis, send_state(), Nodes)
+    end,
     to_fsm(P, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks);
 
 %% @doc generic timeout state (only called after main construct)
@@ -281,13 +290,15 @@ to_fsm({act, Act, P, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis,
 
 %% @doc branching receive
 to_fsm({branch, Branches}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
-    Index = PrevIndex + 1,
-    Nodes1 = maps:put(PrevVis, choice_state(), Nodes),
+    % Index = PrevIndex + 1,
+    Nodes1 = maps:put(PrevVis, branch_state(), Nodes),
     % case lists:last(Branches) of
     %   {_, _} ->
-    lists:foldl(
-        fun({Label, P1}, {E, N, R, I, _, EI, CI}) ->
+    % FutureEndState = [],
+    BranchingFSM=lists:foldl(
+        fun({Label, P1}, {E, N, R, I, _, EI, CI}=F) ->
             I1 = I + 1,
+            io:format("\n\nbranch, (I1=>~p) EI: ~p, BranchFSM:\n\tbefore: ~p.\n",[I1, EI,F]),
             Edge = #edge{
                 from = PrevVis,
                 to = I1,
@@ -298,11 +309,19 @@ to_fsm({branch, Branches}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, C
                 is_custom_end = false
             },
             E1 = E ++ [Edge],
-            to_fsm(P1, E1, N, R, I1, I1, EI, CI)
+            BranchFSM = to_fsm(P1, E1, N, R, I1, I1, EI, CI),
+            % {_, _, _, _, _, _, LaterEndState, _} = BranchFSM,
+            % case LatedEndState==-1 of
+            %   true -> ok;
+            %   _ -> 
+            io:format("branch, (I1=>~p) EI: ~p, BranchFSM:\n\tafter: ~p.\n",[I1, EI,BranchFSM]),
+            BranchFSM
         end,
-        {Edges, Nodes1, RecMap, PrevIndex, Index, EndIndex, Clocks},
+        {Edges, Nodes1, RecMap, PrevIndex, PrevIndex, EndIndex, Clocks},
         Branches
-    );
+    ),
+    io:format("branching fsm:\n\t~p.\n",[BranchingFSM]),
+    BranchingFSM;
 
 %% @doc branching receive with timeout
 to_fsm({branch, Branches, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
@@ -341,7 +360,7 @@ to_fsm({branch, Branches, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, Pre
 %% @doc output selection
 to_fsm({select, Branches}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
     Index = PrevIndex + 1,
-    Nodes1 = maps:put(PrevVis, choice_state(), Nodes),
+    Nodes1 = maps:put(PrevVis, select_state(), Nodes),
 
     lists:foldl(
         fun({Label, P1}, {E, N, R, I, _, EI, CI}) ->
@@ -419,6 +438,7 @@ to_fsm(endP, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
     true -> %% end state has not been found yet! this is the end state
       Nodes1 = maps:put(PrevVis, custom_end_state(), Nodes),
       Index = PrevIndex + 1,
+      EndIndex1 = PrevVis,
       Nodes2 = maps:put(Index, end_state(), Nodes1),
       Edges1 = Edges ++ [#edge{ from = PrevVis,
                                 to = Index,
@@ -429,13 +449,14 @@ to_fsm(endP, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
 
     false -> %% the end state has already been found, see EndIndex
       Index = PrevIndex,
+      EndIndex1 = EndIndex,
       LastEdge = lists:last(Edges),
       Edge = LastEdge#edge{to = EndIndex},
       Edges1 = lists:droplast(Edges) ++ [Edge],
       Nodes2 = Nodes
   end,
   %% reached termination
-  {Edges1, Nodes2, RecMap, Index, PrevVis, PrevVis, Clocks};
+  {Edges1, Nodes2, RecMap, Index, PrevVis, EndIndex1, Clocks};
 
 %% @doc error state
 to_fsm(error, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) -> to_fsm({error, none}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks);

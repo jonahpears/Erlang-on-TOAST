@@ -24,7 +24,7 @@ main(CoParty, Data) ->
     Data1 = Data,
     Payload_Before_t = payload,
     CoParty ! {self(), before_t, Payload_Before_t},
-    Data2 = set_timer(timer_t, 5000, Data1),
+    {Data2, _TID_t} = set_timer(t, 5000, Data1),
     stopping(CoParty, Data2).
 
 %% @doc Adds default reason 'normal' for stopping.
