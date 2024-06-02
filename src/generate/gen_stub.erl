@@ -109,12 +109,14 @@ build_module_forms(Fsm, ModuleName,MonitorSpec) ->
 
   MainForms = Forms2,
 
-  ?SHOW("Forms: ~p.",[MainForms]),
+  % ?SHOW("Forms: ~p.",[MainForms]),
 
   %% add the functions to the module
-  AddFuns = fun({Exported, Name, Clauses}=Fun, AccForm) -> 
-    ?SHOW("AddFun:\n\t~p.",[Fun]),
-    _F = merl_build:add_function(Exported, Name, Clauses, AccForm), ?SHOW("Returning:\n\t~p.",[_F]), _F end,
+  AddFuns = fun({Exported, Name, Clauses}=_Fun, AccForm) -> 
+    % ?SHOW("AddFun:\n\t~p.",[Fun]),
+    _F = merl_build:add_function(Exported, Name, Clauses, AccForm), 
+    % ?SHOW("Returning:\n\t~p.",[_F]), 
+    _F end,
   _ModuleForm = merl_build:module_forms(lists:foldl(AddFuns, MainForms, Funs)),
   % ?SHOW("_ModuleForm:\n\t~p.", [_ModuleForm]),
   _ModuleForm.
@@ -173,9 +175,12 @@ build_state_fun(Edges, States, RecMap, StateID, {ScopeID, ScopeName, _ScopeData}
           %% check if ?Q returns list already (if comments are present, then 1st elem is clauses and 2nd is comments)
           QClause=?Q(Clause),
           if 
-            is_list(QClause) -> _AccClauses = AccClauses++[lists:nth(1,QClause)],?SHOW("QClause, removed comments from clauses to avoid issues:\n\t~p.",[lists:nthtail(1,QClause)]);
+            is_list(QClause) -> _AccClauses = AccClauses++[lists:nth(1,QClause)],
+            ?SHOW("QClause, removed comments from clauses to avoid issues:\n\t~p.",[lists:nthtail(1,QClause)]);
             is_tuple(QClause) -> _AccClauses = AccClauses++[QClause];
-            true -> ?SHOW("QClause, unexpected return: (not list or tuple):\n\t~p.",[QClause]), _AccClauses= AccClauses++[QClause]
+            true -> 
+              ?SHOW("QClause, unexpected return: (not list or tuple):\n\t~p.",[QClause]), 
+            _AccClauses= AccClauses++[QClause]
           end,
           % ?SHOW("_AccClauses:\n\t~p.",[_AccClauses]),
           _AccClauses

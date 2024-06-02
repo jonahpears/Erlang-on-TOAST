@@ -1,6 +1,6 @@
--module('basic_send_after__ali_test.erl').
+-module('basic_select_after__ali_test.erl').
 
--file("basic_send_after__ali_test.erl", 1).
+-file("basic_select_after__ali_test.erl", 1).
 
 -define(MONITORED, false).
 
@@ -25,18 +25,34 @@ main(CoParty, Data) ->
     receive
         {AwaitSelection, ok, {Label, Payload}} ->
             case Label of
-                before_5s ->
-                    Payload_Before_5s = payload,
-                    CoParty ! {self(), before_5s, Payload_Before_5s},
-                    stopping(CoParty, Data1);
+                msgA ->
+                    CoParty ! {self(), msgA, Payload},
+                    receive
+                        {CoParty, msg1, Payload_Msg1} ->
+                            Data2 = save_msg(msg1, Payload_Msg1, Data1),
+                            stopping(CoParty, Data2)
+                    end;
+                msgB ->
+                    CoParty ! {self(), msgB, Payload},
+                    receive
+                        {CoParty, msg2, Payload_Msg2} ->
+                            Data5 = save_msg(msg2, Payload_Msg2, Data1),
+                            stopping(CoParty, Data5)
+                    end;
+                msgC ->
+                    CoParty ! {self(), msgC, Payload},
+                    receive
+                        {CoParty, msg3, Payload_Msg3} ->
+                            Data7 = save_msg(msg3, Payload_Msg3, Data1),
+                            stopping(CoParty, Data7)
+                    end;
                 _ -> error(unexpected_label_selected)
             end;
         {AwaitPayload, ko} ->
-            receive
-                {CoParty, after_5s, Payload_After_5s} ->
-                    Data4 = save_msg(after_5s, Payload_After_5s, Data1),
-                    stopping(CoParty, Data4)
-            end
+            Data8 = Data1,
+            Payload_Timeout = payload,
+            CoParty ! {self(), timeout, Payload_Timeout},
+            stopping(CoParty, Data8)
     end.
 
 %% @doc Adds default reason 'normal' for stopping.
@@ -56,7 +72,7 @@ stopping({error, Reason}, CoParty, Data) when is_atom(Reason) -> stopping({error
 %% @doc stopping with Unexpected Reason.
 stopping(Reason, _CoParty, _Data) when is_atom(Reason) -> exit(Reason).
 
-select_state1([]) -> before_5s;
+select_state1([]) -> msgA;
 select_state1(_Selection) -> expand_this_stub.
 
 get_state1_payload() -> ok.

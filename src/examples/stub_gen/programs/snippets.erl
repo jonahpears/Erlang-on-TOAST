@@ -28,7 +28,7 @@ snippet(recv_after_timer) ->
 
 snippet(send_after_timer) ->
   Timer_t = erlang:start_timer(5000, self(), {timer_expired, t}),
-  NonBlocking = nonblocking_waiter(fun(_)->ok end,[],self(),Timer_t),
+  NonBlocking = nonblocking_payload(fun(_)->ok end,[],self(),Timer_t),
   receive 
     {NonBlocking, ok, Result} -> 
       ok; %% send Result 
@@ -37,6 +37,20 @@ snippet(send_after_timer) ->
   end,
   ok;
 
+
+snippet(select_after_timer) ->
+  %% selector worker will select what to send and then get payload, and return it all
+  Timer_t = erlang:start_timer(5000, self(), {timer_expired, t}),
+  NonBlocking = nonblocking_selection(fun(_)->ok end,[],self(),Timer_t),
+  receive 
+    {NonBlocking, ok, {Label, Payload}} -> 
+      case Label of
+        _ -> ok %% send Result
+      end;
+    {NonBlocking, ko} -> 
+      ko  %% enter after branch
+  end,
+  ok;
 
 
 

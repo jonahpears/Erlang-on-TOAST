@@ -1,6 +1,6 @@
--module('basic_send_after__ali_test.erl').
+-module('basic_select_after_timer__ali_test.erl').
 
--file("basic_send_after__ali_test.erl", 1).
+-file("basic_select_after_timer__ali_test.erl", 1).
 
 -define(MONITORED, false).
 
@@ -21,22 +21,39 @@ run(CoParty) -> run(CoParty, []).
 run(CoParty, Data) -> main(CoParty, Data). %% add any init/start preperations below, before entering main
 
 main(CoParty, Data) ->
-    AwaitSelection = nonblocking_selection(fun select_state1/1, [], self(), 5000),
+    {Data1, _TID_t} = set_timer(t, 5000, Data),
+    AwaitSelection = nonblocking_selection(fun select_state2/1, [], self(), t),
     receive
         {AwaitSelection, ok, {Label, Payload}} ->
             case Label of
-                before_5s ->
-                    Payload_Before_5s = payload,
-                    CoParty ! {self(), before_5s, Payload_Before_5s},
-                    stopping(CoParty, Data1);
+                msgA ->
+                    CoParty ! {self(), msgA, Payload},
+                    receive
+                        {CoParty, msg1, Payload_Msg1} ->
+                            Data3 = save_msg(msg1, Payload_Msg1, Data2),
+                            stopping(CoParty, Data3)
+                    end;
+                msgB ->
+                    CoParty ! {self(), msgB, Payload},
+                    receive
+                        {CoParty, msg2, Payload_Msg2} ->
+                            Data6 = save_msg(msg2, Payload_Msg2, Data2),
+                            stopping(CoParty, Data6)
+                    end;
+                msgC ->
+                    CoParty ! {self(), msgC, Payload},
+                    receive
+                        {CoParty, msg3, Payload_Msg3} ->
+                            Data8 = save_msg(msg3, Payload_Msg3, Data2),
+                            stopping(CoParty, Data8)
+                    end;
                 _ -> error(unexpected_label_selected)
             end;
         {AwaitPayload, ko} ->
-            receive
-                {CoParty, after_5s, Payload_After_5s} ->
-                    Data4 = save_msg(after_5s, Payload_After_5s, Data1),
-                    stopping(CoParty, Data4)
-            end
+            Data9 = Data2,
+            Payload_Timeout = payload,
+            CoParty ! {self(), timeout, Payload_Timeout},
+            stopping(CoParty, Data9)
     end.
 
 %% @doc Adds default reason 'normal' for stopping.
@@ -56,7 +73,7 @@ stopping({error, Reason}, CoParty, Data) when is_atom(Reason) -> stopping({error
 %% @doc stopping with Unexpected Reason.
 stopping(Reason, _CoParty, _Data) when is_atom(Reason) -> exit(Reason).
 
-select_state1([]) -> before_5s;
-select_state1(_Selection) -> expand_this_stub.
+select_state2([]) -> msgA;
+select_state2(_Selection) -> expand_this_stub.
 
-get_state1_payload() -> ok.
+get_state2_payload() -> ok.

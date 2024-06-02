@@ -1,10 +1,10 @@
 -export([ start_link/0,
-          start_link/1,
-          init/1,
-          send/2,
-          recv/2,
-          send_before/3, 
-          recv_before/3
+          start_link/1
+          % init/1,
+          % send/2,
+          % recv/2,
+          % send_before/3, 
+          % recv_before/3
         ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -135,33 +135,52 @@ get_msgs(Label, #{msgs:=Msgs}=_Data) ->
     [H|_T]=All -> All
   end.
 
+%% @doc Calls Fun with Args and forwards the result to nonblocking_payload and then to PID.
+%% If Fun completes within Timeout milliseconds, then Result is passed to nonblocking_payload.
+%% If nonblocking_water 
+nonblocking_selection(Fun, Args, PID, Timeout) when is_integer(Timeout) ->
+  spawn( fun() -> 
+    %% spawn timer in the case of being passed to nonblocking_payload, need to take into account the duration of Fun
+    Timer = erlang:start_timer(Timeout, self(), nonblocking_selection),
+    Selector = self(),
+    %% spawn process in same node to send back results of selection
+    SelectingWorker = spawn( fun() -> Selector ! {self(), ok, Fun(Args)} end ),
+    receive 
+      %% if worker process determines selection, and returns necessary function/args to obtain payload to send
+      {SelectingWorker, ok, {Selection, PayloadFun, PayloadFun}} -> 
+        %% spawn new process using function to obtain payload
+        NonBlocking = nonblocking_payload(PayloadFun, PayloadFun, self(), Timer),
+        %% forward result of nonblocking_waiter to PID
+        receive {NonBlocking, ok, {_Label, _Payload}=Result} -> PID ! {self(), ok, Result};
+        {NonBlocking, ko} -> PID ! {self(), ko}, exit(NonBlocking, normal) end;
+      %% if timer expires first, signal PID that after-branch should be taken and terminate workers
+      {timeout, Timer, nonblocking_selection} -> PID ! {self(), ko}, exit(SelectingWorker, normal) 
+    end 
+  end );
+
+%% @doc 
+nonblocking_selection(Fun, Args, PID, Timer) when is_pid(Timer) ->
+  nonblocking_selection(Fun, Args, PID, erlang:read_timer(Timer)).
+
 %% @doc Calls Fun with Args and forwards the result to PID.
 %% If Fun completes within Timeout milliseconds, returns Result.
 %% Otherwise signals PID 'ko' since it took too long.
-%% @see nonblocking_waiter(_,_,_,T) when is_pid(T) for use with timers
-nonblocking_waiter(Func, Args, PID, Timeout) when is_integer(Timeout) ->
+nonblocking_payload(Fun, Args, PID, Timeout) when is_integer(Timeout) ->
   spawn( fun() -> 
     Waiter = self(),
-    TimeConsumer = spawn( fun() -> Waiter ! {self(), ok, Func(Args)} end ),
+    TimeConsumer = spawn( fun() -> Waiter ! {self(), ok, Fun(Args)} end ),
     receive {TimeConsumer, ok, Result} -> PID ! {self(), ok, Result}
-    after Timeout -> PID ! {self(), ko}, exit(TimeConsumer, too_late) end 
+    after Timeout -> PID ! {self(), ko}, exit(TimeConsumer, normal) end 
   end );
 
 %% @doc Calls Fun with Args and forwards the result to PID.
-%% If Fun completes before Timer finishes, returns Result.
-%% Otherwise signals PID 'ko' since it took too long.
-nonblocking_waiter(Func, Args, PID, Timer) when is_pid(Timer) ->
-  spawn( fun() -> 
-    Waiter = self(),
-    TimeConsumer = spawn( fun() -> Waiter ! {self(), ok, Func(Args)} end ),
-    receive 
-      {TimeConsumer, ok, Result} -> PID ! {self(), ok, Result};
-      {timeout, Timer, _Msg} -> PID ! {self(), ko}, exit(TimeConsumer, too_late) end 
-  end ).
+%% @see nonblocking_payload with Timeout
+nonblocking_payload(Fun, Args, PID, Timer) when is_pid(Timer) ->
+  nonblocking_payload(Fun, Args, PID, erlang:read_timer(Timer)).
 
 %% @doc Wrapper function for sending the result of Fun with Label if it finished within Timeout milliseconds
 send_before(CoPartyID, {Label, {Fun, Args}}, Timeout) when is_pid(CoPartyID) and is_atom(Label) -> 
-  NonBlocking = nonblocking_waiter(Fun, Args, self(), Timeout),
+  NonBlocking = nonblocking_payload(Fun, Args, self(), Timeout),
   receive {NonBlocking, ok, Result} -> send(CoPartyID, {Label, Result});
     {NonBlocking, ko} -> ko
   end.

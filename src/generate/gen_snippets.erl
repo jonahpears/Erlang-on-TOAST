@@ -126,21 +126,20 @@ edge(#edge{edge_data=#edge_data{timeout=#{ref:=Duration}},is_silent=true}=_Edge,
 
 
 %% @doc for edge within choice
-edge(#edge{edge_data=#edge_data{event = {Act, Var} ,trans_type = TransType},is_silent=false,is_choice=true}=_Edge, {StateData,NextStateData}) -> 
+edge(#edge{edge_data=#edge_data{event = {_Act, Var} ,trans_type = TransType},is_silent=false,is_choice=true}=Edge, {StateData,NextStateData}) -> 
 
+  Label = get_msg_label(Edge),
   StrVar = atom_to_list(Var),
   StrPayload = "Payload_"++StrVar,
   case TransType of
-    send ->
-      Label = string:prefix(atom_to_list(Act), "send_"),
-      PayloadClause = [%"%% replace 'ok' below with some payload \n",
-      StrPayload++" = \'payload\',"],
-      SendClause = [%"%% send \n",
-      "CoParty ! {self(), "++Label++", Payload_"++StrVar++"},"],
-      Clauses = PayloadClause++SendClause,
-      {Clauses, []};
+    send ->{["CoParty ! {self(), "++get_msg_label(Edge)++", Payload},"],[]};
+      % PayloadClause = [%"%% replace 'ok' below with some payload \n",
+      % StrPayload++" = \'payload\',"],
+      % SendClause = [%"%% send \n",
+      % "CoParty ! {self(), "++Label++", Payload_"++StrVar++"},"],
+      % Clauses = PayloadClause++SendClause,
+      % {Clauses, []};
     recv -> 
-      Label = string:prefix(atom_to_list(Act), "receive_"),
       RecvClause = [%"%% recv \n",
       "{CoParty, "++Label++", "++StrPayload++"} -> "],
       DataClause = [ NextStateData++" = save_msg("++Label++", "++StrPayload++", "++StateData++"), " ],
@@ -151,12 +150,21 @@ edge(#edge{edge_data=#edge_data{event = {Act, Var} ,trans_type = TransType},is_s
   end;
 
 %% @doc for lone action (prewrap in recv)
-edge(#edge{edge_data=#edge_data{trans_type = TransType},is_silent=false,is_choice=false}=Edge, {StateData,NextStateData}) -> 
+edge(#edge{edge_data=#edge_data{event = {_Act, Var} ,trans_type = TransType},is_silent=false,is_choice=false}=Edge, {StateData,NextStateData}) -> 
 
   % reng_show(edge, Edge, "\nbuilding edge snippet:\n"),
 
   case TransType of
-    send -> edge(Edge#edge{is_choice=true},{StateData,NextStateData});
+    send -> %{["CoParty ! {self(), "++get_msg_label(Edge)++", Payload},"],[]}; % edge(Edge#edge{is_choice=true},{StateData,NextStateData});
+    Label = get_msg_label(Edge),
+    StrVar = atom_to_list(Var),
+    StrPayload = "Payload_"++StrVar,
+    PayloadClause = [%"%% replace 'ok' below with some payload \n",
+      StrPayload++" = \'payload\',"],
+      SendClause = [%"%% send \n",
+      "CoParty ! {self(), "++Label++", Payload_"++StrVar++"},"],
+      Clauses = PayloadClause++SendClause,
+      {Clauses, []};
     recv -> 
       {Clauses, PostClause} = edge(Edge#edge{is_choice=true},{StateData,NextStateData}),
       {["receive "]++Clauses, PostClause++["end"]};
@@ -165,7 +173,20 @@ edge(#edge{edge_data=#edge_data{trans_type = TransType},is_silent=false,is_choic
   end.
 %%
 
+%% @doc strip away prefix to get edge (msg) label
+get_msg_label(#edge{edge_data=#edge_data{event = {Act, _Var} ,trans_type = send}}=_Edge) -> string:prefix(atom_to_list(Act), "send_");
+get_msg_label(#edge{edge_data=#edge_data{event = {Act, _Var} ,trans_type = recv}}=_Edge) -> string:prefix(atom_to_list(Act), "receive_").
+%%
 
+%% @doc combo of edge andresolve clause functions
+resolve_edge_clause(Edge, State, StateID, Scope, Edges, States, RecMap) ->
+  %% get edge clause
+  {_DataClause, EdgeClause, LaterStateFuns, PostEdgeClause, _PostClause} = edge_clause(Edge, State, StateID, Scope, Edges, States, RecMap),
+  %% get resolved
+  {ElemStateClause,ElemNextStateFuns} = resolve_clauses(Scope,StateID,[],LaterStateFuns,[],EdgeClause,PostEdgeClause),
+  {ElemStateClause,ElemNextStateFuns}.
+
+%% @doc adds any nextstatefun tuples from ToMerge to Primary that are not already in Primary
 merge_next_state_funs(Primary, ToMerge) -> 
   %% get names of next state funs from r
   NextStateFunNames = lists:foldl(fun({_,Name,_}=_Elem,AccIn) when is_atom(Name) -> 
@@ -184,11 +205,112 @@ merge_next_state_funs(Primary, ToMerge) ->
     end, Primary, ToMerge),
 
   NextStateFuns.
+%%
+
+%% @doc returns resolved clauses for all Es
+select_clauses([_H|_T]=_Es, State, StateID, Scope, Edges, States, RecMap) when is_list(_Es) ->
+
+  %% separate to order (should be ordered anyway, but just to make sure)
+  SilentEdges = lists:filter(fun is_edge_silent/1, _Es),
+  NonSilentEdges = lists:filter(fun is_edge_not_silent/1, _Es),
+  % Es = NonSilentEdges ++ SilentEdges,
+
+  ?assert(length(SilentEdges)=<1),
+
+  %% get labels of each msg selection
+  % NonSilentLabels = list:foldl(fun(E, AccIn) -> AccIn++[get_msg_label(E)] end, [], NonSilentEdges),
 
 
-%% @doc edge clauses (list of edges)
+  ResolveClauses = fun(Edge, {_StateClause,_NextStateFuns}=_AccIn) ->
+    {ElemStateClause,ElemNextStateFuns} = resolve_edge_clause(Edge, State, StateID, Scope, Edges, States, RecMap),
+    ?GAP(),
+    ?SHOW("~p, ~p, _StateClause:\n\t~p.",[Scope,{StateID},_StateClause]),
+    ?GAP(),
+    ?SHOW("~p, ~p, ElemStateClause:\n\t~p.",[Scope,{StateID},ElemStateClause]),
+    ?GAP(),
+    ?SHOW("~p, ~p, ElemNextStateFuns:\n\t~p.",[Scope,{StateID},ElemNextStateFuns]),
+    ?GAP(),
+    %% add resolved to StateClause 
+    % case is_edge_not_silent(Edge) and (length(_StateClause)>0) of
+    %   true -> StateClause = _StateClause ++ [";"] ++ ElemStateClause; %% silent edges take this into account by default
+    %   false -> StateClause = _StateClause ++ElemStateClause
+    % end,
+    %% add resolved to map against msg label
+    StateClauseMap = maps:put(get_msg_label(Edge), ElemStateClause, _StateClause),
+    %% merge nextstatefuns
+    NextStateFuns = merge_next_state_funs(_NextStateFuns,ElemNextStateFuns),
+    %% return 
+    {StateClauseMap,NextStateFuns}
+  end,
+
+  %% resolve each in NonSilentEdges only (handle Silent Edges differently)
+  {EsStateClauseMap,EsNextStateFuns} = lists:foldl(ResolveClauses, {#{},[]}, NonSilentEdges),
+  
+
+  %% get each of the cases for selection (post-AwaitSelection returning ok)
+  MsgSelectionClause = maps:fold(fun(K, V, AccIn) -> case length(AccIn)==0 of
+    true -> [K++" -> "]++V;
+  _ -> AccIn++["; "++K++" -> "]++V end end, [], EsStateClauseMap),
+
+  _SelectionFun = get_state_selection_fun(NonSilentEdges, State, StateID, Scope, Edges, States, RecMap),
+  {SelectionFun,SelectionArgs} = _SelectionFun,
+  {_, SelectionFunName, _} = SelectionFun,
+
+  _PayloadFun = get_state_payload_fun(NonSilentEdges, State, StateID, Scope, Edges, States, RecMap),
+  {PayloadFun,PayloadArgs} = _PayloadFun,
+  {_, PayloadFunName, _} = PayloadFun,
+
+
+
+  case length(SilentEdges)==1 of
+    true -> 
+      Timeout = lists:nth(1,SilentEdges),
+      _TimeoutRef = maps:get(ref,Timeout#edge.edge_data#edge_data.timeout),
+      case is_number(_TimeoutRef) of
+        true -> TimeoutRef = integer_to_list(floor(_TimeoutRef));
+        _ -> TimeoutRef = _TimeoutRef
+      end,
+      {_SilentClause,SilentEsNextStateFuns} = resolve_edge_clause(Timeout, State, StateID, Scope, Edges, States, RecMap),
+      %% remove front from _silentclause (which will either be 'after Timeout -> ' or '{timeout,...}')
+      SilentClause = lists:nthtail(1,_SilentClause),
+      
+      ?GAP(),
+      ?SHOW("~p, ~p, SilentClause:\n\t~p.",[Scope,{StateID},SilentClause]),
+      
+      NextStateFuns = merge_next_state_funs(EsNextStateFuns, SilentEsNextStateFuns),
+      
+      StateClause = ["AwaitSelection = nonblocking_selection(fun "++atom_to_list(SelectionFunName)++"/1, ["++SelectionArgs++"], self(), "++TimeoutRef++"), \n receive {AwaitSelection, ok, {Label, Payload}} -> case Label of"]++MsgSelectionClause++["; _ -> error(unexpected_label_selected) end; {AwaitPayload, ko} -> "]++SilentClause++["end"]  ;
+
+    _ -> NextStateFuns = EsNextStateFuns,
+      StateClause = ["case {Label,Payload}="++atom_to_list(PayloadFunName)++"(["++PayloadArgs++"]) of"]++MsgSelectionClause++["; _ -> error(unexpected_label_selected)"]++["end"] 
+  end,
+
+  ?GAP(),
+  ?SHOW("~p, ~p, EsStateClauseMap:\n\t~p.",[Scope,{StateID},EsStateClauseMap]),
+  ?GAP(),
+  ?SHOW("~p, ~p, NextStateFuns:\n\t~p.",[Scope,{StateID},NextStateFuns]),
+  ?GAP(),
+
+  {StateClause,NextStateFuns++[SelectionFun,PayloadFun]}.
+%%
+
+%% @doc function tuple for some function to return payload
+get_state_payload_fun(_NonSilentEdges, _State, StateID, _Scope, _Edges, _States, _RecMap) -> 
+  FunName = "get_state"++integer_to_list(StateID)++"_payload",
+  PayloadArgs = [],
+  {{false,list_to_atom(FunName),[["() -> ok"]]}, PayloadArgs}.
+%%
+
+%% @doc function tuple for some function to determine selection
+get_state_selection_fun([H|_T]=_NonSilentEdges, _State, StateID, _Scope, _Edges, _States, _RecMap) -> 
+  FunName = "select_state"++integer_to_list(StateID),
+  SelectionArgs = [],
+  {{false,list_to_atom(FunName),[["([]) -> "++get_msg_label(H)],["(_Selection) -> expand_this_stub"]]}, SelectionArgs}.
+%%
+
+%% @doc branch_clauses edge clauses (list of edges)
 %% @returns resovled_clauses for all _Es
-edge_clauses([_H|_T]=_Es, State, StateID, {_ScopeID, _ScopeName, _ScopeData}=Scope, Edges, States, RecMap) when is_list(_Es) ->
+branch_clauses([_H|_T]=_Es, State, StateID, Scope, Edges, States, RecMap) when is_list(_Es) ->
 
   %% separate to order (should be ordered anyway, but just to make sure)
   SilentEdges = lists:filter(fun is_edge_silent/1, _Es),
@@ -196,10 +318,7 @@ edge_clauses([_H|_T]=_Es, State, StateID, {_ScopeID, _ScopeName, _ScopeData}=Sco
   Es = NonSilentEdges ++ SilentEdges,
 
   ResolveClauses = fun(Edge, {_StateClause,_NextStateFuns}=_AccIn) ->
-    %% get edge clause
-    {_DataClause, EdgeClause, LaterStateFuns, PostEdgeClause, _PostClause} = edge_clause(Edge, State, StateID, Scope, Edges, States, RecMap),
-    %% get resolved
-    {ElemStateClause,ElemNextStateFuns} = resolve_clauses(Scope,StateID,[],LaterStateFuns,[],EdgeClause,PostEdgeClause),
+    {ElemStateClause,ElemNextStateFuns} = resolve_edge_clause(Edge, State, StateID, Scope, Edges, States, RecMap),
     ?GAP(),
     ?SHOW("~p, ~p, _StateClause:\n\t~p.",[Scope,{StateID},_StateClause]),
     ?GAP(),
@@ -326,32 +445,118 @@ next_state_data(StateID, {ScopeID, _ScopeName, _ScopeData}=_Scope)
 next_state_data(StateID, {_ScopeID, _ScopeName, ScopeData}=_Scope) -> 
   {ScopeData++"_"++integer_to_list(StateID), StateID}.
 
-% %% @doc branch 
-% state(select_after_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope, Edges, States, RecMap) ->
-%   ok;
-% %%
+%% @doc select 
+state(select_after_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope, Edges, States, RecMap) ->
+  RelevantEdges = get_relevant_edges(StateID, Edges),
+  ?SHOW("~p, ~p, RelevantEdges:\n\t~p.", [Scope, {StateID},RelevantEdges]),
+  %% standard state should only have single action
+  ?assert(length(RelevantEdges)>0),
+  % Edge = lists:nth(1, RelevantEdges),
 
-% %% @doc branch 
-% state(select_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope, Edges, States, RecMap) ->
-%   ok;
-% %%
+  EnterClause = enter_clause(State, StateID, Scope),
+  % ?SHOW("~p, ~p, Checkpoint: EnterClause.",[Scope,{StateID}]),
 
-% %% @doc branch after
-% state(branch_after_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope, Edges, States, RecMap) ->
-%   ok;
+  {StateClause, NextStateFuns} = select_clauses(RelevantEdges, State, StateID, Scope, Edges, States, RecMap),
+
+  StateClauses = [EnterClause++StateClause],
+
+  ?GAP(),
+  ?SHOW("~p, ~p, StateClauses:\n\t~p.",[Scope,{StateID},StateClauses]),
+
+  %% prepare to return state funs
+  StateFun = {?EXPORT_DEFAULT,ScopeName,StateClauses},
+  StateFuns = [StateFun]++NextStateFuns,
+  ?SHOW("~p, ~p, StateFuns:\n\t~p.",[Scope,{StateID},StateFuns]),
+  StateFuns;
+%%
+
+%% @doc select 
+state(select_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope, Edges, States, RecMap) ->
+  RelevantEdges = get_relevant_edges(StateID, Edges),
+  ?SHOW("~p, ~p, RelevantEdges:\n\t~p.", [Scope, {StateID},RelevantEdges]),
+  %% standard state should only have single action
+  ?assert(length(RelevantEdges)>0),
+  % Edge = lists:nth(1, RelevantEdges),
+
+  EnterClause = enter_clause(State, StateID, Scope),
+  % ?SHOW("~p, ~p, Checkpoint: EnterClause.",[Scope,{StateID}]),
+
+  {StateClause, NextStateFuns} = select_clauses(RelevantEdges, State, StateID, Scope, Edges, States, RecMap),
+
+  StateClauses = [EnterClause++StateClause],
+
+  ?GAP(),
+  ?SHOW("~p, ~p, StateClauses:\n\t~p.",[Scope,{StateID},StateClauses]),
+
+  %% prepare to return state funs
+  StateFun = {?EXPORT_DEFAULT,ScopeName,StateClauses},
+  StateFuns = [StateFun]++NextStateFuns,
+  ?SHOW("~p, ~p, StateFuns:\n\t~p.",[Scope,{StateID},StateFuns]),
+  StateFuns;
+%%
+
+%% @doc send after 
+state(send_after_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope, Edges, States, RecMap) ->
+
+  ?GAP(),
+  ?SHOW("~p, ~p, State: ~p.", [Scope, {StateID},State]),
+  ?SHOW("~p, ~p, StateID: ~p.", [Scope, {StateID},StateID]),
+  ?SHOW("~p, ~p, Scope: ~p.", [Scope, {StateID},Scope]),
+  ?SHOW("~p, ~p, States: ~p.", [Scope, {StateID},States]),
+  ?SHOW("~p, ~p, RecMap: ~p.", [Scope, {StateID},RecMap]),
+  ?GAP(),
+
+
+  RelevantEdges = get_relevant_edges(StateID, Edges),
+  ?SHOW("~p, ~p, RelevantEdges:\n\t~p.", [Scope, {StateID},RelevantEdges]),
+  %% standard state should only have single action
+  ?assert(length(RelevantEdges)==2),
+  % Edge = lists:nth(1, RelevantEdges),
+
+  EnterClause = enter_clause(State, StateID, Scope),
+  % ?SHOW("~p, ~p, Checkpoint: EnterClause.",[Scope,{StateID}]),
+
+  {StateClause, NextStateFuns} = select_clauses(RelevantEdges, State, StateID, Scope, Edges, States, RecMap),
+
+  StateClauses = [EnterClause++StateClause],
+
+  ?GAP(),
+  ?SHOW("~p, ~p, StateClauses:\n\t~p.",[Scope,{StateID},StateClauses]),
+
+  %% prepare to return state funs
+  StateFun = {?EXPORT_DEFAULT,ScopeName,StateClauses},
+  StateFuns = [StateFun]++NextStateFuns,
+  ?SHOW("~p, ~p, StateFuns:\n\t~p.",[Scope,{StateID},StateFuns]),
+  StateFuns;
+
+  % {DataClause, EdgeClause, LaterStateFuns, PostEdgeClause, PostClause} = edge_clause(Edge, State, StateID, Scope, Edges, States, RecMap),
+
+  % {StateClause,NextStateFuns} = resolve_clauses(Scope,StateID,EnterClause,LaterStateFuns,DataClause,EdgeClause++PostEdgeClause,PostClause),
+
+  % StateClauses = [StateClause],
+
+
+  % ?GAP(),
+  % ?SHOW("~p, ~p, StateClauses:\n\t~p.",[Scope,{StateID},StateClauses]),
+
+  % StateFun = {?EXPORT_DEFAULT,ScopeName,StateClauses},
+  % StateFuns = [StateFun]++NextStateFuns,
+  % ?SHOW("~p, ~p, StateFuns:\n\t~p.",[Scope,{StateID},StateFuns]),
+  % StateFuns;
+%%
 
 %% @doc branch after
 state(branch_after_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope, Edges, States, RecMap) ->
   %% 
   RelevantEdges = get_relevant_edges(StateID, Edges),
-  ?SHOW("~p, ~p, Checkpoint: RelevantEdges:\n\t~p",[Scope,{StateID},RelevantEdges]),
+  % ?SHOW("~p, ~p, Checkpoint: RelevantEdges:\n\t~p",[Scope,{StateID},RelevantEdges]),
   %% standard state should only have single action
   ?assert(length(RelevantEdges)>0),
 
-  {StateClause, NextStateFuns} = edge_clauses(RelevantEdges, State, StateID, Scope, Edges, States, RecMap),
+  {StateClause, NextStateFuns} = branch_clauses(RelevantEdges, State, StateID, Scope, Edges, States, RecMap),
 
   EnterClause = enter_clause(State, StateID, Scope),
-  ?SHOW("~p, ~p, Checkpoint: EnterClause.",[Scope,{StateID}]),
+  % ?SHOW("~p, ~p, Checkpoint: EnterClause.",[Scope,{StateID}]),
 
   StateClauses = [EnterClause++StateClause],
 
@@ -367,14 +572,14 @@ state(branch_after_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope
 state(branch_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope, Edges, States, RecMap) ->
   %% 
   RelevantEdges = get_relevant_edges(StateID, Edges),
-  ?SHOW("~p, ~p, Checkpoint: RelevantEdges:\n\t~p",[Scope,{StateID},RelevantEdges]),
+  % ?SHOW("~p, ~p, Checkpoint: RelevantEdges:\n\t~p",[Scope,{StateID},RelevantEdges]),
   %% standard state should only have single action
   ?assert(length(RelevantEdges)>0),
 
-  {StateClause, NextStateFuns} = edge_clauses(RelevantEdges, State, StateID, Scope, Edges, States, RecMap),
+  {StateClause, NextStateFuns} = branch_clauses(RelevantEdges, State, StateID, Scope, Edges, States, RecMap),
 
   EnterClause = enter_clause(State, StateID, Scope),
-  ?SHOW("~p, ~p, Checkpoint: EnterClause.",[Scope,{StateID}]),
+  % ?SHOW("~p, ~p, Checkpoint: EnterClause.",[Scope,{StateID}]),
 
   StateClauses = [EnterClause++StateClause],
 
@@ -390,23 +595,23 @@ state(branch_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope, Edge
 %% @doc recv after
 state(recv_after_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope, Edges, States, RecMap) ->
 
-  ?GAP(),
-  ?SHOW("~p, ~p, State: ~p.", [Scope, {StateID},State]),
-  ?SHOW("~p, ~p, StateID: ~p.", [Scope, {StateID},StateID]),
-  ?SHOW("~p, ~p, Scope: ~p.", [Scope, {StateID},Scope]),
-  ?SHOW("~p, ~p, States: ~p.", [Scope, {StateID},States]),
-  ?SHOW("~p, ~p, RecMap: ~p.", [Scope, {StateID},RecMap]),
+  % ?GAP(),
+  % ?SHOW("~p, ~p, State: ~p.", [Scope, {StateID},State]),
+  % ?SHOW("~p, ~p, StateID: ~p.", [Scope, {StateID},StateID]),
+  % ?SHOW("~p, ~p, Scope: ~p.", [Scope, {StateID},Scope]),
+  % ?SHOW("~p, ~p, States: ~p.", [Scope, {StateID},States]),
+  % ?SHOW("~p, ~p, RecMap: ~p.", [Scope, {StateID},RecMap]),
 
   %% 
   RelevantEdges = get_relevant_edges(StateID, Edges),
-  ?SHOW("~p, ~p, Checkpoint: RelevantEdges:\n\t~p",[Scope,{StateID},RelevantEdges]),
+  % ?SHOW("~p, ~p, Checkpoint: RelevantEdges:\n\t~p",[Scope,{StateID},RelevantEdges]),
   %% standard state should only have single action
   ?assert(length(RelevantEdges)==2),
 
   EnterClause = enter_clause(State, StateID, Scope),
-  ?SHOW("~p, ~p, Checkpoint: EnterClause.",[Scope,{StateID}]),
+  % ?SHOW("~p, ~p, Checkpoint: EnterClause.",[Scope,{StateID}]),
 
-  {StateClause, NextStateFuns} = edge_clauses(RelevantEdges, State, StateID, Scope, Edges, States, RecMap),
+  {StateClause, NextStateFuns} = branch_clauses(RelevantEdges, State, StateID, Scope, Edges, States, RecMap),
 
   StateClauses = [EnterClause++StateClause],
 
@@ -450,12 +655,12 @@ state(error_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope, Edges
 %% @doc 
 state(delay_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope, Edges, States, RecMap) ->
   
-  ?GAP(),
-  ?SHOW("~p, ~p, State: ~p.", [Scope, {StateID},State]),
-  ?SHOW("~p, ~p, StateID: ~p.", [Scope, {StateID},StateID]),
-  ?SHOW("~p, ~p, Scope: ~p.", [Scope, {StateID},Scope]),
-  ?SHOW("~p, ~p, States: ~p.", [Scope, {StateID},States]),
-  ?SHOW("~p, ~p, RecMap: ~p.", [Scope, {StateID},RecMap]),
+  % ?GAP(),
+  % ?SHOW("~p, ~p, State: ~p.", [Scope, {StateID},State]),
+  % ?SHOW("~p, ~p, StateID: ~p.", [Scope, {StateID},StateID]),
+  % ?SHOW("~p, ~p, Scope: ~p.", [Scope, {StateID},Scope]),
+  % ?SHOW("~p, ~p, States: ~p.", [Scope, {StateID},States]),
+  % ?SHOW("~p, ~p, RecMap: ~p.", [Scope, {StateID},RecMap]),
 
   %% 
   RelevantEdges = get_relevant_edges(StateID, Edges),
@@ -473,16 +678,16 @@ state(delay_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope, Edges
   StateClauses = [StateClause],
 
 
-  ?SHOW("~p, ~p, EnterClause:\n\t~p.",[Scope,{StateID},EnterClause]),
-  ?SHOW("~p, ~p, EdgeClause:\n\t~p.",[Scope,{StateID},EdgeClause]),
-  ?SHOW("~p, ~p, StateClause:\n\t~p.",[Scope,{StateID},StateClause]),
-  ?SHOW("~p, ~p, NextStateFuns:\n\t~p.",[Scope,{StateID},NextStateFuns]),
+  % ?SHOW("~p, ~p, EnterClause:\n\t~p.",[Scope,{StateID},EnterClause]),
+  % ?SHOW("~p, ~p, EdgeClause:\n\t~p.",[Scope,{StateID},EdgeClause]),
+  % ?SHOW("~p, ~p, StateClause:\n\t~p.",[Scope,{StateID},StateClause]),
+  % ?SHOW("~p, ~p, NextStateFuns:\n\t~p.",[Scope,{StateID},NextStateFuns]),
 
 
   %% prepare to return state funs
   StateFun = {?EXPORT_DEFAULT,ScopeName,StateClauses},
   StateFuns = [StateFun]++NextStateFuns,
-  ?SHOW("~p, ~p, StateFuns:\n\t~p.",[Scope,{StateID},StateFuns]),
+  % ?SHOW("~p, ~p, StateFuns:\n\t~p.",[Scope,{StateID},StateFuns]),
   StateFuns;
 
 %%
@@ -494,12 +699,12 @@ state(delay_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope, Edges
 %% timers must be stored in the map Data 
 state(timer_start_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope, Edges, States, RecMap) ->
   
-  ?GAP(),
-  ?SHOW("~p, ~p, State: ~p.", [Scope, {StateID},State]),
-  ?SHOW("~p, ~p, StateID: ~p.", [Scope, {StateID},StateID]),
-  ?SHOW("~p, ~p, Scope: ~p.", [Scope, {StateID},Scope]),
-  ?SHOW("~p, ~p, States: ~p.", [Scope, {StateID},States]),
-  ?SHOW("~p, ~p, RecMap: ~p.", [Scope, {StateID},RecMap]),
+  % ?GAP(),
+  % ?SHOW("~p, ~p, State: ~p.", [Scope, {StateID},State]),
+  % ?SHOW("~p, ~p, StateID: ~p.", [Scope, {StateID},StateID]),
+  % ?SHOW("~p, ~p, Scope: ~p.", [Scope, {StateID},Scope]),
+  % ?SHOW("~p, ~p, States: ~p.", [Scope, {StateID},States]),
+  % ?SHOW("~p, ~p, RecMap: ~p.", [Scope, {StateID},RecMap]),
 
   %% 
   RelevantEdges = get_relevant_edges(StateID, Edges),
@@ -516,16 +721,16 @@ state(timer_start_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope,
   StateClauses = [StateClause],
 
 
-  ?SHOW("~p, ~p, EnterClause:\n\t~p.",[Scope,{StateID},EnterClause]),
-  ?SHOW("~p, ~p, EdgeClause:\n\t~p.",[Scope,{StateID},EdgeClause]),
-  ?SHOW("~p, ~p, StateClause:\n\t~p.",[Scope,{StateID},StateClause]),
-  ?SHOW("~p, ~p, NextStateFuns:\n\t~p.",[Scope,{StateID},NextStateFuns]),
+  % ?SHOW("~p, ~p, EnterClause:\n\t~p.",[Scope,{StateID},EnterClause]),
+  % ?SHOW("~p, ~p, EdgeClause:\n\t~p.",[Scope,{StateID},EdgeClause]),
+  % ?SHOW("~p, ~p, StateClause:\n\t~p.",[Scope,{StateID},StateClause]),
+  % ?SHOW("~p, ~p, NextStateFuns:\n\t~p.",[Scope,{StateID},NextStateFuns]),
 
 
   %% prepare to return state funs
   StateFun = {?EXPORT_DEFAULT,ScopeName,StateClauses},
   StateFuns = [StateFun]++NextStateFuns,
-  ?SHOW("~p, ~p, StateFuns:\n\t~p.",[Scope,{StateID},StateFuns]),
+  % ?SHOW("~p, ~p, StateFuns:\n\t~p.",[Scope,{StateID},StateFuns]),
   StateFuns;
 
 %%
@@ -536,16 +741,16 @@ state(timer_start_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope,
 %% @returns tuple of {list_of_state_funs, list_of_next_states}
 state(standard_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope, Edges, States, RecMap) ->
 
-  ?GAP(),
-  ?SHOW("~p, ~p, State: ~p.", [Scope, {StateID},State]),
-  ?SHOW("~p, ~p, StateID: ~p.", [Scope, {StateID},StateID]),
-  ?SHOW("~p, ~p, Scope: ~p.", [Scope, {StateID},Scope]),
-  ?SHOW("~p, ~p, States: ~p.", [Scope, {StateID},States]),
-  ?SHOW("~p, ~p, RecMap: ~p.", [Scope, {StateID},RecMap]),
+  % ?GAP(),
+  % ?SHOW("~p, ~p, State: ~p.", [Scope, {StateID},State]),
+  % ?SHOW("~p, ~p, StateID: ~p.", [Scope, {StateID},StateID]),
+  % ?SHOW("~p, ~p, Scope: ~p.", [Scope, {StateID},Scope]),
+  % ?SHOW("~p, ~p, States: ~p.", [Scope, {StateID},States]),
+  % ?SHOW("~p, ~p, RecMap: ~p.", [Scope, {StateID},RecMap]),
 
 
   RelevantEdges = get_relevant_edges(StateID, Edges),
-  ?SHOW("~p, ~p, RelevantEdges:\n\t~p.", [Scope, {StateID},RelevantEdges]),
+  % ?SHOW("~p, ~p, RelevantEdges:\n\t~p.", [Scope, {StateID},RelevantEdges]),
   %% standard state should only have single action
   ?assert(length(RelevantEdges)==1),
   Edge = lists:nth(1, RelevantEdges),
@@ -559,12 +764,12 @@ state(standard_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope, Ed
   StateClauses = [StateClause],
 
 
-  ?GAP(),
-  ?SHOW("~p, ~p, StateClauses:\n\t~p.",[Scope,{StateID},StateClauses]),
+  % ?GAP(),
+  % ?SHOW("~p, ~p, StateClauses:\n\t~p.",[Scope,{StateID},StateClauses]),
 
   StateFun = {?EXPORT_DEFAULT,ScopeName,StateClauses},
   StateFuns = [StateFun]++NextStateFuns,
-  ?SHOW("~p, ~p, StateFuns:\n\t~p.",[Scope,{StateID},StateFuns]),
+  % ?SHOW("~p, ~p, StateFuns:\n\t~p.",[Scope,{StateID},StateFuns]),
   StateFuns;
   % {StateFuns++StateFunsTail, NextStateFuns};
 %% 

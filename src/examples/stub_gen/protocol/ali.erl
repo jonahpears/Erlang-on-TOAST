@@ -49,7 +49,7 @@ gentest(basic_cotimeouts) ->
 
 gentest(basic_choices) ->
   gen_stub:gen(ali,spec,basic_branch,"_ali_test.erl"),
-  % gen_stub:gen(ali,spec,basic_select,"_ali_test.erl"),
+  gen_stub:gen(ali,spec,basic_select,"_ali_test.erl"),
   ok;
 
 gentest(advanced_timeouts) ->
@@ -68,28 +68,18 @@ gentest(implemented) ->
   ok=gentest(basic_timers),
   ok=gentest(basic_delays),
   ok=gentest(basic_timeouts),
-  % ok=gentest(basic_cotimeouts),
-  % ok=gentest(basic_choices),
-  % ok=gentest(advanced_timeouts),
-  % ok=gentest(advanced_cotimeouts),
+  ok=gentest(basic_cotimeouts),
+  ok=gentest(basic_choices),
+  ok=gentest(advanced_timeouts),
+  ok=gentest(advanced_cotimeouts),
   ok;
 
 gentest(tests) -> 
-  ok=gentest(basic_timeouts),
-  % ok=gentest(basic_cotimeouts),
-  ok=gentest(basic_choices),
-  ok=gentest(advanced_timeouts),
-  % ok=gentest(advanced_cotimeouts),
   ok;
 
 gentest(all) -> 
   gentest(implemented),
   gentest(tests),
-  % gentest(basic_timeouts),
-  % gentest(basic_cotimeouts),
-  % gentest(basic_choices),
-  % gentest(advanced_timeouts),
-  % gentest(advanced_cotimeouts),
   ok;
 
 gentest(_) -> gen_stub:gen(ali,spec,default,"_ali_test.erl").
@@ -150,7 +140,7 @@ spec(basic_branch_after) -> {branch, [
                             {r_msg3, {act, s_msgC, endP}}
                           ], aft, 5000, {act, s_timeout, endP}};
 
-spec(basic_select_acter) -> {select, [
+spec(basic_select_after) -> {select, [
                             {s_msgA, {act, r_msg1, endP}},
                             {s_msgB, {act, r_msg2, endP}},
                             {s_msgC, {act, r_msg3, endP}}
