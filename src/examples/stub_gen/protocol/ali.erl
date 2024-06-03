@@ -23,6 +23,8 @@ gentest(basic_actions) ->
   ok;
 
 gentest(basic_loops) -> 
+  gen_stub:gen(ali,spec,basic_send_loop,"_ali_test.erl"),
+  gen_stub:gen(ali,spec,basic_recv_loop,"_ali_test.erl"),
   gen_stub:gen(ali,spec,basic_send_recv_loop,"_ali_test.erl"),
   gen_stub:gen(ali,spec,basic_recv_send_loop,"_ali_test.erl"),
   ok;
@@ -67,6 +69,11 @@ gentest(basic_if_statements) ->
   gen_stub:gen(ali,spec,basic_if_then_else,"_ali_test.erl"),
   ok;
 
+gentest(basic_if_statements_loops) ->
+  gen_stub:gen(ali,spec,basic_if_then_loop,"_ali_test.erl"),
+  gen_stub:gen(ali,spec,basic_if_then_else_loop,"_ali_test.erl"),
+  ok;
+
 gentest(implemented) -> 
   ok=gentest(basic_actions),
   ok=gentest(basic_loops),
@@ -77,10 +84,12 @@ gentest(implemented) ->
   ok=gentest(basic_choices),
   ok=gentest(advanced_timeouts),
   ok=gentest(advanced_cotimeouts),
+  ok=gentest(basic_if_statements),
+  ok=gentest(basic_if_statements_loops),
   ok;
 
 gentest(tests) -> 
-  ok=gentest(basic_if_statements),
+  gen_stub:gen(ali,spec,basic_if_then_else_loop,"_ali_test.erl"),
   ok;
 
 gentest(all) -> 
@@ -166,12 +175,20 @@ spec(basic_select_after_timer) -> {timer, "t", 5000, {select, [
                           ], aft, "t", {act, s_timeout, endP}}};
 
 %% if statements
-spec(basic_if_then) -> {timer, "t", 5000, {rec, "a", 
-                          { if_timer, "t", {act, s_finished, endP} }}};
+spec(basic_if_then) -> {timer, "t", 5000, { if_timer, "t", {act, s_finished, endP} }};
 
-spec(basic_if_then_else) -> {timer, "t", 5000, {rec, "a", 
-                          { if_timer, "t", {act, s_finished, endP},
-                            else, {act, s_data, {rvar, "a"}} }}};
+spec(basic_if_then_loop) -> {timer, "t", 5000, {rec, "a", { if_timer, "t", {act, s_finished, {rvar, "a"}} }}};
+
+spec(basic_if_then_else) -> {timer, "t", 5000, { if_timer, "t", {act, s_finished, endP},
+                            else, {act, s_data, endP} }};
+
+spec(basic_if_then_else_loop) -> 
+  {timer, "t", 5000, 
+    {rec, "a", 
+      { if_timer, "t", 
+          {act, s_finished, endP},
+        else, 
+          {act, s_data, {rvar, "a"}} }}};
 
 
 %% type: {!a(5<x<10), ?b(x>10)}

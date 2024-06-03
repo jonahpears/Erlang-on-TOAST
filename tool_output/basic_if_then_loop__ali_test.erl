@@ -1,6 +1,6 @@
--module('basic_recv_loop__ali_test.erl').
+-module('basic_if_then_loop__ali_test.erl').
 
--file("basic_recv_loop__ali_test.erl", 1).
+-file("basic_if_then_loop__ali_test.erl", 1).
 
 -define(MONITORED, false).
 
@@ -21,15 +21,20 @@ run(CoParty) -> run(CoParty, []).
 run(CoParty, Data) -> main(CoParty, Data). %% add any init/start preperations below, before entering main
 
 main(CoParty, Data) ->
+    {Data1, _TID_t} = set_timer(t, 5000, Data),
     receive
-        {CoParty, msg1, Payload_Msg1} ->
-            Data1 = save_msg(msg1, Payload_Msg1, Data),
-            loop_state1_std(CoParty, Data1)
+        {timeout, t, {timer, t}} ->
+            Payload_Finished = payload,
+            CoParty ! {self(), finished, Payload_Finished},
+            loop_state2_if(CoParty, Data1_3)
+        after 0 -> error(urgent_lower_bound_violation)
     end.
 
-loop_state1_std(CoParty, Data1) ->
+loop_state2_if(CoParty, Data2) ->
     receive
-        {CoParty, msg1, Payload_Msg1} ->
-            Data1_1 = save_msg(msg1, Payload_Msg1, Data1),
-            loop_state1_std(CoParty, Data1_1)
+        {timeout, t, {timer, t}} ->
+            Payload_Finished = payload,
+            CoParty ! {self(), finished, Payload_Finished},
+            loop_state2_if(CoParty, Data1_3)
+        after 0 -> error(urgent_lower_bound_violation)
     end.

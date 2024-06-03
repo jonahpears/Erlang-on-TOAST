@@ -1,10 +1,14 @@
--module('_ali_test').
+-module('basic_send_loop__ali_test.erl').
 
--file("_ali_test", 1).
+-file("basic_send_loop__ali_test.erl", 1).
 
 -define(MONITORED, false).
 
--export([loop_state1_std/2, main/2, run/1, run/2]).
+-define(MONITOR_SPEC, #{}).
+
+-include("stub.hrl").
+
+-export([]).
 
 %% @doc Adds default empty list for Data.
 %% @see run/2.
@@ -18,12 +22,12 @@ run(CoParty, Data) -> main(CoParty, Data). %% add any init/start preperations be
 
 main(CoParty, Data) ->
     Data1 = Data,
-    Payload_Msg1 = ok,
-    CoParty ! {self(), msg1, Payload_Msg1},
+    Payload_MsgA = payload,
+    CoParty ! {self(), msgA, Payload_MsgA},
     loop_state1_std(CoParty, Data1).
 
 loop_state1_std(CoParty, Data1) ->
     Data1_1 = Data1,
-    Payload_Msg1 = ok,
-    CoParty ! {self(), msg1, Payload_Msg1},
+    Payload_MsgA = payload,
+    CoParty ! {self(), msgA, Payload_MsgA},
     loop_state1_std(CoParty, Data1_1).

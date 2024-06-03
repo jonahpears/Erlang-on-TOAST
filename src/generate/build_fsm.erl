@@ -68,6 +68,8 @@ to_fsm(P) ->
         % )
     ),
 
+    io:format("fsm, edges:\n\t~p,\n\nfsm, nodes:\n\t~p,\n\nfsm, recmap:\n\t~p.\n",[Edges,Nodes,RecMap]),
+
     {Edges, Nodes, RecMap}.
 
 %% @doc processes the actions and labels names and sets the event,
@@ -539,7 +541,7 @@ to_fsm({if_timer, Name, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, 
     %% create edge from current if_timer to P
     Edge = #edge{ from = PrevVis,
                   to = Index,
-                  edge_data = #edge_data{if=#{is_timer=>true,ref=>Name,is_not=>false}},
+                  edge_data = #edge_data{if_stmt=#{is_timer=>true,ref=>Name,is_not=>false}},
                   is_silent = true,
                   is_if = true,
                   is_else = false,
@@ -560,7 +562,7 @@ to_fsm({if_not_timer, Name, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndInd
     %% create edge from current if_timer to P
     Edge = #edge{ from = PrevVis,
                   to = Index,
-                  edge_data = #edge_data{if=#{is_timer=>true,ref=>Name,is_not=>true}},
+                  edge_data = #edge_data{if_stmt=#{is_timer=>true,ref=>Name,is_not=>true}},
                   is_silent = true,
                   is_if = true,
                   is_else = false,
@@ -581,7 +583,7 @@ to_fsm({if_timer, Name, P, else, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, E
   %% create edge from current if_timer to P
   Edge = #edge{ from = PrevVis,
                 to = Index,
-                edge_data = #edge_data{if_true=#{is_timer=>true,ref=>Name,is_not=>false}},
+                edge_data = #edge_data{if_stmt=#{is_timer=>true,ref=>Name,is_not=>false}},
                 is_silent = true,
                 is_if = true,
                 is_else = false,
@@ -591,13 +593,13 @@ to_fsm({if_timer, Name, P, else, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, E
   %% add edge to edges
   Edges1 = Edges ++ [Edge],
   %% move to P
-  {QEdges, QNodes, QRecMap, QPrevIndex, QPrevVis, QEndIndex, QClocks} = to_fsm(P, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks),
+  {QEdges, QNodes, QRecMap, QPrevIndex, _QPrevVis, QEndIndex, QClocks} = to_fsm(P, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks),
   %% get index of Q
   QIndex = QPrevIndex + 1,
   %% create edge from current timer_state_state to Q
-  QEdge = #edge{ from = QPrevVis,
+  QEdge = #edge{ from = PrevVis,
                 to = QIndex,
-                edge_data = #edge_data{if_true=#{is_timer=>true,ref=>Name,is_not=>false}},
+                edge_data = #edge_data{if_stmt=#{is_timer=>true,ref=>Name,is_not=>false}},
                 is_silent = true,
                 is_if = false,
                 is_else = true,
@@ -607,7 +609,7 @@ to_fsm({if_timer, Name, P, else, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, E
   %% add edge to edges
   QEdges1 = QEdges ++ [QEdge],
   %% move to Q
-  to_fsm(Q, QEdges1, QNodes, QRecMap, QPrevIndex, QPrevVis, QEndIndex, QClocks);
+  to_fsm(Q, QEdges1, QNodes, QRecMap, QIndex, QIndex, QEndIndex, QClocks);
 
 %% @doc 
 to_fsm({if_not_timer, Name, P, else, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
@@ -618,7 +620,7 @@ to_fsm({if_not_timer, Name, P, else, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVi
   %% create edge from current if_timer to P
   Edge = #edge{ from = PrevVis,
                 to = Index,
-                edge_data = #edge_data{if_true=#{is_timer=>true,ref=>Name,is_not=>true}},
+                edge_data = #edge_data{if_stmt=#{is_timer=>true,ref=>Name,is_not=>true}},
                 is_silent = true,
                 is_if = true,
                 is_else = false,
@@ -628,13 +630,13 @@ to_fsm({if_not_timer, Name, P, else, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVi
   %% add edge to edges
   Edges1 = Edges ++ [Edge],
   %% move to P
-  {QEdges, QNodes, QRecMap, QPrevIndex, QPrevVis, QEndIndex, QClocks} = to_fsm(P, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks),
+  {QEdges, QNodes, QRecMap, QPrevIndex, _QPrevVis, QEndIndex, QClocks} = to_fsm(P, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks),
   %% get index of Q
   QIndex = QPrevIndex + 1,
   %% create edge from current timer_state_state to Q
-  QEdge = #edge{ from = QPrevVis,
+  QEdge = #edge{ from = PrevVis,
                 to = QIndex,
-                edge_data = #edge_data{if_true=#{is_timer=>true,ref=>Name,is_not=>true}},
+                edge_data = #edge_data{if_stmt=#{is_timer=>true,ref=>Name,is_not=>true}},
                 is_silent = true,
                 is_if = false,
                 is_else = true,
@@ -644,7 +646,7 @@ to_fsm({if_not_timer, Name, P, else, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVi
   %% add edge to edges
   QEdges1 = QEdges ++ [QEdge],
   %% move to Q
-  to_fsm(Q, QEdges1, QNodes, QRecMap, QPrevIndex, QPrevVis, QEndIndex, QClocks);
+  to_fsm(Q, QEdges1, QNodes, QRecMap, QIndex, QIndex, QEndIndex, QClocks);
 
 %% @doc unhandled protocol
 to_fsm(S, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
