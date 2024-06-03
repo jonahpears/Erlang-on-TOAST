@@ -173,4 +173,52 @@ spec(basic_if_then_else) -> {timer, "t", 5000, {rec, "a",
                           { if_timer, "t", {act, s_finished, endP},
                             else, {act, s_data, {rvar, "a"}} }}};
 
+
+%% type: {!a(5<x<10), ?b(x>10)}
+spec(mixed_test) -> 
+  {timer, "t10", 1000, {
+    timer, "t5", 5000,  {
+      delay, "t5", {
+        act, s_a, endP,
+        aft, "t10", {act, r_b, endP}
+      }
+    }
+  }};
+
+%% type: {!a(x<3), !b(x<5), ?c(5<x<10), !d(x>10)}
+%% type: [ (x<3)   :{!a,!b},
+%%         (3<x<5) :{!b},
+%%         (5<x<10):{?c},
+%%         (10>x)  :{!b}    ]
+spec(interleaved_test) -> 
+  {timer, "t10", 1000, {
+    timer, "t5", 5000,  {
+      delay, "t5", {
+        act, s_a, endP,
+        aft, "t10", {act, r_b, endP}
+      }
+    }
+  }};
+
+%% type: \mu r1.{!data(x>1,{x}).r1, ?stop(x<1 and y>10).end}
+%% type: \mu r1.[ (x<1) :{?stop.end} &(y>10)
+%%                (x>1) :{!data{x}.r1} ]
+spec(iteration_test) -> 
+  {timer, "x1", 1000, {
+    timer, "y10", 10000, {
+      rec, "r1", {
+        if_timer, "y10", {
+          act, r_stop, endP
+        }, else, {
+          delay, "x1", {
+            act, s_data, {
+              {timer, "x1", {rvar, "x1"}}
+            }
+          }
+        }
+      }
+    }
+  }};
+
+
 spec(nothing) -> endP.

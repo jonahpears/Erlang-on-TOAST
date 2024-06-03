@@ -29,17 +29,22 @@
 
 -type interact () :: {dir(), msg(), [delta()], resets(), toast()}.
 
+%% used in choice below
+-type region () :: {dir(), {deltax(),delta()}, [ {msg(), resets(), toast() } ]}.
+
 %% interactions in choice already separated into regions according to delta
--type choice () :: [ {integer(), deltax(), [ interact() ]} ].
+-type choice () :: [ region() ].
 
 -type toast () :: {choice, choice()} | {action, interact()}
                 | {rec, string(), toast()}
                 | {rvar, string()}
+                | {region, region()} %% used for choice
                 | term.
 
 
 %% @doc to_protocol (adds map for bounds)
 to_protocol(TOAST) -> 
+  ?assert(validate(TOAST)),
   {Protocol, _, ToBeReset} = to_protocol(TOAST, #{"x"=>0}, 0),
 
   %% get all to be reset
@@ -49,67 +54,38 @@ to_protocol(TOAST) ->
 
   NewProtocol.
 
+%% @doc validates TOAST adheres to restrictions
+validate(_TOAST) -> true. %% TODO
+
 %% @doc mapp from toast to protocol input.
 %% restrictions on toast:
-%%  - all constraints on clocks (if any) must include the clock "x" 
-%%  - all constraints are flattened and in conjunction with each other
-%%  - any action without constraints assumes 'true'
-%%  - all interactions in choice have been separated 
-%%  - deltas do not have more than one upper
-%%  - we do not differentiate between >/=> and </=<
+%%  - deltas can not have diagonal constraints (nor negation, but allow >/>=/</<=)
+%%  - deltas are in the form of a flattened list with each elem in conjunction
+%%  - deltas do not differentiate between (> and >=) and (< and =<)
+%%
+%%  - for interactions:
+%%     - deltas can not have more than one upperbound
+%%
+%%  - for choices:
+%%     - must be given as series of region-grouped choice (non-mixed). 
+%%     - two things viable at the same time must use same clock (i.e.: same region)
+%%     - the delta of each region follow the same as interaction
+%%
 -spec to_protocol(toast(), map(), integer()) -> {interleave:protocol(), map(), list()}.
 
+%% @doc region (sub-choice)
+to_protocol({region, Region}, Bounds, PrevIndex) ->
+  Index = PrevIndex+1,
+
+  {Dir, {DeltaX,Delta}=Deltas, Options} = Region,
+
+  pass;
+
 %% @doc choice
-% to_protocol({choice, Choice}, Bounds, PrevIndex) ->
-%   Index = PrevIndex+1,
-%   % %% starting from first region, 
-%   % _ = lists:foldl(fun({ID, DeltaX, C}=R) ->
-%   %   %% get protocol for head
-%   %   case get_region_dir(R) of
-%   %     send -> HeadProtocol = {select},
-%   %     recv -> 
-%   %   end
-%   % end, [], Choice),
+to_protocol({choice, Choice}, Bounds, PrevIndex) ->
+  Index = PrevIndex+1,
 
-%   % {_R, NewBounds} = wrap_choice(Choice, Bounds),
-
-
-
-
-%   pass;%{todo, todo, []};
-
-
-
-
-  %% go through each interaction in region and collect their protocols and bounds
-  % Interactions = fun(Is) ->
-    
-  % end,
-
-
-  % Interactions = fun({ID,DeltaX,C}=R) -> 
-  %   {CProtocol,CBounds} = Interactions, C
-  % end,
-
-  % %% go through each region
-  % Regions = lists:foldl(Interactions, ),
-  
-
-
-
-
-
-  % %% go through each interaction in choice and collect their protocols and bounds
-  % {RawProtocols, RawBounds} = lists:foldl(fun(I, {CProtocols,CBounds}=_AccIn) ->
-  %     {IProtocol, IBounds} = to_protocol(I, Bounds),
-  %     {CProtocols++[IProtocol],CBounds++[IBounds]}
-  %   end, {[],[]}, Choice),
-
-  % %% combine protocols into branch/select
-  % % RegionMap
-  
-  % {Protocol, NewBounds};
-  % pass;
+  pass;
 
 %% @doc interaction
 to_protocol({action, Action}, TimerDefs, PrevIndex) ->
@@ -163,7 +139,7 @@ to_protocol({action, Action}, TimerDefs, PrevIndex) ->
                 NewPBs=PBs;
               _ -> case lists:member(DBC, [leq,les]) of
                   true -> %% add aft timer 
-                    NewPBs=PBs++[C];
+                    NewPBs=PBs++[get_clock_index(C,Index)];
                   _ -> error(invalid_delta), NewPBs=PBs
                 end
             end;
