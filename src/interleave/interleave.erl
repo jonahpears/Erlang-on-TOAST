@@ -26,6 +26,8 @@
                   %  | {'delay', time_region(), protocol()}
                    | {'if_timer', string(), protocol()}
                    | {'if_timer', string(), protocol(), 'else', protocol()}
+                   | {'if_not_timer', string(), protocol()}
+                   | {'if_not_timer', string(), protocol(), 'else', protocol()}
                   %  | {'iff', boolean(), protocol()}
                   %  | {'iff', boolean(), protocol(), 'else', protocol()}
                   %  | {'assert', atom(), protocol()}

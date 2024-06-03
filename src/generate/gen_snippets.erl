@@ -207,6 +207,17 @@ merge_next_state_funs(Primary, ToMerge) ->
   NextStateFuns.
 %%
 
+
+%% @doc if clauses
+if_clauses([H|T]=_Es, State, StateID, Scope, Edges, States, RecMap) when is_list(_Es) ->
+
+  %% TODO
+
+  %% separate into relating to timer reaching 0 or not
+
+  pass;
+
+
 %% @doc returns resolved clauses for all Es
 select_clauses([_H|_T]=_Es, State, StateID, Scope, Edges, States, RecMap) when is_list(_Es) ->
 
@@ -449,13 +460,58 @@ next_state_data(StateID, {_ScopeID, _ScopeName, ScopeData}=_Scope) ->
 %% @doc if then else statement
 state(if_then_else_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope, Edges, States, RecMap) ->
   %% TODO: use 0ms timeout for else
-  ok;
+  
+
+  RelevantEdges = get_relevant_edges(StateID, Edges),
+  ?SHOW("~p, ~p, RelevantEdges:\n\t~p.", [Scope, {StateID},RelevantEdges]),
+  %% standard state should only have single action
+  ?assert(length(RelevantEdges)==2),
+  % Edge = lists:nth(1, RelevantEdges),
+
+  EnterClause = enter_clause(State, StateID, Scope),
+  % ?SHOW("~p, ~p, Checkpoint: EnterClause.",[Scope,{StateID}]),
+  
+
+  {StateClause, NextStateFuns} = if_clauses(RelevantEdges, State, StateID, Scope, Edges, States, RecMap),
+
+  StateClauses = [EnterClause++StateClause],
+
+  ?GAP(),
+  ?SHOW("~p, ~p, StateClauses:\n\t~p.",[Scope,{StateID},StateClauses]),
+
+  %% prepare to return state funs
+  StateFun = {?EXPORT_DEFAULT,ScopeName,StateClauses},
+  StateFuns = [StateFun]++NextStateFuns,
+  ?SHOW("~p, ~p, StateFuns:\n\t~p.",[Scope,{StateID},StateFuns]),
+  StateFuns;
 %%
 
 %% @doc if statement
 state(if_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope, Edges, States, RecMap) ->
   %% TODO: use 0ms timeout for else -> error
-  ok;
+  
+  RelevantEdges = get_relevant_edges(StateID, Edges),
+  ?SHOW("~p, ~p, RelevantEdges:\n\t~p.", [Scope, {StateID},RelevantEdges]),
+  %% standard state should only have single action
+  ?assert(length(RelevantEdges)==1),
+  % Edge = lists:nth(1, RelevantEdges),
+
+  EnterClause = enter_clause(State, StateID, Scope),
+  % ?SHOW("~p, ~p, Checkpoint: EnterClause.",[Scope,{StateID}]),
+  
+
+  {StateClause, NextStateFuns} = if_clauses(RelevantEdges, State, StateID, Scope, Edges, States, RecMap),
+
+  StateClauses = [EnterClause++StateClause],
+
+  ?GAP(),
+  ?SHOW("~p, ~p, StateClauses:\n\t~p.",[Scope,{StateID},StateClauses]),
+
+  %% prepare to return state funs
+  StateFun = {?EXPORT_DEFAULT,ScopeName,StateClauses},
+  StateFuns = [StateFun]++NextStateFuns,
+  ?SHOW("~p, ~p, StateFuns:\n\t~p.",[Scope,{StateID},StateFuns]),
+  StateFuns;
 %%
 
 %% @doc select 
