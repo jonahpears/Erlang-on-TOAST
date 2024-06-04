@@ -74,6 +74,34 @@ gentest(basic_if_statements_loops) ->
   gen_stub:gen(ali,spec,basic_if_then_else_loop,"_ali_test.erl"),
   ok;
 
+gentest(advanced_mixed_choice) ->
+  gen_stub:gen(ali,spec,advanced_mixed_choice_send_first,"_ali_test.erl"),
+  gen_stub:gen(ali,spec,advanced_mixed_choice_recv_first,"_ali_test.erl"),
+  gen_stub:gen(ali,spec,advanced_mixed_choice_select_first,"_ali_test.erl"),
+  gen_stub:gen(ali,spec,advanced_mixed_choice_branch_first,"_ali_test.erl"),
+  ok;
+
+gentest(advanced_mixed_choice_loops) ->
+  gen_stub:gen(ali,spec,advanced_mixed_choice_send_first_loop,"_ali_test.erl"),
+  gen_stub:gen(ali,spec,advanced_mixed_choice_recv_first_loop,"_ali_test.erl"),
+  gen_stub:gen(ali,spec,advanced_mixed_choice_select_first_loop,"_ali_test.erl"),
+  gen_stub:gen(ali,spec,advanced_mixed_choice_branch_first_loop,"_ali_test.erl"),
+  ok;
+
+gentest(basic_errors) ->
+  gen_stub:gen(ali,spec,basic_error_send,"_ali_test.erl"),
+  gen_stub:gen(ali,spec,basic_error_recv,"_ali_test.erl"),
+  gen_stub:gen(ali,spec,basic_error_select,"_ali_test.erl"),
+  gen_stub:gen(ali,spec,basic_error_branch,"_ali_test.erl"),
+  ok;
+
+gentest(basic_errors_after) ->
+  gen_stub:gen(ali,spec,basic_error_send_after,"_ali_test.erl"),
+  gen_stub:gen(ali,spec,basic_error_recv_after,"_ali_test.erl"),
+  gen_stub:gen(ali,spec,basic_error_select_after,"_ali_test.erl"),
+  gen_stub:gen(ali,spec,basic_error_branch_after,"_ali_test.erl"),
+  ok;
+
 gentest(implemented) -> 
   ok=gentest(basic_actions),
   ok=gentest(basic_loops),
@@ -86,10 +114,18 @@ gentest(implemented) ->
   ok=gentest(advanced_cotimeouts),
   ok=gentest(basic_if_statements),
   ok=gentest(basic_if_statements_loops),
+  ok=gentest(basic_errors),
+  ok=gentest(basic_errors_after),
+  ok=gentest(advanced_mixed_choice),
   ok;
 
+%% TODO:: fix gen_snippets:next_state_funs
+%% TODO::  - correctly generates for scope function, but fails to pull back to main
+%% TODO::  - ideally, just use callback function in main, and leave function as it is 
+%% TODO::  - however, still some issues in the function scope, in all except standard recursive states
 gentest(tests) -> 
-  gen_stub:gen(ali,spec,basic_if_then_else_loop,"_ali_test.erl"),
+  % gen_stub:gen(ali,spec,basic_if_then_else_loop,"_ali_test.erl"),%% TODO:: fix as above
+  % ok=gentest(advanced_mixed_choice_loops),%% TODO:: fix as above
   ok;
 
 gentest(all) -> 
@@ -191,6 +227,144 @@ spec(basic_if_then_else_loop) ->
           {act, s_data, {rvar, "a"}} }}};
 
 
+%% mixed choice
+spec(advanced_mixed_choice_send_first) ->
+  {timer, "t1", 5000, {
+    act, s_first, {
+      act, r_second, endP, aft, "t1", error
+    },
+    aft, 3000, {
+      act, r_second, endP, 
+      aft, "t1", {
+        act, s_third, endP
+      }
+    }
+  }};
+
+
+spec(advanced_mixed_choice_recv_first) ->
+  {timer, "t1", 5000, {
+    act, r_first, {
+      act, s_second, endP, aft, "t1", error
+    },
+    aft, 3000, {
+      act, s_second, endP, 
+      aft, "t1", {
+        act, r_third, endP
+      }
+    }
+  }};
+
+%% advanced select/branch
+spec(advanced_mixed_choice_select_first) ->
+  {timer, "t1", 5000, {
+    select, [
+      {s_first, {
+        act, r_second, endP, aft, "t1", error
+      }},
+      {s_third, endP}
+    ],
+    aft, 3000, {
+      branch, [
+        {r_fourth, endP},
+        {r_fifth, endP}
+      ],
+      aft, "t1", {
+        act, s_sixth, endP
+      }
+    }
+  }};
+
+  spec(advanced_mixed_choice_branch_first) ->
+    {timer, "t1", 5000, {
+      branch, [
+        {r_first, {
+          act, s_second, endP, aft, "t1", error
+        }},
+        {r_third, endP}
+      ],
+      aft, 3000, {
+        select, [
+          {s_fourth, endP},
+          {s_fifth, endP}
+        ],
+        aft, "t1", {
+          act, r_sixth, endP
+        }
+      }
+    }};
+  
+  
+
+%% mixed choice loops
+spec(advanced_mixed_choice_send_first_loop) ->
+  {rec, "r1", {timer, "t1", 5000, {
+    act, s_first, {
+      act, r_second, endP, aft, "t1", error
+    },
+    aft, 3000, {
+      act, r_second, {rvar, "r1"}, 
+      aft, "t1", {rec, "r2", {
+        act, s_third, {rvar, "r2"}
+      }}
+    }
+  }}};
+
+
+spec(advanced_mixed_choice_recv_first_loop) ->
+  {rec, "r1", {timer, "t1", 5000, {
+    act, r_first, {
+      act, s_second, endP, aft, "t1", error
+    },
+    aft, 3000, {
+      act, s_second, {rvar, "r1"}, 
+      aft, "t1", {rec, "r2", {
+        act, r_third, {rvar, "r2"}
+      }}
+    }
+  }}};
+
+%% advanced select/branch loops
+spec(advanced_mixed_choice_select_first_loop) ->
+  {rec, "r1", {timer, "t1", 5000, {rec, "r2", {
+    select, [
+      {s_first, {
+        act, r_second, {rvar, "r1"}, aft, "t1", error
+      }},
+      {s_third, endP}
+    ],
+    aft, 3000, {
+      branch, [
+        {r_fourth, {rvar, "r2"}},
+        {r_fifth, endP}
+      ],
+      aft, "t1", {
+        act, s_sixth, endP
+      }
+    }
+  }}}};
+
+spec(advanced_mixed_choice_branch_first_loop) ->
+  {rec, "r1", {timer, "t1", 5000, {rec, "r2", {
+    branch, [
+      {r_first, {
+        act, s_second, {rvar, "r1"}, aft, "t1", error
+      }},
+      {r_third, endP}
+    ],
+    aft, 3000, {
+      select, [
+        {s_fourth, {rvar, "r2"}},
+        {s_fifth, endP}
+      ],
+      aft, "t1", {
+        act, r_sixth, endP
+      }
+    }
+  }}}};
+  
+
+
 %% type: {!a(5<x<10), ?b(x>10)}
 spec(mixed_test) -> 
   {timer, "t10", 1000, {
@@ -237,5 +411,29 @@ spec(iteration_test) ->
     }
   }};
 
+
+spec(basic_error_send) -> {act, s_msg, error};
+spec(basic_error_recv) -> {act, r_msg, error};
+
+spec(basic_error_send_after) -> {act, s_msg, endP, aft, 50, error};
+spec(basic_error_recv_after) -> {act, r_msg, endP, aft, 50, error};
+
+spec(basic_error_select) -> {select, [
+                              {msgA, endP},
+                              {msgB, error}
+                            ]};  
+spec(basic_error_branch) -> {branch, [
+                              {msgA, endP},
+                              {msgB, error}
+                            ]};  
+
+spec(basic_error_select_after) -> {select, [
+                              {msgA, endP},
+                              {msgB, endP}
+                            ], aft, 50, error};  
+spec(basic_error_branch_after) -> {branch, [
+                              {msgA, endP},
+                              {msgB, endP}
+                            ], aft, 50, error};  
 
 spec(nothing) -> endP.

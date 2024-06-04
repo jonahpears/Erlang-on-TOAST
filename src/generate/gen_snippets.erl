@@ -119,8 +119,8 @@ timer_name(Name) when is_atom(Name) -> ""++atom_to_list(Name).
 %% @doc generates clause for actions/outgoing edges
 
 %% @doc error state
-edge(#edge{edge_data=#edge_data{error_reason=ErrorReason},is_error=true}, {_StateData,NextStateData}) ->
-  EdgeClause = NextStateData++" = error("++atom_to_list(ErrorReason)++"), ",
+edge(#edge{edge_data=#edge_data{error_reason=ErrorReason},is_error=true}, {_StateData,_NextStateData}) ->
+  EdgeClause = " error("++atom_to_list(ErrorReason)++"), ",
   {[EdgeClause], []};
 
 %% @doc for defining new timers and adding them to data
@@ -154,10 +154,11 @@ edge(#edge{edge_data=#edge_data{timeout=#{ref:=Duration}},is_silent=true}=_Edge,
 edge(#edge{edge_data=#edge_data{event = {_Act, Var} ,trans_type = TransType},is_silent=false,is_choice=true}=Edge, {StateData,NextStateData}) -> 
 
   Label = get_msg_label(Edge),
+  ?SHOW("label: ~p.",[Label]),
   StrVar = atom_to_list(Var),
   StrPayload = "Payload_"++StrVar,
   case TransType of
-    send ->{["CoParty ! {self(), "++get_msg_label(Edge)++", Payload},"],[]};
+    send ->{["CoParty ! {self(), "++Label++", Payload},"],[]};
       % PayloadClause = [%"%% replace 'ok' below with some payload \n",
       % StrPayload++" = \'payload\',"],
       % SendClause = [%"%% send \n",
@@ -202,8 +203,14 @@ edge(#edge{edge_data=#edge_data{event = {_Act, Var} ,trans_type = TransType},is_
 edge(_Edge, {_StateData,_NextStateData}) -> {[],[]}.
 
 %% @doc strip away prefix to get edge (msg) label
-get_msg_label(#edge{edge_data=#edge_data{event = {Act, _Var} ,trans_type = send}}=_Edge) -> string:prefix(atom_to_list(Act), "send_");
-get_msg_label(#edge{edge_data=#edge_data{event = {Act, _Var} ,trans_type = recv}}=_Edge) -> string:prefix(atom_to_list(Act), "receive_").
+get_msg_label(#edge{edge_data=#edge_data{event = {Act, _Var} ,trans_type = send}}=_Edge) -> 
+  case Label=string:prefix(atom_to_list(Act), "send_") of
+    nomatch -> atom_to_list(Act);
+    _ -> Label end;
+get_msg_label(#edge{edge_data=#edge_data{event = {Act, _Var} ,trans_type = recv}}=_Edge) -> 
+  case Label=string:prefix(atom_to_list(Act), "receive_") of
+    nomatch -> atom_to_list(Act);
+    _ -> Label end.
 %%
 
 %% @doc combo of edge andresolve clause functions
@@ -464,6 +471,11 @@ branch_clauses([_H|_T]=_Es, State, StateID, Scope, Edges, States, RecMap) when i
   NonSilentEdges = lists:filter(fun is_edge_not_silent/1, _Es),
   Es = NonSilentEdges ++ SilentEdges,
 
+  ?SHOW("~p, ~p, silent edges:\n\t~p.",[Scope,{StateID,State},SilentEdges]),
+  ?SHOW("~p, ~p, non silent edges:\n\t~p.",[Scope,{StateID,State},NonSilentEdges]),
+
+  % timer:sleep(1500),
+
   ResolveClauses = fun(Edge, {_StateClause,_NextStateFuns}=_AccIn) ->
     {ElemStateClause,ElemNextStateFuns} = resolve_edge_clause(Edge, State, StateID, Scope, Edges, States, RecMap),
     ?GAP(),
@@ -494,6 +506,8 @@ branch_clauses([_H|_T]=_Es, State, StateID, Scope, Edges, States, RecMap) when i
   ?GAP(),
 
   StateClause = ["receive"]++EsStateClause++["end"],
+
+  % timer:sleep(5000),
 
   {StateClause,EsNextStateFuns}.
 %%
@@ -881,16 +895,16 @@ state(error_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope, Edges
 
   StateClauses = [StateClause],
 
-  % ?SHOW("~p, ~p, EnterClause:\n\t~p.",[Scope,{StateID},EnterClause]),
-  % ?SHOW("~p, ~p, EdgeClause:\n\t~p.",[Scope,{StateID},EdgeClause]),
-  % ?SHOW("~p, ~p, StateClause:\n\t~p.",[Scope,{StateID},StateClause]),
-  % ?SHOW("~p, ~p, NextStateFuns:\n\t~p.",[Scope,{StateID},NextStateFuns]),
+  ?SHOW("~p, ~p, EnterClause:\n\t~p.",[Scope,{StateID,State},EnterClause]),
+  ?SHOW("~p, ~p, EdgeClause:\n\t~p.",[Scope,{StateID,State},EdgeClause]),
+  ?SHOW("~p, ~p, StateClause:\n\t~p.",[Scope,{StateID,State},StateClause]),
+  ?SHOW("~p, ~p, NextStateFuns:\n\t~p.",[Scope,{StateID,State},NextStateFuns]),
 
 
   %% prepare to return state funs
   StateFun = {?EXPORT_DEFAULT,ScopeName,StateClauses},
   StateFuns = [StateFun]++NextStateFuns,
-  % ?SHOW("~p, ~p, StateFuns:\n\t~p.",[Scope,{StateID},StateFuns]),
+  ?SHOW("~p, ~p, StateFuns:\n\t~p.",[Scope,{StateID},StateFuns]),
   StateFuns;
 %%
 
@@ -979,7 +993,7 @@ state(standard_state=State, StateID, {_ScopeID, ScopeName, _ScopeData}=Scope, Ed
 %% 
 
 %% @doc 
-state(custom_end_state=State, StateID, {_ScopeID, ScopeName, ScopeData}=_Scope, Edges, __States, _RecMap) ->
+state(custom_end_state=State, StateID, {_ScopeID, ScopeName, ScopeData}=_Scope, Edges, _States, _RecMap) ->
   % {_, {_,FunName,_}=Fun, _} = special_state(State,StateID, Edges),
   % [{true,ScopeName,[atom_to_list(FunName)++"(CoParty, "++ScopeData++")"]},Fun];
   {_, Funs, _} = special_state(State,StateID, Edges),

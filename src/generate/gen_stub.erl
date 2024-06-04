@@ -29,7 +29,7 @@ gen(ProtocolName, Protocol, FileName) ->
   ?SHOW("Module Name: ~p", [ModuleName]),
 
   Fsm = build_fsm(Protocol),
-  ?SHOW("Build Fsm: Success.", []),
+  ?SHOW("Build Fsm: Success. (~p)", [ProtocolName]),
 
   MonitorSpec = build_monitor_spec(Fsm, ModuleName),
   ?SHOW("Build Module Spec: Success.", []),
@@ -49,6 +49,7 @@ gen(ProtocolName, Protocol, FileName) ->
   
   ?GAP(),
   ?SHOW("Finished. Output path: ~p.",[OutputPath]),
+  timer:sleep(500),
   ok.
 
 %% @doc Wrapper for build_fsm:to_fsm(Protocol)
@@ -171,7 +172,7 @@ build_state_fun(Edges, States, RecMap, StateID, {ScopeID, ScopeName, _ScopeData}
       StateFuns = gen_snippets:state(State, StateID, Scope, Edges, States, RecMap),
       %% make each clause of each function ?Q
       WrapClause = fun(Clause, AccClauses) -> 
-          % ?SHOW("WrapClause:\n\t~p.",[Clause]),
+          ?SHOW("WrapClause:\n\t~p.",[Clause]),
           %% check if ?Q returns list already (if comments are present, then 1st elem is clauses and 2nd is comments)
           QClause=?Q(Clause),
           if 
@@ -182,13 +183,13 @@ build_state_fun(Edges, States, RecMap, StateID, {ScopeID, ScopeName, _ScopeData}
               ?SHOW("QClause, unexpected return: (not list or tuple):\n\t~p.",[QClause]), 
             _AccClauses= AccClauses++[QClause]
           end,
-          % ?SHOW("_AccClauses:\n\t~p.",[_AccClauses]),
+          ?SHOW("_AccClauses:\n\t~p.",[_AccClauses]),
           _AccClauses
         end,
       WrapClauses = fun({Exported, FunName, Clauses}, AccFuns) -> 
-          % ?GAP(),?SHOW("WrapClauses.",[]),
+          ?GAP(),?SHOW("WrapClauses.",[]),
           _AccFuns = AccFuns++[{Exported,FunName,lists:foldl(WrapClause, [], Clauses)}], 
-          % ?SHOW("_AccFuns:\n\t~p.",[_AccFuns]),
+          ?SHOW("_AccFuns:\n\t~p.",[_AccFuns]),
           _AccFuns
         end,
       Funs = lists:foldl(WrapClauses, [], StateFuns)
