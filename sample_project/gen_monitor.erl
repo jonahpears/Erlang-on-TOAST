@@ -42,7 +42,7 @@ start_link(List) when is_list(List) ->
 
   #{name := Name} = Data,
   #{role := Role} = Data,
-  show({Name, "~p,\n\trole name: ~p.", [?FUNCTION_NAME, Role], Data}),
+  show({Name, "~p, role:\n\t~p.", [?FUNCTION_NAME, Role], Data}),
 
   RegID = maps:get(reg_id,Data,err_no_role_id),
   show({Name, "~p,\n\treg_id: ~p.", [?FUNCTION_NAME, RegID], Data}),
@@ -63,7 +63,7 @@ start_link(List) when is_list(List) ->
 
 start_link() -> 
   printout("~p.", [self()]),
-  role_tmp:start_link([]).
+  start_link([]).
 
 
 
@@ -81,7 +81,7 @@ init([Data]) when is_map(Data) ->
   show({Name, "~p,\n\tdata: ~p.", [?FUNCTION_NAME, Data], Data}),
 
   %% get app ID and send self()
-  [{app_id,AppID}|_T] = ets:lookup(tpri,app_id),
+  [{app_id,AppID}|_T] = ets:lookup(toast,app_id),
   AppID ! {role, Role, mon, self()},
   show({Name, "~p,\n\tregistered with app.", [?FUNCTION_NAME], Data}),
 
@@ -111,6 +111,11 @@ send(Label, Msg) -> gen_statem:cast(?MODULE, {send, Label, Msg}).
 recv(Label) -> gen_statem:call(?MODULE, {recv, Label}).
 
 
+%% receive real ID of system being monitored
+handle_event({call,From},{StartID,setup,SusID},_State,#{start_id:=StartID}=Data) ->
+  printout("~p,\n\tstart_id: ~p,\n\tsus_id: ~p.",[?FUNCTION_NAME,StartID,SusID]),
+  Data1 = maps:put(sus_id,SusID,Data),
+  {keep_state,Data1,[{reply,From,ok}]};
 
 
 

@@ -2,7 +2,7 @@
 
 -file("basic_recv_send__ali_test.erl", 1).
 
--define(MONITORED, false).
+-define(MONITORED, true).
 
 -define(MONITOR_SPEC, 
   #{ init => state1_recv_msg1,

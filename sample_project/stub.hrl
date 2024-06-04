@@ -50,15 +50,17 @@ stub_start_link(Args) when ?MONITORED=:=true ->
   end,
 
   %% spawn monitor within same node 
-  {MonitorID, _MonitorRef} = spawn_monitor(node(), gen_monitor, start_link, [MonitorSpec]),
+  {MonitorID, _MonitorRef} = spawn_monitor(node(), gen_monitor, start_link, [Args++[{fsm,MonitorSpec}]]),
+  printout("~p, MonitorID: ~p.",[?FUNCTION_NAME,MonitorID]),
 
   %% exchange IDs with monitor
   PID = self(),
-  InitID = erlang:spawn_link(?MODULE, init, [Args, {start_id, PID}, {monitor_id, MonitorID}]),
+  InitID = erlang:spawn_link(?MODULE, init, [Args++[{start_id, PID}, {monitor_id, MonitorID}]]),
   case gen_statem:call(MonitorID, {init, exchange_ids, PID, InitID}) of 
     ok -> {ok, MonitorID};
     Err -> {error, Err}
   end;
+%%
 
 %% @doc normal unmonitored start_link
 stub_start_link(Args) -> 
@@ -68,6 +70,7 @@ stub_start_link(Args) ->
   % printout("~p (unmonitored): ~p.",[?FUNCTION_NAME,self()]),
   % {ok, stub_init(Args)}.
   {ok, InitID}.
+%%
 
 %% @doc called after start_link returns
 stub_init(Args) when ?MONITORED=:=true ->
@@ -78,11 +81,13 @@ stub_init(Args) when ?MONITORED=:=true ->
   %% unpack from param map
   _Role = maps:get(role,Params,role_unspecified),
 
-  _StartID = maps:get(role,Params,start_id),
-  MonitorID = maps:get(role,Params,monitor_id),
+  StartID = maps:get(start_id,Params),
+  MonitorID = maps:get(monitor_id,Params),
+  printout("~p, StartID: ~p.",[?FUNCTION_NAME,StartID]),
+  printout("~p, MonitorID: ~p.",[?FUNCTION_NAME,MonitorID]),
 
   %% enter setup phase with monitor
-  case gen_statem:call(MonitorID, {setup}) of 
+  case gen_statem:call(MonitorID, {StartID,setup,self()}) of 
     ok -> %% configure monitor settings
       ok = gen_statem:call(MonitorID, {options, printout, #{ enabled => true, verbose => true }}),
       ok = gen_statem:call(MonitorID, {options, queue, #{enabled=>true,flush_after_recv=>#{enabled => false}}}),
@@ -96,6 +101,7 @@ stub_init(Args) when ?MONITORED=:=true ->
       MainID;
     Err -> {error, Err}
   end;
+%%
 
 %% @doc 
 stub_init(Args) ->
@@ -121,6 +127,7 @@ stub_init(Args) ->
     %% wait for signal from session
     receive {SessionID, start} -> run(CoPartyID, default_map()) end 
   end.
+%%
 
 %% @docs default map for stubs
 default_map() -> #{timers=>maps:new(),msgs=>maps:new()}.
