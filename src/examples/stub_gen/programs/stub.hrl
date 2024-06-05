@@ -99,17 +99,19 @@ init(Args) ->
 %% @docs default map for stubs
 default_map() -> #{timers=>maps:new(),msgs=>maps:new()}.
 
+timer_name(Name) -> Name.%%list_to_atom(atom_to_list(timer)++"_"++atom_to_list(Name)).
+
 %% @docs resets timer that already exists
 set_timer(Name, Duration, #{timers:=Timers}=Data) when is_map_key(Name,Timers) -> 
   %% cancel timer
   erlang:cancel_timer(maps:get(Name,Timers)),
   %% start new timer
-  TID = erlang:start_timer(Duration, self(), {timer, Name}),
+  TID = erlang:start_timer(Duration, self(), timer_name(Name)),
   {maps:put(timers, maps:put(Name, TID, Timers), Data), TID};
 %% @docs starts new timer that did not exist
 set_timer(Name, Duration, #{timers:=Timers}=Data) -> 
   %% start new timer
-  TID = erlang:start_timer(Duration, self(), {timer, Name}),
+  TID = erlang:start_timer(Duration, self(), timer_name(Name)),
   {maps:put(timers, maps:put(Name, TID, Timers), Data), TID}.
 
 %% @doc retrieves timer pid from data if exists
@@ -168,10 +170,12 @@ nonblocking_selection(Fun, Args, PID, Timer) when is_pid(Timer) ->
 nonblocking_payload(Fun, Args, PID, Timeout) when is_integer(Timeout) ->
   spawn( fun() -> 
     Waiter = self(),
+    Timer = erlang:start_timer(Timeout, self(), nonblocking_payload),
     TimeConsumer = spawn( fun() -> Waiter ! {self(), ok, Fun(Args)} end ),
-    receive {TimeConsumer, ok, Result} -> PID ! {self(), ok, Result}
-    after Timeout -> PID ! {self(), ko}, exit(TimeConsumer, normal) end 
-  end );
+    receive {TimeConsumer, ok, Result} -> PID ! {self(), ok, Result};
+      {timeout,Timeout,nonblocking_payload} -> 
+        PID ! {self(), ko}, exit(TimeConsumer, normal) 
+  end end );
 
 %% @doc Calls Fun with Args and forwards the result to PID.
 %% @see nonblocking_payload with Timeout
@@ -179,11 +183,16 @@ nonblocking_payload(Fun, Args, PID, Timer) when is_pid(Timer) ->
   nonblocking_payload(Fun, Args, PID, erlang:read_timer(Timer)).
 
 %% @doc Wrapper function for sending the result of Fun with Label if it finished within Timeout milliseconds
-send_before(CoPartyID, {Label, {Fun, Args}}, Timeout) when is_pid(CoPartyID) and is_atom(Label) -> 
+send_before(CoPartyID, {Label, {Fun, Args}}, Timeout) when is_pid(CoPartyID) and is_atom(Label) and is_integer(Timeout) -> 
   NonBlocking = nonblocking_payload(Fun, Args, self(), Timeout),
   receive {NonBlocking, ok, Result} -> send(CoPartyID, {Label, Result});
     {NonBlocking, ko} -> ko
-  end.
+  end;
+
+send_before(CoPartyID, {Label, {Fun, Args}}, Timer) when is_pid(CoPartyID) and is_atom(Label) and is_pid(Timer) -> 
+  case send_before(CoPartyID, {Label, {Fun, Args}}, erlang:read_timer(Timer)) of
+    ko -> receive {timeout, Timer, _Name} -> ko end;
+    _Else -> _Else end.
 
 %% @doc 
 recv_before(MonitorID, Label, Timeout) when ?MONITORED and is_pid(MonitorID) and is_atom(Label) -> gen_statem:call(MonitorID, {recv, Label, Timeout});

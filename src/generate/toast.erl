@@ -346,10 +346,27 @@ default_test() -> timed_send_delta_eq.
 %% toast:test(untimed_send).
 %% toast:test(timed_send_delta_eq).
 
+get_test_names(all) -> [untimed_send,untimed_send_twice,untimed_recv,untimed_recv_twice,untimed_send_recv,untimed_recv_send,untimed_send_loop,untimed_recv_loop,untimed_send_recv_loop,untimed_recv_send_loop,untimed_nonmixed_choice_send,untimed_nonmixed_choice_recv];
+get_test_names(dev) -> [timed_send_delta_eq,timed_send_delta_geq,timed_send_delta_gtr,timed_send_delta_les];
+get_test_names(_) -> [term].
+
+
+test(all,Name) ->
+  All = get_test_names(Name),
+
+  Results = lists:foldl(fun(Elem, AccIn) -> AccIn++[test(Elem)] end, [], All),
+  Str = lists:foldl(fun({T,P},AccIn) -> AccIn++[io_lib:format("\n\n\ttype:\t\t~p,\n\nprotocol:\t~p;\n",T,P)] end, [], Results),
+
+  io:format("tests, all: ~p.\n",[Str]).
+
+
+test(all) -> test(all,all);
+
 test(Name) ->
   Type = map(Name) ,
   Protocol = to_protocol(Type),
-  io:format("\ntype:\t\t~p\n\nprotocol:\t~p.\n",[Type,Protocol]).
+  io:format("\ntype:\t\t~p\n\nprotocol:\t~p.\n",[Type,Protocol]),
+  {Type, Protocol}.
 
 map(untimed_send) -> {action, {send, a, [], [], term}};
 map(untimed_send_twice) -> {action, {send, b, [], [], map(untimed_send)}};
