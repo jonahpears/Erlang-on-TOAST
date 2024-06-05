@@ -34,7 +34,7 @@ gen(ProtocolName, Protocol, FileName) ->
   MonitorSpec = build_monitor_spec(Fsm, ModuleName),
   ?SHOW("Build Module Spec: Success.", []),
 
-  ModuleForms = build_module_forms(Fsm, list_to_atom(ModuleName), MonitorSpec),
+  ModuleForms = build_module_forms(Protocol, Fsm, list_to_atom(ModuleName), MonitorSpec),
   ?SHOW("Build Module Forms: Success.", []),
 
   SyntaxTree = erl_syntax:form_list(ModuleForms),
@@ -74,7 +74,7 @@ build_monitor_spec(Fsm,FileName) ->
 
 % -spec build_module_forms({list(), map()}, atom()) -> tree_or_trees().
 %% @doc Takes Fsm, returns list for Forms
-build_module_forms(Fsm, ModuleName,MonitorSpec) -> 
+build_module_forms(Protocol, Fsm, ModuleName,MonitorSpec) -> 
   
   %% fsm is composed of list of edges and map of states to edges.
   %% mixed-states have both sending and receiving actions/edges.
@@ -103,12 +103,14 @@ build_module_forms(Fsm, ModuleName,MonitorSpec) ->
   Forms = merl_build:add_attribute(define, [merl:var('MONITORED'), merl:var('false')], Form),
 
   Forms1 = merl_build:add_attribute(define, [merl:var('MONITOR_SPEC'),merl:term(MonitorSpec)],Forms),
+  
+  Forms2 = merl_build:add_attribute(define, [merl:var('PROTOCOL_SPEC'),merl:term(Protocol)],Forms1),
 
-  Forms2 = merl_build:add_attribute(include, [merl:term("stub.hrl")],Forms1),
+  Forms3 = merl_build:add_attribute(include, [merl:term("stub.hrl")],Forms2),
 
   %% export function found in stub.hrl
 
-  MainForms = Forms2,
+  MainForms = Forms3,
 
   % ?SHOW("Forms: ~p.",[MainForms]),
 

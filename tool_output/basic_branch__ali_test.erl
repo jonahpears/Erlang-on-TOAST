@@ -6,6 +6,8 @@
 
 -define(MONITOR_SPEC, #{}).
 
+-define(PROTOCOL_SPEC, {branch, [{r_msg1, {act, s_msgA, endP}}, {r_msg2, {act, s_msgB, endP}}, {r_msg3, {act, s_msgC, endP}}]}).
+
 -include("stub.hrl").
 
 -export([]).

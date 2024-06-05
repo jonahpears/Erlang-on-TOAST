@@ -6,6 +6,16 @@
 
 -define(MONITOR_SPEC, #{}).
 
+-define(PROTOCOL_SPEC,
+        {timer,
+         "t1",
+         5000,
+         {branch,
+          [{r_first, {act, s_second, endP, aft, "t1", error}}, {r_third, endP}],
+          aft,
+          3000,
+          {select, [{s_fourth, endP}, {s_fifth, endP}], aft, "t1", {act, r_sixth, endP}}}}).
+
 -include("stub.hrl").
 
 -export([]).

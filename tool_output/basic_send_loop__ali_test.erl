@@ -6,6 +6,8 @@
 
 -define(MONITOR_SPEC, #{}).
 
+-define(PROTOCOL_SPEC, {rec, "a", {act, s_msgA, {rvar, "a"}}}).
+
 -include("stub.hrl").
 
 -export([]).

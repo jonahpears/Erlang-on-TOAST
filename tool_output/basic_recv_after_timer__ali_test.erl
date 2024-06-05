@@ -6,6 +6,8 @@
 
 -define(MONITOR_SPEC, #{}).
 
+-define(PROTOCOL_SPEC, {timer, "t", 5000, {act, r_before_5s, endP, aft, "t", {act, s_after_5s, endP}}}).
+
 -include("stub.hrl").
 
 -export([]).

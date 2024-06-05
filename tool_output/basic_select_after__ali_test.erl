@@ -6,6 +6,9 @@
 
 -define(MONITOR_SPEC, #{}).
 
+-define(PROTOCOL_SPEC,
+        {select, [{s_msgA, {act, r_msg1, endP}}, {s_msgB, {act, r_msg2, endP}}, {s_msgC, {act, r_msg3, endP}}], aft, 5000, {act, s_timeout, endP}}).
+
 -include("stub.hrl").
 
 -export([]).
