@@ -99,7 +99,7 @@ init(Args) ->
 %% @docs default map for stubs
 default_map() -> #{timers=>maps:new(),msgs=>maps:new()}.
 
-timer_name(Name) -> Name.%%list_to_atom(atom_to_list(timer)++"_"++atom_to_list(Name)).
+timer_name(Name) -> list_to_atom(atom_to_list(timer)++"_"++atom_to_list(Name)).
 
 %% @docs resets timer that already exists
 set_timer(Name, Duration, #{timers:=Timers}=Data) when is_map_key(Name,Timers) -> 
@@ -193,6 +193,17 @@ send_before(CoPartyID, {Label, {Fun, Args}}, Timer) when is_pid(CoPartyID) and i
   case send_before(CoPartyID, {Label, {Fun, Args}}, erlang:read_timer(Timer)) of
     ko -> receive {timeout, Timer, _Name} -> ko end;
     _Else -> _Else end.
+
+%% @doc 
+% send_in(CoParty, {Label, {Fun, Args}}, Timeout) ->
+%   Timer = erlang:start_timer(Timeout, self(), timer_name(Label)),
+%   NonBlocking = nonblocking_payload(Fun, Args, self(), Timeout),
+%   receive {timeout, Timer, send_in_timer} ->
+%     receive {NonBlocking, ok, Result} -> send(CoParty, Label, Result);
+%       {NonBlocking, ko} -> 
+%       aft
+%       receive {self(), send, Label} -> send(CoParty, Label)
+%   end.
 
 %% @doc 
 recv_before(MonitorID, Label, Timeout) when ?MONITORED and is_pid(MonitorID) and is_atom(Label) -> gen_statem:call(MonitorID, {recv, Label, Timeout});
