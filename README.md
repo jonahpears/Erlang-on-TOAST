@@ -6,6 +6,9 @@ An extension (fork) of:
 Protocol re-engineering artifact,
 GitHub  <https://github.com/LauraVoinea/protocol-reengineering-implementation>
 
+# this tools is currently still a work in progress
+> as of 8th June 2024 this tool is being developed/finished ASAP. this README will be updated to say when it is finished.
+
 ## 0. updates
 
 ```erl
