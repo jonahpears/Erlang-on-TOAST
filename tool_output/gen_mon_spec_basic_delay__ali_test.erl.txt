@@ -1,8 +1,6 @@
 #{init => state1_std,
   map =>
-      #{state1_std =>
-            #{send => #{before_5s => {state2_unexpected_delay_state,[]}}},
-        state3_std => #{send => #{after_5s => {stop_state,[]}}}},
-  timeouts => #{},
-  resets => #{unresolved => #{}},
-  timers => #{}}.
+      #{state1_std => #{send => #{before_5s => state2_unexpected_delay_state}},
+        state3_std => #{send => #{after_5s => stop_state}}},
+  timeouts => #{state2_unexpected_delay_state => {5000,state3_std}},
+  resets => #{},timers => #{}}.

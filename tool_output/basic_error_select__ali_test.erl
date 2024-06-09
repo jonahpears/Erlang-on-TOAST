@@ -5,15 +5,14 @@
 -define(MONITORED, false).
 
 -define(MONITOR_SPEC,
-        #{init => state1_unexpected_select_state,
-          map => #{state1_unexpected_select_state => #{send => #{act_msgA => {stop_state, []}, act_msgB => {state4_unexpected_error_state, []}}}},
-          timeouts => #{}, resets => #{unresolved => #{}}, timers => #{}}).
+        #{init => state1_unexpected_select_state, map => #{state1_unexpected_select_state => #{send => #{act_msgA => stop_state, act_msgB => error_state}}},
+          timeouts => #{}, resets => #{}, timers => #{}}).
 
 -define(PROTOCOL_SPEC, {select, [{msgA, endP}, {msgB, error}]}).
 
 -include("stub.hrl").
 
--export([]).
+-export([main/2, run/1, run/2, stopping/2, stopping/3]).
 
 run(CoParty) -> run(CoParty, #{timers => #{}, msgs => #{}}).
 

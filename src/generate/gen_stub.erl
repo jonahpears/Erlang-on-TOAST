@@ -176,7 +176,7 @@ build_state_fun(Edges, States, RecMap, StateID, {Scope,ScopeID},ModuleName) ->
   _StateFuns = lists:foldl(fun(K, Funs) ->
     Funs ++ lists:foldl(fun(StateFun, AccIn) -> 
       % ?SHOW("StateFun:\n\t~p.",[StateFun]),
-      AccIn++[{false,maps:get(K,FunMap),lists:foldl(fun(FunClause, _AccIn) ->
+      AccIn++[{true,maps:get(K,FunMap),lists:foldl(fun(FunClause, _AccIn) ->
       % ?SHOW("FunClause:\n\t~p.",[FunClause]),
       QClause = ?Q(FunClause),
         if %% remove comments if necessary

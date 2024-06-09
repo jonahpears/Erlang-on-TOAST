@@ -185,6 +185,7 @@ to_fsm({aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Cl
         to = Index,
         edge_data = #edge_data{timeout=#{ref=>Timeout}},
         is_silent = true,
+        is_timeout = true,
         is_delay = false,
         is_custom_end = false
     },

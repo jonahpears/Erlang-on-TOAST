@@ -1,13 +1,9 @@
 #{init => state1_unexpected_branch_state,
   map =>
-      #{state2_std => #{send => #{msgA => {stop_state,[]}}},
-        state5_std => #{send => #{msgB => {stop_state,[]}}},
+      #{state2_std => #{send => #{msgA => stop_state}},
+        state5_std => #{send => #{msgB => stop_state}},
         state1_unexpected_branch_state =>
             #{recv =>
-                  #{msg1 => {state2_std,[]},
-                    msg2 => {state5_std,[]},
-                    msg3 => {state7_std,[]}}},
-        state7_std => #{send => #{msgC => {stop_state,[]}}}},
-  timeouts => #{},
-  resets => #{unresolved => #{}},
-  timers => #{}}.
+                  #{msg1 => state2_std,msg2 => state5_std,msg3 => state7_std}},
+        state7_std => #{send => #{msgC => stop_state}}},
+  timeouts => #{},resets => #{},timers => #{}}.

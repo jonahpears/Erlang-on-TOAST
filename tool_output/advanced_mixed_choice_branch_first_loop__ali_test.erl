@@ -7,13 +7,13 @@
 -define(MONITOR_SPEC,
         #{init => state1_unexpected_timer_start_state,
           map =>
-              #{state2_select_after => #{send => #{receive_first => {state3_send_after, []}, receive_third => {stop_state, []}}},
-                state3_send_after => #{send => #{second => {state2_select_after, []}}}, state13_std => #{recv => #{sixth => {state14_select_after, []}}},
-                state10_branch_after => #{recv => #{send_fourth => {state2_select_after, []}, send_fifth => {stop_state, []}}},
-                state14_select_after => #{send => #{receive_seventh => {state15_send_after, []}, receive_nine => {stop_state, []}}},
-                state15_send_after => #{send => #{eighth => {state2_select_after, []}}},
-                state21_branch_after => #{recv => #{send_ten => {state14_select_after, []}, send_eleven => {stop_state, []}}},
-                state24_std => #{recv => #{twleve => {stop_state, []}}}},
+              #{state2_select_after => #{send => #{receive_first => state3_send_after, receive_third => stop_state}},
+                state3_send_after => #{send => #{second => state2_select_after}}, state13_std => #{recv => #{sixth => state14_select_after}},
+                state10_branch_after => #{recv => #{send_fourth => state2_select_after, send_fifth => stop_state}},
+                state14_select_after => #{send => #{receive_seventh => state15_send_after, receive_nine => stop_state}},
+                state15_send_after => #{send => #{eighth => state2_select_after}},
+                state21_branch_after => #{recv => #{send_ten => state14_select_after, send_eleven => stop_state}},
+                state24_std => #{recv => #{twleve => stop_state}}},
           timeouts => #{}, resets => #{init_state => #{t1 => 5000}}, timers => #{}}).
 
 -define(PROTOCOL_SPEC,
@@ -42,7 +42,7 @@
 
 -include("stub.hrl").
 
--export([]).
+-export([loop_select_after_state/2, main/2, run/1, run/2, stopping/2, stopping/3]).
 
 run(CoParty) -> run(CoParty, #{timers => #{}, msgs => #{}}).
 

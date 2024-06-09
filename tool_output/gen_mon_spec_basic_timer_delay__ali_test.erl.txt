@@ -1,8 +1,7 @@
-#{init => state1_unexpected_timer_start_state,
+#{init => state2_std,
   map =>
-      #{state2_std =>
-            #{send => #{before_t => {state3_unexpected_delay_state,[]}}},
-        state4_std => #{send => #{after_t => {stop_state,[]}}}},
-  timeouts => #{},
+      #{state2_std => #{send => #{before_t => state3_unexpected_delay_state}},
+        state4_std => #{send => #{after_t => stop_state}}},
+  timeouts => #{state3_unexpected_delay_state => {t,standard_state}},
   resets => #{init_state => #{t => 5000}},
   timers => #{}}.

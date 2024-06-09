@@ -30,7 +30,8 @@
     is_choice = false,
     is_silent = false,
     is_timer = false,
-    is_delay = false
+    is_delay = false,
+    is_timeout = false
 }).
 
 -record(trans, {from, to, data}).

@@ -5,13 +5,13 @@
 -define(MONITORED, false).
 
 -define(MONITOR_SPEC,
-        #{init => state1_unexpected_timer_start_state,
+        #{init => state2_branch_after,
           map =>
-              #{state2_branch_after => #{recv => #{first => {state3_send_after, []}, third => {stop_state, []}}},
-                state3_send_after => #{send => #{second => {stop_state, []}}},
-                state10_select_after => #{send => #{fourth => {stop_state, []}, fifth => {stop_state, []}}},
-                state13_std => #{recv => #{sixth => {stop_state, []}}}},
-          timeouts => #{}, resets => #{init_state => #{t1 => 5000}}, timers => #{}}).
+              #{state2_branch_after => #{recv => #{first => state3_send_after, third => stop_state}}, state3_send_after => #{send => #{second => stop_state}},
+                state10_select_after => #{send => #{fourth => stop_state, fifth => stop_state}}, state13_std => #{recv => #{sixth => stop_state}}},
+          timeouts =>
+              #{state2_branch_after => {3000, state10_select_after}, state3_send_after => {t1, error_state}, state10_select_after => {t1, standard_state}},
+          resets => #{init_state => #{t1 => 5000}}, timers => #{}}).
 
 -define(PROTOCOL_SPEC,
         {timer,
@@ -25,7 +25,7 @@
 
 -include("stub.hrl").
 
--export([]).
+-export([main/2, run/1, run/2, stopping/2, stopping/3]).
 
 run(CoParty) -> run(CoParty, #{timers => #{}, msgs => #{}}).
 

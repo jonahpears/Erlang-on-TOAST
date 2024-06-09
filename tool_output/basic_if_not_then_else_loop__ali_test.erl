@@ -5,15 +5,14 @@
 -define(MONITORED, false).
 
 -define(MONITOR_SPEC,
-        #{init => state1_unexpected_timer_start_state,
-          map => #{state3_std => #{send => #{finished => {stop_state, []}}}, state6_std => #{send => #{data => {state2_if_else, []}}}}, timeouts => #{},
-          resets => #{init_state => #{t => 5000}}, timers => #{}}).
+        #{init => state2_if_else, map => #{state3_std => #{send => #{finished => stop_state}}, state6_std => #{send => #{data => state2_if_else}}},
+          timeouts => #{}, resets => #{init_state => #{t => 5000}}, timers => #{}}).
 
 -define(PROTOCOL_SPEC, {timer, "t", 5000, {rec, "a", {if_not_timer, "t", {act, s_finished, endP}, else, {act, s_data, {rvar, "a"}}}}}).
 
 -include("stub.hrl").
 
--export([]).
+-export([loop_if_then_else_state/2, main/2, run/1, run/2, stopping/2, stopping/3]).
 
 run(CoParty) -> run(CoParty, #{timers => #{}, msgs => #{}}).
 

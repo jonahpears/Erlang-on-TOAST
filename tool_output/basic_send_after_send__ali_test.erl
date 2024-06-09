@@ -5,15 +5,14 @@
 -define(MONITORED, false).
 
 -define(MONITOR_SPEC,
-        #{init => state1_send_after,
-          map => #{state5_std => #{send => #{after_5s => {stop_state, []}}}, state1_send_after => #{send => #{before_5s => {stop_state, []}}}}, timeouts => #{},
-          resets => #{unresolved => #{}}, timers => #{}}).
+        #{init => state1_send_after, map => #{state5_std => #{send => #{after_5s => stop_state}}, state1_send_after => #{send => #{before_5s => stop_state}}},
+          timeouts => #{state1_send_after => {5000, state5_std}}, resets => #{}, timers => #{}}).
 
 -define(PROTOCOL_SPEC, {act, s_before_5s, endP, aft, 5000, {act, s_after_5s, endP}}).
 
 -include("stub.hrl").
 
--export([]).
+-export([main/2, run/1, run/2, stopping/2, stopping/3]).
 
 run(CoParty) -> run(CoParty, #{timers => #{}, msgs => #{}}).
 

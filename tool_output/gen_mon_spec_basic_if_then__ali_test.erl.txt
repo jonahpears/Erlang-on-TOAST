@@ -1,5 +1,5 @@
-#{init => state1_unexpected_timer_start_state,
-  map => #{state3_std => #{send => #{finished => {stop_state,[]}}}},
+#{init => state2_if_else,
+  map => #{state3_std => #{send => #{finished => stop_state}}},
   timeouts => #{},
   resets => #{init_state => #{t => 5000}},
   timers => #{}}.

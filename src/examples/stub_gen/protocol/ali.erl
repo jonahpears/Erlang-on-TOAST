@@ -136,6 +136,13 @@ gentest(implemented) ->
 %% TODO::  - ideally, just use callback function in main, and leave function as it is 
 %% TODO::  - however, still some issues in the function scope, in all except standard recursive states
 gentest(tests) -> 
+  %% tests for the spec extractor
+  % ok=gentest(basic_delays),
+  % ok=gentest(basic_timeouts),
+  % ok=gentest(basic_cotimeouts),
+
+
+  %% tests for the stub generator
   gen_stub:gen(ali,spec,basic_if_then_else_loop,"_ali_test.erl"),%% TODO:: fix as above
   ok=gentest(advanced_mixed_choice_loops),%% TODO:: fix as above
   ok;
@@ -195,12 +202,20 @@ spec(basic_send_after_recv) -> {act, s_before_5s, endP, aft, 5000, {act, r_after
 
 spec(basic_recv_after_send) -> {act, r_before_5s, endP, aft, 5000, {act, s_after_5s, endP}};
 
-spec(basic_recv_after_recv) -> {act, r_before_5s, endP, aft, 5000, {act, r_after_5s, endP}};
+spec(basic_recv_after_recv) -> 
+  {act, r_before_5s, endP, 
+   aft, 5000, {act, r_after_5s, endP}};
 
 
-spec(basic_send_after_timer_send) -> {timer, "t", 5000, {act, s_before_5s, endP, aft, "t", {act, s_after_5s, endP}}};
+spec(basic_send_after_timer_send) -> 
+  {timer, "t", 5000, 
+    {act, s_before_5s, endP, 
+     aft, "t", {act, s_after_5s, endP}}};
 
-spec(basic_send_after_timer_recv) -> {timer, "t", 5000, {act, s_before_5s, endP, aft, "t", {act, r_after_5s, endP}}};
+spec(basic_send_after_timer_recv) -> 
+  {timer, "t", 5000, 
+    {act, s_before_5s, endP, 
+     aft, "t", {act, r_after_5s, endP}}};
 
 spec(basic_recv_after_timer_send) -> {timer, "t", 5000, {act, r_before_5s, endP, aft, "t", {act, s_after_5s, endP}}};
 
@@ -451,27 +466,27 @@ spec(advanced_mixed_choice_select_first_loop) ->
 
 spec(advanced_mixed_choice_branch_first_loop) ->
   {timer, "t1", 5000, {rec, "r1", {
-    select, [
+    branch, [
       {r_first, {
         act, s_second, {rvar, "r1"}, aft, "t1", error
       }},
       {r_third, endP}
     ],
     aft, 3000, {
-      branch, [
+      select, [
         {s_fourth, {rvar, "r1"}},
         {s_fifth, endP}
       ],
       aft, "t1", {
         act, r_sixth, {rec, "r2", {
-          select, [
+          branch, [
             {r_seventh, {
               act, s_eighth, {rvar, "r1"}, aft, "t1", error
             }},
             {r_nine, endP}
           ],
           aft, 3000, {
-            branch, [
+            select, [
               {s_ten, {rvar, "r2"}},
               {s_eleven, endP}
             ],

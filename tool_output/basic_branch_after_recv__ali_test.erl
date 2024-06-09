@@ -7,18 +7,17 @@
 -define(MONITOR_SPEC,
         #{init => state1_branch_after,
           map =>
-              #{state2_std => #{send => #{msgA => {stop_state, []}}}, state5_std => #{send => #{msgB => {stop_state, []}}},
-                state7_std => #{send => #{msgC => {stop_state, []}}},
-                state1_branch_after => #{recv => #{msg1 => {state2_std, []}, msg2 => {state5_std, []}, msg3 => {state7_std, []}}},
-                state9_std => #{recv => #{timeout => {stop_state, []}}}},
-          timeouts => #{}, resets => #{unresolved => #{}}, timers => #{}}).
+              #{state2_std => #{send => #{msgA => stop_state}}, state5_std => #{send => #{msgB => stop_state}}, state7_std => #{send => #{msgC => stop_state}},
+                state1_branch_after => #{recv => #{msg1 => state2_std, msg2 => state5_std, msg3 => state7_std}},
+                state9_std => #{recv => #{timeout => stop_state}}},
+          timeouts => #{state1_branch_after => {5000, state9_std}}, resets => #{}, timers => #{}}).
 
 -define(PROTOCOL_SPEC,
         {branch, [{r_msg1, {act, s_msgA, endP}}, {r_msg2, {act, s_msgB, endP}}, {r_msg3, {act, s_msgC, endP}}], aft, 5000, {act, r_timeout, endP}}).
 
 -include("stub.hrl").
 
--export([]).
+-export([main/2, run/1, run/2, stopping/2, stopping/3]).
 
 run(CoParty) -> run(CoParty, #{timers => #{}, msgs => #{}}).
 

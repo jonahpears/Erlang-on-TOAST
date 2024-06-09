@@ -15,7 +15,7 @@ to_monitor_spec(Fsm) ->
 
   ?GAP(),?GAP(),?GAP(),?GAP(),?GAP(),?SHOW("starting to build monitor spec.\n\n\n",[]),?GAP(),
 
-  ?SHOW("input fsm...\nEdges:\n\t~p,\nStates:\n\t~p,\nRecMap:\n\t~p.",[Edges,States,RecMap]),
+  ?SHOW("input fsm...\nEdges:\n\t~p,\nStates:\n\t~p,\nRecMap:\n\t~p.",[to_map(Edges),States,RecMap]),
 
   InitState = state_name(maps:get(0,States),0),
   InitSpec = #{ init => InitState,
@@ -38,19 +38,6 @@ to_monitor_spec(Fsm) ->
 % to_spec(State, StateID, Edges, States, Spec) ->
 %   pass;
 
-% %% @doc 
-% to_spec(State, StateID, Edges, States, Spec) ->
-%   pass;
-
-% %% @doc 
-% to_spec(State, StateID, Edges, States, Spec) ->
-%   pass;
-
-% %% @doc 
-% to_spec(State, StateID, Edges, States, Spec) ->
-%   pass;
-
-
 %% @doc generic handler
 to_spec(State, StateID, Edges, States, RecMap, Spec) ->
   ?GAP(),
@@ -58,7 +45,7 @@ to_spec(State, StateID, Edges, States, RecMap, Spec) ->
   RelevantEdges = get_outgoing_edges(StateID,Edges),
 
   %% check if init_state is not ready
-  case (State=/=init_state) and (maps:get(init,Spec)=:=init_state) of
+  case (State=/=init_state) and ((maps:get(init,Spec)=:=init_state) and is_state_initialisable(State)) of
     true -> %% change init_state to current state
       InitSpec = maps:put(init,state_name(State,StateID),Spec);
       %% change occurence everywhere
@@ -89,25 +76,31 @@ to_spec(State, StateID, Edges, States, RecMap, Spec) ->
       true -> 
         % ?SHOW("\n(~p:~p) is end state.",[StateID,State]),
         NoFutureResolveSpec;
-      _ -> %% check if reccursive
-        RecursiveVars = get_recursive_vars(StateID, RecMap),
-        %% there can only be zero or one
-        ?assert(length(RecursiveVars)<2),
-        case length(RecursiveVars)>0 of
-          true -> %% do not explore recursive state more than once
-            case maps:get(StateID,RecMap,false) of
-              true -> %% already explored
-                % ?SHOW("\n(~p:~p) recursion already explored (is true).",[StateID,State]),
-                NoFutureResolveSpec;
-              _ -> %% not been visited before
-                % ?SHOW("\n(~p:~p) is new recursive state.",[StateID,State]),
-                %% make sure it wont be visited next time
-                RecMap1 = maps:put(StateID, true, RecMap),
-                to_spec(ToState, ToStateID, Edges, States, RecMap1, NoFutureResolveSpec)
-            end;
-          _ -> %% is not a recursive state
-            % ?SHOW("\n(~p:~p) is not a recursive state,\nRecMap:\n\t~p.",[StateID,State,RecMap]),
-            to_spec(ToState, ToStateID, Edges, States, RecMap, NoFutureResolveSpec)
+      _ -> %% do not want to explore error state
+        case is_error_state(ToState) of
+        true -> 
+          % ?SHOW("\n(~p:~p) is error state.",[StateID,State]),
+          NoFutureResolveSpec;
+        _ -> %% check if recursive
+          RecursiveVars = get_recursive_vars(StateID, RecMap),
+          %% there can only be zero or one
+          ?assert(length(RecursiveVars)<2),
+          case length(RecursiveVars)>0 of
+            true -> %% do not explore recursive state more than once
+              case maps:get(StateID,RecMap,false) of
+                true -> %% already explored
+                  % ?SHOW("\n(~p:~p) recursion already explored (is true).",[StateID,State]),
+                  NoFutureResolveSpec;
+                _ -> %% not been visited before
+                  % ?SHOW("\n(~p:~p) is new recursive state.",[StateID,State]),
+                  %% make sure it wont be visited next time
+                  RecMap1 = maps:put(StateID, true, RecMap),
+                  to_spec(ToState, ToStateID, Edges, States, RecMap1, NoFutureResolveSpec)
+              end;
+            _ -> %% is not a recursive state
+              % ?SHOW("\n(~p:~p) is not a recursive state,\nRecMap:\n\t~p.",[StateID,State,RecMap]),
+              to_spec(ToState, ToStateID, Edges, States, RecMap, NoFutureResolveSpec)
+          end
         end
     end,
     %% add unresolved back
@@ -115,22 +108,10 @@ to_spec(State, StateID, Edges, States, RecMap, Spec) ->
     UnresolvedStateSpec = 
       maps:put(resets, 
         maps:put(unresolved, 
-          maps:merge(
-          % maps:merge_with(
-            % fun(_K, StateVal, ResolveVal) -> 
-              % maps:merge(StateVal,ResolveVal)
-            % end, 
-          maps:get(unresolved, maps:get(resets, StateSpec, #{}), #{}), ResolveSpec), 
+          maps:merge(maps:get(unresolved, maps:get(resets, StateSpec, #{}), #{}), ResolveSpec), 
           maps:get(resets, StateSpec, #{})), 
       StateSpec),
     % ?SHOW("\n(~p:~p)\nNoFutureResolveSpec\n\t~p,\nResolveSpec\n\t~p,\nStateSpec:\n\t~p,\nUnresolvedStateSpec:\n\t~p.",[StateID,State,NoFutureResolveSpec,ResolveSpec,StateSpec,UnresolvedStateSpec]),
-    % %% check for unresolved
-    % case Resolve=:=undefined of
-    %   true -> ResolvedSpec = StateSpec;
-    %   _ -> ResolvedSpec = resolve_spec(Resolve,Edge,State,StateID,Edges,States,RecMap,StateSpec)
-    % end,
-    % ?SHOW("\n(~p:~p)\nResolvedSpec:\n\t~p.\n",[StateID,State,ResolvedSpec]),
-    % timer:sleep(1000),
     %% merge edgespec with inspec
     maps:merge_with(fun(KSpec, EdgeVal, InVal) -> 
       % ?SHOW("\n(~p:~p)\nKSpec:\n\t~p,\nEdgeVal:\n\t~p,\nInVal:\n\t~p.\n",[StateID,State,KSpec,EdgeVal,InVal]),
@@ -170,78 +151,15 @@ to_spec(State, StateID, Edges, States, RecMap, Spec) ->
   end, InitSpec, RelevantEdges),
 
 
-
   % ?SHOW("\n(~p:~p)\nin spec:\n\t~p,\noutspec:\n\t~p.\n",[StateID,State,Spec,OutSpec]),
-  
-  OutSpec.
 
-%% @doc looks in states_to_resolve for one that corresponds to the StateID.
-% %% if found, it removes the entry and adds a new one pointing to the current states name.
-% check_resolvable_state(State, StateID, Spec) -> 
-%   ResolvableStates = [standard_state,recv_after_state,send_after_state,branch_state,branch_after_state,custom_end_state,if_then_else_state],
-%   case length(maps:keys(maps:get(states_to_resolve,Spec)))>0 of 
-%     true -> 
-%       case lists:member(State,ResolvableStates) of 
-%       true ->
-%         ?SHOW("\n(~p:~p) state is able to be used for resolve,\nSpec:\n\t~p.",[StateID,State,Spec]),
-%         case is_map_key(StateID,maps:get(states_to_resolve,Spec)) of 
-%           true -> %% get relevant state_to_resolve
-%             {StateToResolve,StateIDToResolve,unresolved} = maps:get(StateID,maps:get(states_to_resolve,Spec)),
-%             %% remove from outspec
-%             RemSpec = maps:remove(StateID,maps:get(states_to_resolve,Spec)),
-%             %% there should not be another of same name in RemSpec
-%             ?assert(not is_map_key(StateToResolve,RemSpec)),
-%             %% add back name
-%             Return = maps:put(states_to_resolve,maps:put(StateToResolve,{state_name(State,StateID),StateIDToResolve,resolved},RemSpec),Spec),
+  %% if init, remove unresolved
+  case State of
+    init_state -> FinalSpec = maps:put(resets, maps:remove(unresolved, maps:get(resets,OutSpec)), OutSpec);
+    _ -> FinalSpec = OutSpec
+  end,
 
-%             ?SHOW("\n(~p:~p) resolved a state! (~p:~p)\nSpec:\n\t~p,\nReturn:\n\t~p.",[StateID,State,StateToResolve,StateIDToResolve,Spec,Return]),
-
-%             Return;
-%             _ -> 
-%             ?SHOW("\n(~p:~p) not a corresponding state waiting to be resolved,\nSpec:\n\t~p.",[StateID,State,Spec]),
-%             Spec
-%         end;
-%       _ -> 
-%         ?SHOW("\n(~p:~p) not a state capable of being resolved to,\nSpec:\n\t~p.",[StateID,State,Spec]),
-%         Spec
-%       end;
-%     _ -> 
-%       ?SHOW("\n(~p:~p) no states to resolve,\nSpec:\n\t~p.",[StateID,State,Spec]),
-%       Spec
-%   end.
-% %%
-
-% %% @doc 
-% resolve_spec(Name,#{to:=_To,is_timer:=true,is_silent:=true,edge_data:=#{timer:=#{name:=Timer,duration:=_Value}}}=_Edge, timer_start_state=_State, _StateID, _Edges, _States, _RecMap, Spec) ->
-%   %% should have been resolved by now
-%   ?assert(is_map_key(Name,maps:get(states_to_resolve,Spec))),
-%   %% get resolution
-%   ResolvedState = maps:get(Name,maps:get(states_to_resolve,Spec)),
-%   %% remove from states_to_resolve
-%   RemResolvedSpec = maps:remove(Name,maps:get(states_to_resolve,Spec)),
-%   RemSpec = maps:put(states_to_resolve,RemResolvedSpec,Spec),
-%   %% get old reset entry
-%   OldResets = maps:get(resets, RemSpec),
-%   OldResetSpec = maps:get(Name,OldResets),
-%   ToResolve = maps:get(list_to_atom(Timer),OldResetSpec),
-%   %% remove old reset entry
-%   RemToResolve = maps:remove(Name,OldResets),
-%   %% update entry 
-%   ResolvedResets = maps:put(ResolvedState,ToResolve,RemToResolve),
-%   %% return
-%   maps:put(resets, ResolvedResets, RemSpec).
-% %%
-
-% %% @doc replacesc all of the entries in state_to_resolve with (To) from edge
-% update_resolvable_states(#{to:=To}=_Edge, Spec) ->
-%   StatesToResolve = maps:fold(fun(K,V,AccIn) -> 
-%     case V of 
-%       {_,_,unresolved} -> maps:put(To, V, AccIn);
-%       {_,_,resolved} -> maps:put(K, V, AccIn)
-%     end
-%   end, #{}, maps:get(states_to_resolve,Spec)),
-%   maps:put(states_to_resolve, StatesToResolve, Spec).
-% %%
+  FinalSpec.
 
 
 -spec edge_spec(map(), atom(), integer(), list(), map(), map(), map()) -> map().
@@ -296,16 +214,64 @@ edge_spec(#{is_timer:=true,is_delay:=false,is_silent:=true,edge_data:=#{timer:=#
 % edge_spec(Edge, State, StateID, Edges, States, _RecMap, Spec) ->
 %   {Spec, undefined};
 
-% %% @doc for other silent edges
-% edge_spec(#{to:=To,is_silent:=true}=Edge, State, StateID, Edges, States, _RecMap, Spec) ->
-%   {Spec, undefined};
+%% @doc for timeouts
+edge_spec(#{to:=To,is_silent:=true,is_timeout:=true,edge_data:=#{timeout:=#{ref:=Timeout}}}=_Edge, State, StateID, _Edges, States, _RecMap, Spec) ->
+  %% get next state info
+  ToState = maps:get(To, States),
+  ToStateName = case is_end_state(ToState) of
+    true -> stop_state;
+    _ -> state_name(ToState, To)
+  end,
+  
+  StateName = state_name(State, StateID),
+  %% update with this edge
+  %% update with this edge
+  NewSpec = case is_integer(Timeout) of
+    true -> add_to_timeouts(StateName,Timeout,ToStateName,Spec);
+    _ -> add_to_timers(StateName,Timeout,ToState,Spec)
+  end,
+  % ?GAP(),?SHOW("\n(~p:~p)\nSpec:\n\t~p,\nNewSpec:\n\t~p,\nStates:\n\t~p.\n",[StateID,State,Spec,NewSpec,States]),
+  %% return new spec
+  % {NewSpec, undefined};
+  NewSpec;
+%%
 
-%% @doc 
+%% @doc for delays
+edge_spec(#{to:=To,is_silent:=true,is_delay:=true,edge_data:=#{delay:=#{ref:=Delay}}}=_Edge, State, StateID, _Edges, States, _RecMap, Spec) ->
+  %% get next state info
+  ToState = maps:get(To, States),
+  ToStateName = case is_end_state(ToState) of
+    true -> stop_state;
+    _ -> state_name(ToState, To)
+  end,
+  
+  StateName = state_name(State, StateID),
+  %% update with this edge
+  NewSpec = case is_integer(Delay) of
+    true -> add_to_timeouts(StateName,Delay,ToStateName,Spec);
+    _ -> add_to_timers(StateName,Delay,ToState,Spec)
+  end,
+  % ?GAP(),?SHOW("\n(~p:~p)\nSpec:\n\t~p,\nNewSpec:\n\t~p,\nStates:\n\t~p.\n",[StateID,State,Spec,NewSpec,States]),
+  %% return new spec
+  % {NewSpec, undefined};
+  NewSpec;
+%%
+
+% %% @doc for errors
+% edge_spec(#{is_error:=true}=_Edge, _State, _StateID, _Edges, _States, _RecMap, Spec) ->
+%   Spec;
+% %%
+
+% %% @doc 
+% edge_spec(Edge, _State, _StateID, _Edges, _States, _RecMap, Spec) ->
+%   Spec;
+% %%
+
+%% @doc for unhandled edges
 edge_spec(Edge, _State, _StateID, _Edges, _States, _RecMap, Spec) ->
   ?GAP(),?SHOW("\n(~p:~p)\nunhandled edge:\nSpec:\n\t~p,\nEdge:\n\t~p,\nStates:\n\t~p.\n",[_StateID,_State,Spec,Edge,_States]),
   Spec.
-% {Spec, undefined}.
-
+%%
 
 %% @doc adds event of Kind with Label and ToState under the map for State
 %% note: make sure to name the State before this function
@@ -325,8 +291,8 @@ when is_atom(Label) ->
   NewStateMap = maps:update_with(Kind, fun(OldVal) -> 
     ?assert(is_map(OldVal)),
     %% add map of message label to next state (second list [] param is for clock resets)
-    maps:merge(OldVal,#{Label => {ToState, []}})
-  end, #{Label => {ToState, []}}, OldStateMap),
+    maps:merge(OldVal,#{Label => ToState})
+  end, #{Label => ToState}, OldStateMap),
   %% return updated map
   NewMap = maps:put(StateName,NewStateMap,OldMap),
   maps:put(map, NewMap, Spec);
@@ -344,6 +310,7 @@ when (is_atom(Ref) or is_integer(Ref)) ->
   %% get timeouts 
   OldTimeouts = maps:get(timeouts, Spec),
   %% make sure does not already have timeout
+  ?SHOW("\nStateName: ~p,\nToState: ~p,\nOldTimeouts:\n\t~p.",[StateName,ToState,OldTimeouts]),
   ?assert(not is_map_key(StateName,OldTimeouts)),
   %% add timeout
   NewTimeouts = maps:put(StateName, {Ref, ToState}, OldTimeouts),
@@ -401,7 +368,14 @@ when is_list(Timer) ->
 %%
 
 
+is_error_state(State) -> (State=:=error_state).
+
 is_state_resolvable(State) ->
   ResolvableStates = [standard_state,recv_after_state,send_after_state,branch_state,branch_after_state,select_state,select_after_state,if_then_else_state,init_state],
   lists:member(State,ResolvableStates).
 
+is_state_initialisable(State) ->
+  InitialisableStates = [standard_state,recv_after_state,send_after_state,branch_state,branch_after_state,select_state,  select_after_state,if_then_else_state],
+  lists:member(State,InitialisableStates).
+  
+  

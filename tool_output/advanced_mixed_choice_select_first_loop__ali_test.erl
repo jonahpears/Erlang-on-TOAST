@@ -7,13 +7,12 @@
 -define(MONITOR_SPEC,
         #{init => state1_unexpected_timer_start_state,
           map =>
-              #{state2_select_after => #{send => #{first => {state3_recv_after, []}, third => {stop_state, []}}},
-                state3_recv_after => #{recv => #{second => {state2_select_after, []}}}, state12_std => #{send => #{sixth => {state13_select_after, []}}},
-                state9_branch_after => #{recv => #{fourth => {state2_select_after, []}, fifth => {stop_state, []}}},
-                state13_select_after => #{send => #{seventh => {state14_recv_after, []}, nine => {stop_state, []}}},
-                state14_recv_after => #{recv => #{eighth => {state2_select_after, []}}},
-                state19_branch_after => #{recv => #{ten => {state13_select_after, []}, eleven => {stop_state, []}}},
-                state22_std => #{send => #{twleve => {stop_state, []}}}},
+              #{state2_select_after => #{send => #{first => state3_recv_after, third => stop_state}},
+                state3_recv_after => #{recv => #{second => state2_select_after}}, state12_std => #{send => #{sixth => state13_select_after}},
+                state9_branch_after => #{recv => #{fourth => state2_select_after, fifth => stop_state}},
+                state13_select_after => #{send => #{seventh => state14_recv_after, nine => stop_state}},
+                state14_recv_after => #{recv => #{eighth => state2_select_after}},
+                state19_branch_after => #{recv => #{ten => state13_select_after, eleven => stop_state}}, state22_std => #{send => #{twleve => stop_state}}},
           timeouts => #{}, resets => #{init_state => #{t1 => 5000}}, timers => #{}}).
 
 -define(PROTOCOL_SPEC,
@@ -42,7 +41,7 @@
 
 -include("stub.hrl").
 
--export([]).
+-export([loop_select_after_state/2, main/2, run/1, run/2, stopping/2, stopping/3]).
 
 run(CoParty) -> run(CoParty, #{timers => #{}, msgs => #{}}).
 

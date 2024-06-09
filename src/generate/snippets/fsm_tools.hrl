@@ -89,6 +89,7 @@ and is_integer(_StateID) ->
     init_state -> init_state;
     end_state -> end_state;
     custom_end_state -> custom_end_state;
+    error_state -> error_state;
     standard_state -> list_to_atom("state" ++ StateID ++ "_std");
     choice_state -> list_to_atom("state" ++ StateID ++ "choice_after");
     recv_after_state -> list_to_atom("state" ++ StateID ++ "_recv_after");
@@ -122,6 +123,7 @@ to_map(R) when is_record(R,edge) ->
      is_if => R#edge.is_if ,
      is_else => R#edge.is_else ,
      is_timer => R#edge.is_timer ,
+     is_timeout => R#edge.is_timeout ,
      is_delay => R#edge.is_delay ,
      is_error => R#edge.is_error ,
      is_internal_timeout_to_supervisor => R#edge.is_internal_timeout_to_supervisor,
