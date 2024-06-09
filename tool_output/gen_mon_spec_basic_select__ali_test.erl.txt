@@ -1,4 +1,4 @@
-#{init => init_state,
+#{init => state1_unexpected_select_state,
   map =>
       #{state2_std => #{recv => #{msg1 => {stop_state,[]}}},
         state5_std => #{recv => #{msg2 => {stop_state,[]}}},

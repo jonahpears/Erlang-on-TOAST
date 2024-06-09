@@ -1,4 +1,4 @@
-#{init => init_state,
+#{init => state1_unexpected_timer_start_state,
   map =>
       #{state3_std => #{send => #{finished => {stop_state,[]}}},
         state6_std => #{send => #{data => {stop_state,[]}}}},

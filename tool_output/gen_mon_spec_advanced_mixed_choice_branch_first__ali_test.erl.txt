@@ -1,4 +1,4 @@
-#{init => init_state,
+#{init => state1_unexpected_timer_start_state,
   map =>
       #{state2_branch_after =>
             #{recv =>

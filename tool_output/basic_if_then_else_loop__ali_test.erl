@@ -5,8 +5,9 @@
 -define(MONITORED, false).
 
 -define(MONITOR_SPEC,
-        #{init => init_state, map => #{state3_std => #{send => #{finished => {stop_state, []}}}, state6_std => #{send => #{data => {state2_if_else, []}}}},
-          timeouts => #{}, resets => #{init_state => #{t => 5000}}, timers => #{}}).
+        #{init => state1_unexpected_timer_start_state,
+          map => #{state3_std => #{send => #{finished => {stop_state, []}}}, state6_std => #{send => #{data => {state2_if_else, []}}}}, timeouts => #{},
+          resets => #{init_state => #{t => 5000}}, timers => #{}}).
 
 -define(PROTOCOL_SPEC, {timer, "t", 5000, {rec, "a", {if_timer, "t", {act, s_finished, endP}, else, {act, s_data, {rvar, "a"}}}}}).
 

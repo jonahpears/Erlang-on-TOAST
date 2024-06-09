@@ -5,7 +5,7 @@
 -define(MONITORED, false).
 
 -define(MONITOR_SPEC,
-        #{init => init_state,
+        #{init => state1_unexpected_branch_state,
           map =>
               #{state2_std => #{send => #{msgA => {stop_state, []}}}, state5_std => #{send => #{msgB => {stop_state, []}}},
                 state1_unexpected_branch_state => #{recv => #{msg1 => {state2_std, []}, msg2 => {state5_std, []}, msg3 => {state7_std, []}}},

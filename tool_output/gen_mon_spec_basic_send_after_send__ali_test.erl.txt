@@ -1,4 +1,4 @@
-#{init => init_state,
+#{init => state1_send_after,
   map =>
       #{state5_std => #{send => #{after_5s => {stop_state,[]}}},
         state1_send_after => #{send => #{before_5s => {stop_state,[]}}}},

@@ -1,4 +1,4 @@
-#{init => init_state,
+#{init => state1_unexpected_timer_start_state,
   map =>
       #{state2_std =>
             #{send => #{before_t => {state3_unexpected_delay_state,[]}}},

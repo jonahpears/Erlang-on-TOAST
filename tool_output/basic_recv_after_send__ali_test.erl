@@ -5,7 +5,7 @@
 -define(MONITORED, false).
 
 -define(MONITOR_SPEC,
-        #{init => init_state,
+        #{init => state1_recv_after,
           map => #{state4_std => #{send => #{after_5s => {stop_state, []}}}, state1_recv_after => #{recv => #{before_5s => {stop_state, []}}}}, timeouts => #{},
           resets => #{unresolved => #{}}, timers => #{}}).
 

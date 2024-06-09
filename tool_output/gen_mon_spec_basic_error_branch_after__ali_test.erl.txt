@@ -1,4 +1,4 @@
-#{init => init_state,
+#{init => state1_branch_after,
   map =>
       #{state1_branch_after =>
             #{recv =>

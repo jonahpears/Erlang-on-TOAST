@@ -5,7 +5,7 @@
 -define(MONITORED, false).
 
 -define(MONITOR_SPEC,
-        #{init => init_state,
+        #{init => state1_unexpected_select_state,
           map => #{state1_unexpected_select_state => #{send => #{act_msgA => {stop_state, []}, act_msgB => {state4_unexpected_error_state, []}}}},
           timeouts => #{}, resets => #{unresolved => #{}}, timers => #{}}).
 
