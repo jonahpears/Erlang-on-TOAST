@@ -4,6 +4,8 @@
 -export([to_fsm/1]).
 
 -include("reng.hrl").
+-include("snippets/stub_tools.hrl").
+-include("snippets/fsm_tools.hrl").
 error_state() -> error_state.
 timer_start_state() -> timer_start_state.
 delay_state() -> delay_state.
@@ -68,7 +70,7 @@ to_fsm(P) ->
         % )
     ),
 
-    io:format("fsm, edges:\n\t~p,\n\nfsm, nodes:\n\t~p,\n\nfsm, recmap:\n\t~p.\n",[Edges,Nodes,RecMap]),
+    io:format("fsm, edges:\n\t~p,\n\nfsm, nodes:\n\t~p,\n\nfsm, recmap:\n\t~p.\n",[to_map(Edges),Nodes,RecMap]),
 
     {Edges, Nodes, RecMap}.
 
@@ -176,7 +178,7 @@ to_fsm({act, Act, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks
 %% @doc generic timeout state (only called after main construct)
 to_fsm({aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
     % +1,
-    Index = PrevIndex,%+1,
+    Index = PrevIndex+1,
     %% PrevVis contains index of node to transition from
     Edge = #edge{
         from = PrevVis,
@@ -190,19 +192,23 @@ to_fsm({aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Cl
     %% TODO figure out why we do the below:
     % Nodes1 = maps:put(PrevVis, after_state(), Nodes),
     io:format(
-        "\n[{aft, Timeout, Q}]:...\n\tEdges: ~p\n\tNodes: ~p\n\tIndex: ~p\n\tPrevIndex: ~p\n\tPrevVis: ~p\n\tEndIndex: ~p.\n",
-        [Edges, Nodes, Index, PrevIndex, PrevVis, EndIndex]
+        "\n[{aft, Timeout, Q}]:...\nEdges:\n\t~p\tNodes:\n\t~p\n\tIndex: ~p\n\tPrevIndex: ~p\n\tPrevVis: ~p\n\tEndIndex: ~p\n\tQ:\n\t~p.\n",
+        [Edges, Nodes, Index, PrevIndex, PrevVis, EndIndex,Q]
     ),
-    Nodes1 = maps:put(Index, after_state(), Nodes),
-    io:format("\n\n[{aft, Timeout, Q}], Nodes1: ~p.\n", [Nodes1]),
-    io:format("\n\n[{aft, Timeout, Q}], Edges1: ~p.\n", [Edges1]),
-    {Edges2, Nodes2, RecMap2, Index2, Index2, EndIndex2, Clocks2} = to_fsm(
+    Nodes1 = Nodes,% maps:put(Index, after_state(), Nodes),
+    io:format("\n\n[{aft, Timeout, Q}], Nodes1:\n\t~p.\n", [Nodes1]),
+    io:format("\n\n[{aft, Timeout, Q}], Edges1:\n\t~p.\n", [Edges1]),
+    {Edges2, Nodes2, RecMap2, Index2, PrevVis2, EndIndex2, Clocks2} = to_fsm(
         Q, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks
     ),
+    % io:format("\n\n[{aft, Timeout, Q}], QResult: (~p)\n\t~p.\n", [size(QResult),QResult]),
+    %  = QResult,
     io:format("\n\n[{aft, Timeout, Q}], Q:\n\t ~p.\n", [Q]),
-    io:format("\n\n[{aft, Timeout, Q}], Nodes2: ~p.\n", [Nodes2]),
-    io:format("\n\n[{aft, Timeout, Q}], Edges2: ~p.\n", [Edges2]),
-    {Edges2, Nodes2, RecMap2, Index2, Index2, EndIndex2, Clocks2};
+    io:format("\n\n[{aft, Timeout, Q}], Nodes2:\n\t~p.\n", [Nodes2]),
+    io:format("\n\n[{aft, Timeout, Q}], Edges2:\n\t~p.\n", [Edges2]),
+
+    % timer:sleep(2000),
+    {Edges2, Nodes2, RecMap2, Index2, PrevVis2, EndIndex2, Clocks2};
 
 %% @doc single act with timeout
 to_fsm({act, Act, P, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
@@ -552,7 +558,7 @@ to_fsm({delay, Duration, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex,
 %% @doc 
 to_fsm({if_timer, Name, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
     % add new state that is a if_state
-    Nodes1 = maps:put(PrevVis, if_state(), Nodes),
+    Nodes1 = maps:put(PrevVis, if_then_else_state(), Nodes),
     %% get index of P
     Index = PrevIndex + 1,
     %% create edge from current if_timer to P
@@ -568,12 +574,28 @@ to_fsm({if_timer, Name, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, 
     %% add edge to edges
     Edges1 = Edges ++ [Edge],
     %% move to P
-    to_fsm(P, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks);
+    {QEdges, QNodes, QRecMap, QPrevIndex, _QPrevVis, QEndIndex, QClocks} = to_fsm(P, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks),
+    %% get index of Q
+    QIndex = QPrevIndex + 1,
+    %% create edge from current timer_state_state to Q
+    QEdge = #edge{ from = PrevVis,
+                  to = QIndex,
+                  edge_data = #edge_data{if_stmt=#{is_timer=>true,ref=>Name,is_not=>false}},
+                  is_silent = true,
+                  is_if = false,
+                  is_else = true,
+                  is_delay = false,
+                  is_timer = false,
+                  is_custom_end = false },
+    %% add edge to edges
+    QEdges1 = QEdges ++ [QEdge],
+    %% move to Q
+    to_fsm(error, QEdges1, QNodes, QRecMap, QIndex, QIndex, QEndIndex, QClocks);
 
 %% @doc 
 to_fsm({if_not_timer, Name, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
     % add new state that is a if_state
-    Nodes1 = maps:put(PrevVis, if_state(), Nodes),
+    Nodes1 = maps:put(PrevVis, if_then_else_state(), Nodes),
     %% get index of P
     Index = PrevIndex + 1,
     %% create edge from current if_timer to P
@@ -589,7 +611,23 @@ to_fsm({if_not_timer, Name, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndInd
     %% add edge to edges
     Edges1 = Edges ++ [Edge],
     %% move to P
-    to_fsm(P, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks);
+    {QEdges, QNodes, QRecMap, QPrevIndex, _QPrevVis, QEndIndex, QClocks} = to_fsm(P, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks),
+    %% get index of Q
+    QIndex = QPrevIndex + 1,
+    %% create edge from current timer_state_state to Q
+    QEdge = #edge{ from = PrevVis,
+                  to = QIndex,
+                  edge_data = #edge_data{if_stmt=#{is_timer=>true,ref=>Name,is_not=>true}},
+                  is_silent = true,
+                  is_if = false,
+                  is_else = true,
+                  is_delay = false,
+                  is_timer = false,
+                  is_custom_end = false },
+    %% add edge to edges
+    QEdges1 = QEdges ++ [QEdge],
+    %% move to Q
+    to_fsm(error, QEdges1, QNodes, QRecMap, QIndex, QIndex, QEndIndex, QClocks);
 
 %% @doc 
 to_fsm({if_timer, Name, P, else, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->

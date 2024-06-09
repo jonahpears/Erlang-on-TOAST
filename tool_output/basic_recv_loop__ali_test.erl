@@ -4,7 +4,9 @@
 
 -define(MONITORED, false).
 
--define(MONITOR_SPEC, #{}).
+-define(MONITOR_SPEC,
+        #{init => init_state, map => #{state1_std => #{recv => #{msg1 => {state1_std, []}}}}, timeouts => #{}, resets => #{}, states_to_resolve => #{},
+          timers => #{}}).
 
 -define(PROTOCOL_SPEC, {rec, "a", {act, r_msg1, {rvar, "a"}}}).
 
@@ -12,26 +14,15 @@
 
 -export([]).
 
-%% @doc Adds default empty list for Data.
-%% @see run/2.
-run(CoParty) -> run(CoParty, []).
+run(CoParty) -> run(CoParty, #{timers => #{}, msgs => #{}}).
 
-%% @doc Called immediately after a successful initialisation.
-%% Add any setup functionality here, such as for the contents of Data.
-%% @param CoParty is the process ID of the other party in this binary session.
-%% @param Data is a list to store data inside to be used throughout the program.
-run(CoParty, Data) -> main(CoParty, Data). %% add any init/start preperations below, before entering main
+run(CoParty, Data) -> main(CoParty, Data).
 
-main(CoParty, Data) ->
+main(CoParty, Data) -> loop_standard_state(CoParty, Data).
+
+loop_standard_state(CoParty, Data1) ->
     receive
         {CoParty, msg1, Payload_Msg1} ->
-            Data1 = save_msg(msg1, Payload_Msg1, Data),
-            loop_state1_std(CoParty, Data1)
-    end.
-
-loop_state1_std(CoParty, Data1) ->
-    receive
-        {CoParty, msg1, Payload_Msg1} ->
-            Data1_1 = save_msg(msg1, Payload_Msg1, Data1),
-            loop_state1_std(CoParty, Data1_1)
+            Data1 = save_msg(msg1, Payload_Msg1, Data1),
+            loop_standard_state(CoParty, Data1)
     end.

@@ -8,7 +8,7 @@
 
 -define(GAP(),io:format("\n\n")).
 
--define(SHOW(String,Args),show("~p, "++String,[?FUNCTION_NAME]++Args)).
+-define(SHOW(String,Args),show("(~p:~p), "++String,[?LINE,?FUNCTION_NAME]++Args)).
 
 -ifndef(Q).
 -include_lib("syntax_tools/include/merl.hrl").
@@ -45,3 +45,4 @@ integer_to_atom(Integer) -> list_to_atom(integer_to_list(Integer)).
 
 %% @doc
 special_funs() -> [init_state,custom_end_state].
+

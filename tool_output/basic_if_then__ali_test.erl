@@ -12,40 +12,24 @@
 
 -export([]).
 
-%% @doc Adds default empty list for Data.
-%% @see run/2.
-run(CoParty) -> run(CoParty, []).
+run(CoParty) -> run(CoParty, #{timers => #{}, msgs => #{}}).
 
-%% @doc Called immediately after a successful initialisation.
-%% Add any setup functionality here, such as for the contents of Data.
-%% @param CoParty is the process ID of the other party in this binary session.
-%% @param Data is a list to store data inside to be used throughout the program.
-run(CoParty, Data) -> main(CoParty, Data). %% add any init/start preperations below, before entering main
+run(CoParty, Data) -> main(CoParty, Data).
 
 main(CoParty, Data) ->
-    {Data1, _TID_t} = set_timer(t, 5000, Data),
+    {Data, _TID_t} = set_timer(t, 5000, Data),
     receive
-        {timeout, t, {timer, t}} ->
-            Data3 = Data1,
-            Payload_Finished = payload,
-            CoParty ! {self(), finished, Payload_Finished},
-            stopping(CoParty, Data3)
-        after 0 -> error(urgent_lower_bound_violation)
+        {timeout, _TID_t, timer_t} ->
+            CoParty ! {self(), finished, Payload},
+            stopping(CoParty, Data)
+        after 0 -> error(unspecified_error), stopping(CoParty, Data)
     end.
 
-%% @doc Adds default reason 'normal' for stopping.
-%% @see stopping/3.
 stopping(CoParty, Data) -> stopping(normal, CoParty, Data).
 
-%% @doc Adds default reason 'normal' for stopping.
-%% @param Reason is either atom like 'normal' or tuple like {error, more_details_or_data}.
 stopping(normal = _Reason, _CoParty, _Data) -> exit(normal);
-%% @doc stopping with error.
-%% @param Reason is either atom like 'normal' or tuple like {error, Reason, Details}.
-%% @param CoParty is the process ID of the other party in this binary session.
-%% @param Data is a list to store data inside to be used throughout the program.
 stopping({error, Reason, Details}, _CoParty, _Data) when is_atom(Reason) -> erlang:error(Reason, Details);
-%% @doc Adds default Details to error.
 stopping({error, Reason}, CoParty, Data) when is_atom(Reason) -> stopping({error, Reason, []}, CoParty, Data);
-%% @doc stopping with Unexpected Reason.
 stopping(Reason, _CoParty, _Data) when is_atom(Reason) -> exit(Reason).
+
+get_state_1_payload(Data) -> extend_with_functionality.
