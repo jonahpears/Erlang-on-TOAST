@@ -1,0 +1,5 @@
+#{init => init_state,
+  map => #{state1_recv_after => #{recv => #{msg => {stop_state,[]}}}},
+  timeouts => #{},
+  resets => #{unresolved => #{}},
+  timers => #{}}.

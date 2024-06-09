@@ -1,3 +1,5 @@
 #{init => init_state,
   map => #{state1_std => #{recv => #{msg1 => {state1_std,[]}}}},
-  timeouts => #{},resets => #{},states_to_resolve => #{},timers => #{}}.
+  timeouts => #{},
+  resets => #{unresolved => #{}},
+  timers => #{}}.

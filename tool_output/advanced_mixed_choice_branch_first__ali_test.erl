@@ -4,7 +4,14 @@
 
 -define(MONITORED, false).
 
--define(MONITOR_SPEC, #{}).
+-define(MONITOR_SPEC,
+        #{init => init_state,
+          map =>
+              #{state2_branch_after => #{recv => #{first => {state3_send_after, []}, third => {stop_state, []}}},
+                state3_send_after => #{send => #{second => {stop_state, []}}},
+                state10_select_after => #{send => #{fourth => {stop_state, []}, fifth => {stop_state, []}}},
+                state13_std => #{recv => #{sixth => {stop_state, []}}}},
+          timeouts => #{}, resets => #{init_state => #{t1 => 5000}}, timers => #{}}).
 
 -define(PROTOCOL_SPEC,
         {timer,

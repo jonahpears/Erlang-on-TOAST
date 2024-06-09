@@ -415,7 +415,7 @@ spec(advanced_mixed_choice_recv_first_loop) ->
 
 %% advanced select/branch loops
 spec(advanced_mixed_choice_select_first_loop) ->
-  {rec, "r1", {timer, "t1", 5000, {rec, "r2", {
+  {timer, "t1", 5000, {rec, "r1", {
     select, [
       {s_first, {
         act, r_second, {rvar, "r1"}, aft, "t1", error
@@ -424,33 +424,65 @@ spec(advanced_mixed_choice_select_first_loop) ->
     ],
     aft, 3000, {
       branch, [
-        {r_fourth, {rvar, "r2"}},
+        {r_fourth, {rvar, "r1"}},
         {r_fifth, endP}
       ],
       aft, "t1", {
-        act, s_sixth, endP
+        act, s_sixth, {rec, "r2", {
+          select, [
+            {s_seventh, {
+              act, r_eighth, {rvar, "r1"}, aft, "t1", error
+            }},
+            {s_nine, endP}
+          ],
+          aft, 3000, {
+            branch, [
+              {r_ten, {rvar, "r2"}},
+              {r_eleven, endP}
+            ],
+            aft, "t1", {
+              act, s_twleve, endP
+            }
+          }
+        }}
       }
     }
-  }}}};
+  }}};
 
 spec(advanced_mixed_choice_branch_first_loop) ->
-  {rec, "r1", {timer, "t1", 5000, {rec, "r2", {
-    branch, [
+  {timer, "t1", 5000, {rec, "r1", {
+    select, [
       {r_first, {
         act, s_second, {rvar, "r1"}, aft, "t1", error
       }},
       {r_third, endP}
     ],
     aft, 3000, {
-      select, [
-        {s_fourth, {rvar, "r2"}},
+      branch, [
+        {s_fourth, {rvar, "r1"}},
         {s_fifth, endP}
       ],
       aft, "t1", {
-        act, r_sixth, endP
+        act, r_sixth, {rec, "r2", {
+          select, [
+            {r_seventh, {
+              act, s_eighth, {rvar, "r1"}, aft, "t1", error
+            }},
+            {r_nine, endP}
+          ],
+          aft, 3000, {
+            branch, [
+              {s_ten, {rvar, "r2"}},
+              {s_eleven, endP}
+            ],
+            aft, "t1", {
+              act, r_twleve, endP
+            }
+          }
+        }}
       }
     }
-  }}}};
+  }}};
   
 
 

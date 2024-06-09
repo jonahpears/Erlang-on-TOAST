@@ -4,7 +4,10 @@
 
 -define(MONITORED, false).
 
--define(MONITOR_SPEC, #{}).
+-define(MONITOR_SPEC,
+        #{init => init_state,
+          map => #{state4_std => #{send => #{after_5s => {stop_state, []}}}, state1_recv_after => #{recv => #{before_5s => {stop_state, []}}}}, timeouts => #{},
+          resets => #{unresolved => #{}}, timers => #{}}).
 
 -define(PROTOCOL_SPEC, {act, r_before_5s, endP, aft, 5000, {act, s_after_5s, endP}}).
 

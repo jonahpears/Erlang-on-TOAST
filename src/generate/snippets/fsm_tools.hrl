@@ -86,6 +86,7 @@ when is_atom(State)
 and is_integer(_StateID) -> 
   StateID = integer_to_list(_StateID),
   case State of 
+    init_state -> init_state;
     end_state -> end_state;
     custom_end_state -> custom_end_state;
     standard_state -> list_to_atom("state" ++ StateID ++ "_std");

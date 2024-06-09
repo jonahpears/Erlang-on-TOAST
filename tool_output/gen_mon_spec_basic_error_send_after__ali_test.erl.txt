@@ -1,0 +1,5 @@
+#{init => init_state,
+  map => #{state1_send_after => #{send => #{msg => {stop_state,[]}}}},
+  timeouts => #{},
+  resets => #{unresolved => #{}},
+  timers => #{}}.

@@ -1,0 +1,24 @@
+#{init => init_state,
+  map =>
+      #{state2_select_after =>
+            #{send =>
+                  #{first => {state3_recv_after,[]},third => {stop_state,[]}}},
+        state3_recv_after => #{recv => #{second => {state2_select_after,[]}}},
+        state12_std => #{send => #{sixth => {state13_select_after,[]}}},
+        state9_branch_after =>
+            #{recv =>
+                  #{fourth => {state2_select_after,[]},
+                    fifth => {stop_state,[]}}},
+        state13_select_after =>
+            #{send =>
+                  #{seventh => {state14_recv_after,[]},
+                    nine => {stop_state,[]}}},
+        state14_recv_after => #{recv => #{eighth => {state2_select_after,[]}}},
+        state19_branch_after =>
+            #{recv =>
+                  #{ten => {state13_select_after,[]},
+                    eleven => {stop_state,[]}}},
+        state22_std => #{send => #{twleve => {stop_state,[]}}}},
+  timeouts => #{},
+  resets => #{init_state => #{t1 => 5000}},
+  timers => #{}}.

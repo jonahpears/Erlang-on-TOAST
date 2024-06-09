@@ -1,0 +1,6 @@
+#{init => init_state,
+  map =>
+      #{state1_std => #{recv => #{msg => {state2_unexpected_error_state,[]}}}},
+  timeouts => #{},
+  resets => #{unresolved => #{}},
+  timers => #{}}.
