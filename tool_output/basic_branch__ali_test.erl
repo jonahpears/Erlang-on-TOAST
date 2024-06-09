@@ -1,6 +1,6 @@
--module('basic_branch__ali_test.erl').
+-module(basic_branch__ali_test).
 
--file("basic_branch__ali_test.erl", 1).
+-file("basic_branch__ali_test", 1).
 
 -define(MONITORED, false).
 

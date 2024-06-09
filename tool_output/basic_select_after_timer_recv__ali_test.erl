@@ -1,6 +1,6 @@
--module('basic_select_after_timer_recv__ali_test.erl').
+-module(basic_select_after_timer_recv__ali_test).
 
--file("basic_select_after_timer_recv__ali_test.erl", 1).
+-file("basic_select_after_timer_recv__ali_test", 1).
 
 -define(MONITORED, false).
 
@@ -10,7 +10,7 @@
               #{state3_std => #{recv => #{msg1 => stop_state}}, state6_std => #{recv => #{msg2 => stop_state}}, state8_std => #{recv => #{msg3 => stop_state}},
                 state10_std => #{recv => #{timeout => stop_state}},
                 state2_select_after => #{send => #{msgA => state3_std, msgB => state6_std, msgC => state8_std}}},
-          timeouts => #{state2_select_after => {t, standard_state}}, resets => #{init_state => #{t => 5000}}, timers => #{}}).
+          timeouts => #{}, resets => #{init_state => #{t => 5000}}, timers => #{t => #{state2_select_after => standard_state}}}).
 
 -define(PROTOCOL_SPEC,
         {timer,

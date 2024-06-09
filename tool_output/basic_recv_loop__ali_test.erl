@@ -1,6 +1,6 @@
--module('basic_recv_loop__ali_test.erl').
+-module(basic_recv_loop__ali_test).
 
--file("basic_recv_loop__ali_test.erl", 1).
+-file("basic_recv_loop__ali_test", 1).
 
 -define(MONITORED, false).
 

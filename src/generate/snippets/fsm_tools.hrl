@@ -113,6 +113,9 @@ get_outgoing_edges(StateID, Edges) ->
   RelevantEdges.
 %%
 
+%% @doc takes list of records and returns list of map
+% to_map(L) when is_list(L) -> lists:foldl(fun(R, AccIn) -> AccIn++[to_map(R)] end, [], L);
+%%
 
 %% @doc takes record and returns as map
 to_map(R) when is_record(R,edge) ->
@@ -153,7 +156,11 @@ to_map(R) when is_record(R,edge_data) ->
 to_map([]=L) when is_list(L) -> [];
 
 to_map([H|_]=L) when is_record(H,edge) and is_list(L) ->
-  lists:foldl(fun(E, AccIn) -> AccIn++[to_map(E)] end, [], L).
+  lists:foldl(fun(E, AccIn) -> AccIn++[to_map(E)] end, [], L);
+  
+%% @doc when already map/list
+to_map(L) when is_list(L) -> L;
+to_map(R) when is_map(R) -> R.
 
 
 pop_map(Key, Map, Default) when is_map(Map) and is_map_key(Key, Map) ->

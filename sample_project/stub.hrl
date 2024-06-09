@@ -38,7 +38,7 @@ stub_start_link() -> stub_start_link([]).
 
 %% @doc 
 stub_start_link(Args) when ?MONITORED=:=true ->
-  printout("~p (set to be monitored).",[?FUNCTION_NAME]),
+  printout("~p (set to be monitored), args:\n\t~p.",[?FUNCTION_NAME,Args]),
   Params = maps:from_list(Args),
 
   %% if ?MONITORED, then either MONITOR_SPEC is map, or params contains 
@@ -49,14 +49,24 @@ stub_start_link(Args) when ?MONITORED=:=true ->
     _ -> MonitorSpec = ?MONITOR_SPEC
   end,
 
-  %% spawn monitor within same node 
-  {MonitorID, _MonitorRef} = spawn_monitor(node(), gen_monitor, start_link, [Args++[{fsm,MonitorSpec}]]),
-  printout("~p, MonitorID: ~p.",[?FUNCTION_NAME,MonitorID]),
+  MonitorName = list_to_atom("mon_"++atom_to_list(maps:get(reg_id,Params,unknown_id))),
 
-  %% exchange IDs with monitor
-  PID = self(),
-  InitID = erlang:spawn_link(?MODULE, init, [Args++[{start_id, PID}, {monitor_id, MonitorID}]]),
-  case gen_statem:call(MonitorID, {init, exchange_ids, PID, InitID}) of 
+  MonitorArgs = maps:to_list(maps:remove(reg_id,Params)),
+
+  %% spawn monitor within same node 
+  % {MonitorID, _MonitorRef} = erlang:spawn_monitor(node(), gen_monitor, start_link, [Args++[{fsm,MonitorSpec}]]),
+  InitMonitorID = erlang:spawn_link(node(), gen_monitor, start_link, [MonitorArgs++[{fsm,MonitorSpec},{name,MonitorName},{start_id,self()}]]),
+  printout("~p, InitMonitorID: ~p.",[?FUNCTION_NAME,InitMonitorID]),
+
+  %% wait for message from monitor with actual ID
+  receive {InitMonitorID, starting_as, MonitorID} -> ok end,
+
+  % %% exchange IDs with monitor
+  % PID = self(),
+  
+  InitID = erlang:spawn_link(?MODULE, init, [Args++[{start_id, self()}, {monitor_id, MonitorID}]]),
+
+  case gen_statem:call(MonitorID, {init, {exchange_ids, self(), InitID}}) of 
     ok -> {ok, MonitorID};
     Err -> {error, Err}
   end;
@@ -93,7 +103,7 @@ stub_init(Args) when ?MONITORED=:=true ->
       ok = gen_statem:call(MonitorID, {options, queue, #{enabled=>true,flush_after_recv=>#{enabled => false}}}),
       ok = gen_statem:call(MonitorID, {options, support_auto_label, #{enabled=>true}}),
       %% wait for monitor to receive coparty id, and return here
-      {ok, CoPartyID} = gen_statem:call(MonitorID, {get_coparty_id}),
+      {ok, _CoPartyID} = gen_statem:call(MonitorID, {get_coparty_id}),
       %% enter run phase of program with monitor
       MainID = erlang:spawn_link(?MODULE, run, [MonitorID]), %% as coparty ID
       gen_statem:call(MonitorID, {leave_setup, #{party_id => MainID}}),

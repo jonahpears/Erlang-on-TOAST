@@ -25,16 +25,16 @@ gen(ProtocolModule, ProtocolFun, ProtocolName, FileName) ->
 gen(ProtocolName, Protocol, FileName) ->
   ?GAP(),
 
-  ModuleName = atom_to_list(ProtocolName)++"_"++FileName,
+  ModuleName = list_to_atom(atom_to_list(ProtocolName)++"_"++lists:last(lists:droplast(string:tokens(FileName, "/.")))),
   ?SHOW("Module Name: ~p", [ModuleName]),
 
   Fsm = build_fsm(Protocol),
   ?SHOW("Build Fsm: Success. (~p)", [ProtocolName]),
 
-  MonitorSpec = build_monitor_spec(Fsm, ModuleName),
+  MonitorSpec = build_monitor_spec(Fsm, atom_to_list(ModuleName)),
   ?SHOW("Build Module Spec: Success.", []),
 
-  ModuleForms = build_module_forms(Protocol, Fsm, list_to_atom(ModuleName), MonitorSpec),
+  ModuleForms = build_module_forms(Protocol, Fsm, ModuleName, MonitorSpec),
   ?SHOW("Build Module Forms: Success.", []),
 
   SyntaxTree = erl_syntax:form_list(ModuleForms),
@@ -44,7 +44,7 @@ gen(ProtocolName, Protocol, FileName) ->
   Program = erl_prettypr:format(SyntaxTree, prettypr_options()),
   ?SHOW("Format to Program: Success.", []),
 
-  OutputPath = output_location() ++ ModuleName,
+  OutputPath = output_location() ++ atom_to_list(ModuleName) ++ ".erl",
   file:write_file(OutputPath, Program),
   
   ?GAP(),

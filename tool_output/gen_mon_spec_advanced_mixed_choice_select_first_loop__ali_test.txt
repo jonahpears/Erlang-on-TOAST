@@ -1,4 +1,4 @@
-#{init => state1_unexpected_timer_start_state,
+#{init => state2_select_after,
   map =>
       #{state2_select_after =>
             #{send => #{first => state3_recv_after,third => stop_state}},
@@ -12,6 +12,13 @@
         state19_branch_after =>
             #{recv => #{ten => state13_select_after,eleven => stop_state}},
         state22_std => #{send => #{twleve => stop_state}}},
-  timeouts => #{},
+  timeouts =>
+      #{state2_select_after => {3000,state9_branch_after},
+        state13_select_after => {3000,state19_branch_after}},
   resets => #{init_state => #{t1 => 5000}},
-  timers => #{}}.
+  timers =>
+      #{t1 =>
+            #{state3_recv_after => error_state,
+              state9_branch_after => standard_state,
+              state14_recv_after => error_state,
+              state19_branch_after => standard_state}}}.

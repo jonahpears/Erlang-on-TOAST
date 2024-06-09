@@ -1,13 +1,13 @@
--module('basic_timer_delay__ali_test.erl').
+-module(basic_timer_delay__ali_test).
 
--file("basic_timer_delay__ali_test.erl", 1).
+-file("basic_timer_delay__ali_test", 1).
 
 -define(MONITORED, false).
 
 -define(MONITOR_SPEC,
         #{init => state2_std,
-          map => #{state2_std => #{send => #{before_t => state3_unexpected_delay_state}}, state4_std => #{send => #{after_t => stop_state}}},
-          timeouts => #{state3_unexpected_delay_state => {t, standard_state}}, resets => #{init_state => #{t => 5000}}, timers => #{}}).
+          map => #{state2_std => #{send => #{before_t => state3_unexpected_delay_state}}, state4_std => #{send => #{after_t => stop_state}}}, timeouts => #{},
+          resets => #{init_state => #{t => 5000}}, timers => #{t => #{state3_unexpected_delay_state => standard_state}}}).
 
 -define(PROTOCOL_SPEC, {timer, "t", 5000, {act, s_before_t, {delay, "t", {act, s_after_t, endP}}}}).
 

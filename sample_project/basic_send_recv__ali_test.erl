@@ -4,11 +4,13 @@
 
 -define(MONITORED, false).
 
--define(MONITOR_SPEC, 
-  #{ init => state1_send_msg1,
-     timeouts => #{  },
-     map => #{ state1_send_msg1 => #{send => #{msg1 => state2_recv_msgA}},
-               state2_recv_msgA => #{recv => #{msgA => stop_state}}          } }).
+-define(MONITOR_SPEC,
+        #{init => state1_std, 
+          map =>  #{state1_std => #{send => #{msg1 => state2_std}}, 
+                    state2_std => #{recv => #{msgA => stop_state}}}, 
+          timeouts => #{},
+          resets => #{}, 
+          timers => #{}}).
 
 -export([run/1,run/2,stopping/2,start_link/0,start_link/1,init/1]).
 
@@ -37,11 +39,11 @@ run(CoParty, Data) -> printout("~p, CoParty: ~p.",[?FUNCTION_NAME,CoParty]),main
 
 main(CoParty, Data) ->
     Data1 = Data,
-    Payload_MsgA = payload,
-    CoParty ! {self(), msg1, Payload_MsgA},
+    Payload_Msg1 = payload,
+    CoParty ! {self(), msg1, Payload_Msg1},
     receive
-        {CoParty, msgA, Payload_Msg1} ->
-            Data2 = save_msg(msgA, Payload_Msg1, Data1),
+        {CoParty, msgA, Payload_MsgA} ->
+            Data2 = save_msg(msgA, Payload_MsgA, Data1),
             stopping(CoParty, Data2)
     end.
 

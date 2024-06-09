@@ -1,11 +1,11 @@
--module('advanced_mixed_choice_select_first_loop__ali_test.erl').
+-module(advanced_mixed_choice_select_first_loop__ali_test).
 
--file("advanced_mixed_choice_select_first_loop__ali_test.erl", 1).
+-file("advanced_mixed_choice_select_first_loop__ali_test", 1).
 
 -define(MONITORED, false).
 
 -define(MONITOR_SPEC,
-        #{init => state1_unexpected_timer_start_state,
+        #{init => state2_select_after,
           map =>
               #{state2_select_after => #{send => #{first => state3_recv_after, third => stop_state}},
                 state3_recv_after => #{recv => #{second => state2_select_after}}, state12_std => #{send => #{sixth => state13_select_after}},
@@ -13,7 +13,12 @@
                 state13_select_after => #{send => #{seventh => state14_recv_after, nine => stop_state}},
                 state14_recv_after => #{recv => #{eighth => state2_select_after}},
                 state19_branch_after => #{recv => #{ten => state13_select_after, eleven => stop_state}}, state22_std => #{send => #{twleve => stop_state}}},
-          timeouts => #{}, resets => #{init_state => #{t1 => 5000}}, timers => #{}}).
+          timeouts => #{state2_select_after => {3000, state9_branch_after}, state13_select_after => {3000, state19_branch_after}},
+          resets => #{init_state => #{t1 => 5000}},
+          timers =>
+              #{t1 =>
+                    #{state3_recv_after => error_state, state9_branch_after => standard_state, state14_recv_after => error_state,
+                      state19_branch_after => standard_state}}}).
 
 -define(PROTOCOL_SPEC,
         {timer,

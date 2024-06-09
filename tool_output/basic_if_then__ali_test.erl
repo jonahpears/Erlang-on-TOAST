@@ -1,6 +1,6 @@
--module('basic_if_then__ali_test.erl').
+-module(basic_if_then__ali_test).
 
--file("basic_if_then__ali_test.erl", 1).
+-file("basic_if_then__ali_test", 1).
 
 -define(MONITORED, false).
 

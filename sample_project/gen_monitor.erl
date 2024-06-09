@@ -42,20 +42,34 @@ start_link(List) when is_list(List) ->
 
   #{name := Name} = Data,
   #{role := Role} = Data,
-  show({Name, "~p, role:\n\t~p.", [?FUNCTION_NAME, Role], Data}),
+  show({Name, "~p, \n\trole:\n\t\t\t~p,\nname:\n\t\t\t~p,\ndata:\n\t\t\t~p.", [?FUNCTION_NAME, Role,Name,Data], Data}),
 
-  RegID = maps:get(reg_id,Data,err_no_role_id),
-  show({Name, "~p,\n\treg_id: ~p.", [?FUNCTION_NAME, RegID], Data}),
+  % RegID = maps:get(reg_id,Data,err_no_role_id),
+  % show({Name, "~p,\n\t\t\treg_id: ~p.", [?FUNCTION_NAME, RegID], Data}),
 
-  case RegID of
-    err_no_role_id -> 
-      show({Name, "~p,\n\t~p, registering locally.", [?FUNCTION_NAME, RegID], Data}),
-      {ok,PID} = gen_statem:start_link({local, ?MODULE}, ?MODULE, [Data], []);
-    _ ->
-      show({Name, "~p,\n\tregistering globally as: ~p.", [?FUNCTION_NAME, Name], Data}),
-      {ok,PID} = gen_statem:start_link({global, Name}, ?MODULE, [Data], [])
+  %% start in same node
+  Ret = gen_statem:start_link({local, gen_monitor}, gen_monitor, [Data], []),
+  case Ret of
+    {ok,_PID} -> PID = _PID;
+    _ -> PID = self()
   end,
+  show({Name, "~p, Ret: ~p.", [?FUNCTION_NAME, Ret], Data}),
+
+  
+
+  % case RegID of
+  %   err_no_role_id -> 
+  %     show({Name, "~p,\n\t\t\t~p, registering locally.", [?FUNCTION_NAME, RegID], Data}),
+  %     {ok,PID} = gen_statem:start_link({local, ?MODULE}, ?MODULE, [Data], []);
+  %   _ ->
+  %     show({Name, "~p,\n\t\t\tregistering globally as: ~p.", [?FUNCTION_NAME, Name], Data}),
+  %     {ok,PID} = gen_statem:start_link({global, Name}, ?MODULE, [Data], [])
+  % end,
   show({Name, "leaving ~p as ~p.", [?FUNCTION_NAME, PID], Data}),
+
+  InitSusID = maps:get(start_id,Data),
+  InitSusID ! {self(), starting_as, PID},
+
   {ok, PID}.
 
 
@@ -76,14 +90,15 @@ callback_mode() -> [handle_event_function, state_enter].
 init([Data]) when is_map(Data) -> 
   %% get name and role from data
   #{name := Name} = Data,
-  #{role := Role} = Data,
-  show({Name, "~p,\n\tfinished process params.", [?FUNCTION_NAME], Data}),
-  show({Name, "~p,\n\tdata: ~p.", [?FUNCTION_NAME, Data], Data}),
+  % #{role := Role} = Data,
+  show({Name, "~p,\n\t\t\tfinished process params.", [?FUNCTION_NAME], Data}),
+  show({Name, "~p,\n\t\t\tdata: ~p.", [?FUNCTION_NAME, Data], Data}),
 
   %% get app ID and send self()
-  [{app_id,AppID}|_T] = ets:lookup(toast,app_id),
-  AppID ! {role, Role, mon, self()},
-  show({Name, "~p,\n\tregistered with app.", [?FUNCTION_NAME], Data}),
+  % [{app_id,AppID}|_T] = ets:lookup(toast,app_id),
+  % SessionID = maps:get(session_id, Data),
+  % SessionID ! {role, Role, mon, self()},
+  % show({Name, "~p,\n\t\t\tregistered with app.", [?FUNCTION_NAME], Data}),
 
   {ok, init_setup_state, Data}.
 
@@ -98,10 +113,10 @@ stop() ->
 
 
 terminate(Reason, issue_timeout=_State, #{name:=Name}=Data) ->
-  show({Name, "~p,\n\t(timeout)...\n\treason: ~p,\n\tdata: ~p.", [?FUNCTION_NAME, Reason, Data], Data});
+  show({Name, "~p,\n\t\t\t(timeout)...\n\t\t\treason: ~p,\n\t\t\tdata: ~p.", [?FUNCTION_NAME, Reason, Data], Data});
 
 terminate(Reason, State, #{name:=Name}=Data) ->
-  show({Name, "~p,\n\t(~p)...\n\treason: ~p,\n\tdata: ~p.", [?FUNCTION_NAME, State, Reason, Data], Data}).
+  show({Name, "~p,\n\t\t\t(~p)...\n\t\t\treason: ~p,\n\t\t\tdata: ~p.", [?FUNCTION_NAME, State, Reason, Data], Data}).
 
 
 
@@ -111,9 +126,18 @@ send(Label, Msg) -> gen_statem:cast(?MODULE, {send, Label, Msg}).
 recv(Label) -> gen_statem:call(?MODULE, {recv, Label}).
 
 
+%% receive initial ID of system being monitored (before they have entered init)
+handle_event({call,From},{init,{exchange_ids,StartID,InitID}},_State,#{start_id:=undefined}=Data) ->
+  printout("~p, init exchange_ids,\n\t\t\tstart_id: ~p,\n\t\t\tinit_id: ~p.",[?FUNCTION_NAME,StartID,InitID]),
+  Data1 = maps:put(start_id,StartID,Data),
+  Data2 = maps:put(init_id,InitID,Data1),
+  {keep_state,Data2,[{reply,From,ok}]};
+
+
+
 %% receive real ID of system being monitored
 handle_event({call,From},{StartID,setup,SusID},_State,#{start_id:=StartID}=Data) ->
-  printout("~p,\n\tstart_id: ~p,\n\tsus_id: ~p.",[?FUNCTION_NAME,StartID,SusID]),
+  printout("~p,\n\t\t\tstart_id: ~p,\n\t\t\tsus_id: ~p.",[?FUNCTION_NAME,StartID,SusID]),
   Data1 = maps:put(sus_id,SusID,Data),
   {keep_state,Data1,[{reply,From,ok}]};
 
@@ -127,7 +151,7 @@ handle_event({call,From},{StartID,setup,SusID},_State,#{start_id:=StartID}=Data)
 %% normal sending actions (when in a proper state)
 handle_event(info, {act, send, Label, Payload, Meta}, State, #{name:=Name,fsm:=#{map:=Map}}=Data) 
 when is_map_key(State, Map) ->
-  show({Name, "~p,\n\tinstruction, send:\n\t{~p, ~p, ~p}.", [State, Label, Payload, Meta], Data}),
+  show({Name, "~p,\n\t\t\tinstruction, send:\n\t\t\t{~p, ~p, ~p}.", [State, Label, Payload, Meta], Data}),
   Meta1 = maps:from_list(Meta),
   %% make sure special "from_queue" is not inserted
   Meta2 = maps:remove(from_queue, Meta1),
@@ -135,13 +159,13 @@ when is_map_key(State, Map) ->
 
 %% normal sending actions (but caught when other actions are being processed) -- postpone
 handle_event(info, {act, send, _Label, _Payload, _Meta}, State, #{name:=Name}=Data) ->
-  show(verbose, {Name, "~p,\n\tpostponing send instruction...", [State], Data}),
+  show(verbose, {Name, "~p,\n\t\t\tpostponing send instruction...", [State], Data}),
   {keep_state_and_data, [postpone]};
 
 
 %% mistakingly try to request message received under label
 handle_event(info, {act, recv, Label}, State, #{name:=Name}=Data) ->
-  show({Name, "~p,\n\t{recv, ~p},\n\n\tThis is a mistake! To retrieve messages use:\n\t\t\"gen_statem:call(?THIS_PID, {recv, ~p}).\"", [State, Label, Label], Data}),
+  show({Name, "~p,\n\t\t\t{recv, ~p},\n\n\t\t\tThis is a mistake! To retrieve messages use:\n\t\t\t\t\"gen_statem:call(?THIS_PID, {recv, ~p}).\"", [State, Label, Label], Data}),
   keep_state_and_data;
 
 
@@ -161,11 +185,11 @@ handle_event(enter, _OldState, init_setup_state=State, #{name:=Name,coparty_id:=
 
 handle_event(state_timeout, wait_to_finish, init_setup_state=State, 
 #{name:=Name,coparty_id:=undefined,fsm:=#{init:=Init},options:=Options}=Data) ->
-  show({Name, "~p,\n\twaiting to finish setup.", [State], Data}),
+  show({Name, "~p,\n\t\t\twaiting to finish setup.", [State], Data}),
   receive
     {_SupID, sup_init, CoPartyID} ->
-      show({Name, "~p,\n\treceived coparty ID (~p).", [State,CoPartyID], Data}),
-      show(verbose, {Name, "~p,\n\toptions:\n\t~p.", [State,Options], Data}),
+      show({Name, "~p,\n\t\t\treceived coparty ID (~p).", [State,CoPartyID], Data}),
+      show(verbose, {Name, "~p,\n\t\t\toptions:\n\t\t\t~p.", [State,Options], Data}),
       Data1 = Data#{coparty_id => CoPartyID, trace => [Init]},
       show(verbose, {Name, "leaving ~p, entering ~p.", [State,Init], Data1}),
       {next_state, Init, Data1}
@@ -216,7 +240,7 @@ when is_map_key(State, Timeouts) ->
       Action = lists:nth(1, maps:keys(Actions)),
       %% get outgoing edges
       #{Action:=Edges} = Actions,
-      EdgeStr = lists:foldl(fun({Label, Succ}, Acc) -> Str = io_lib:format("\n\t~p: <~p> -> ~p",[Action, Label, Succ]), Acc ++ [Str] end, [], maps:to_list(Edges)),
+      EdgeStr = lists:foldl(fun({Label, Succ}, Acc) -> Str = io_lib:format("\n\t\t\t~p: <~p> -> ~p",[Action, Label, Succ]), Acc ++ [Str] end, [], maps:to_list(Edges)),
       show(verbose, {Name, "(->) ~p [t:~p], actions:~s.", [State, TimeoutDuration, EdgeStr], Data});
     _ ->
       show({Name, "(->) ~p [t:~p].", [State, TimeoutDuration], Data})
@@ -224,7 +248,7 @@ when is_map_key(State, Timeouts) ->
   %% if no actions, this is unusual (and likely unintended)
   case Actions==none of
     true -> 
-      show({Name, "~p,\n\tunusual, no actions from this state:\n\t~p.", [State, Map], Data});
+      show({Name, "~p,\n\t\t\tunusual, no actions from this state:\n\t\t\t~p.", [State, Map], Data});
     _ -> ok
   end,
   {keep_state, Data, [{state_timeout, TimeoutDuration, TimeoutState}]};
@@ -244,7 +268,7 @@ handle_event(enter, _OldState, State, #{name:=Name,fsm:=#{map:=Map},queue:=#{sta
       Action = lists:nth(1, maps:keys(Actions)),
       %% get outgoing edges
       #{Action:=Edges} = Actions,
-      EdgeStr = lists:foldl(fun({Label, Succ}, Acc) -> Str = io_lib:format("\n\t~p: <~p> -> ~p",[Action, Label, Succ]), Acc ++ [Str] end, [], maps:to_list(Edges)),
+      EdgeStr = lists:foldl(fun({Label, Succ}, Acc) -> Str = io_lib:format("\n\t\t\t~p: <~p> -> ~p",[Action, Label, Succ]), Acc ++ [Str] end, [], maps:to_list(Edges)),
       show(verbose, {Name, "(->) ~p, actions:~s.", [State, EdgeStr], Data});
     _ ->
       show({Name, "(->) ~p.", [State], Data})
@@ -252,7 +276,7 @@ handle_event(enter, _OldState, State, #{name:=Name,fsm:=#{map:=Map},queue:=#{sta
   %% if no actions, this is unusual (and likely unintended)
   case Actions==none of
     true -> 
-      show({Name, "~p,\n\tunusual, no actions from this state: ~p.", [State, Map], Data});
+      show({Name, "~p,\n\t\t\tunusual, no actions from this state: ~p.", [State, Map], Data});
     _ -> ok
   end,
   %% since any queued actions have been processed, clear 'check_recvs'
@@ -280,7 +304,7 @@ handle_event(state_timeout, begin_process_queue, State, #{name:=Name,queue:=#{on
 
 %% state enter, continue handling queued actions (list Off may be non-empty, containing those already tried this state)
 handle_event(enter, _OldState, State, #{name:=Name,queue:=#{on:=On,state_to_return_to:=StateToReturnTo}}=Data) when is_list(On) and StateToReturnTo=/=undefined ->
-  show( verbose, {"(->) ~p (handling queue),\n\tdata: ~p.", [State,Data]},
+  show( verbose, {"(->) ~p (handling queue),\n\t\t\tdata: ~p.", [State,Data]},
         else, {"(->) ~p (handling queue).", [State]}, {Name, Data}),
   {keep_state_and_data, [{state_timeout,0,continue_process_queue}]};
 
@@ -317,7 +341,7 @@ handle_event(state_timeout, continue_process_queue, State,
           end
       end;
     _ -> %% this queued action has flagged itself to be dropped after a recent receive
-      show( verbose, {"~p, dropped queued action (~p: ~p) since:\n\tdrop_after_recv: ~p,\n\tdrop_after_labels: ~p,\n\tcheck_recvs: ~p.", [State, Label, Payload, DropAfterRecv, DropAfterLabels, CheckRecvs]},
+      show( verbose, {"~p, dropped queued action (~p: ~p) since:\n\t\t\tdrop_after_recv: ~p,\n\t\t\tdrop_after_labels: ~p,\n\t\t\tcheck_recvs: ~p.", [State, Label, Payload, DropAfterRecv, DropAfterLabels, CheckRecvs]},
             else, {"~p, dropped queued action (~p: ~p).", [State, Label, Payload]}, 
             {Name, Data1} ),
       {next_state, StateToReturnTo, Data1}
@@ -336,7 +360,7 @@ handle_event(state_timeout, continue_process_queue, State,
 handle_event(cast, {send, dont_care=Label, Payload, Meta}, State, #{name:=Name,fsm:=#{map:=Map},queue:=#{off:=Off}=Queue,options:=#{queue:=#{enabled:=QueueEnabled}}}=Data) 
 when is_map_key(State, Map) and is_map(Meta) and is_map_key(auto_label, Meta) and map_get(enabled, map_get(auto_label, Meta))
  ->
-  show(verbose, {Name, "~p,\n\tattempting to auto-label.", [State], Data}),
+  show(verbose, {Name, "~p,\n\t\t\tattempting to auto-label.", [State], Data}),
   #{State:=Directions} = Map,
   case lists:member(send,maps:keys(Directions)) of
     true -> %% this should correspond, therefore use this label
@@ -344,10 +368,10 @@ when is_map_key(State, Map) and is_map(Meta) and is_map_key(auto_label, Meta) an
       #{send:=Actions} = Directions,
       Label1 = lists:nth(1, maps:keys(Actions)),
       % io:format("\n"),
-      show({Name, "~p,\n\tauto-labelled:\n\t(~p, ~p), ~p.", [State, Label1, Payload, Meta], Data}),
+      show({Name, "~p,\n\t\t\tauto-labelled:\n\t\t\t(~p, ~p), ~p.", [State, Label1, Payload, Meta], Data}),
       {keep_state_and_data, [{next_event, cast, {send, Label1, Payload, Meta}}]};
     _ -> %% then this is a recv? add to queue
-      show(verbose, {Name, "~p,\n\tcannot auto-label, adding to queue.", [State], Data}),
+      show(verbose, {Name, "~p,\n\t\t\tcannot auto-label, adding to queue.", [State], Data}),
       %% if no queue in meta, use global option
       case lists:member(queue, maps:keys(Meta)) of
         true -> Meta1 = Meta;
@@ -362,12 +386,12 @@ when is_map_key(State, Map) and is_map(Meta) and is_map_key(auto_label, Meta) an
         _ -> %% this message has been specifically flagged to not be queued
           Off1 = Off,
           %% assuming mixed-states are modelled as two (with silent/timeout edge between them)
-          show( verbose, {"~p, wrong state to send (~p: ~p),\n\tand global-queue option set to true,\n\tbut -- message explicitly flagged to not be queue-able:\n\t~p.", [State, Label, Payload, Action]},
+          show( verbose, {"~p, wrong state to send (~p: ~p),\n\t\t\tand global-queue option set to true,\n\t\t\tbut -- message explicitly flagged to not be queue-able:\n\t\t\t~p.", [State, Label, Payload, Action]},
                 else, {"~p, unusual, cannot add to queue: ~p.", [State, {Label, Payload}]}, {Name, Data})
       end,
       Queue1 = Queue#{off=>Off1},
       Data1 = Data#{queue=>Queue1},
-      show(verbose, {Name, "~p,\n\tsuccessfully added to queue:\n\t~p.", [State,maps:get(queue,Data1)], Data}),
+      show(verbose, {Name, "~p,\n\t\t\tsuccessfully added to queue:\n\t\t\t~p.", [State,maps:get(queue,Data1)], Data}),
       {keep_state, Data1}
   end;
 
@@ -381,7 +405,7 @@ when is_map_key(State, Map) and is_atom(map_get(Label, map_get(send, map_get(Sta
   %% update trace
   Trace1 = [NextState] ++ Trace,
   Data1 = maps:put(trace,Trace1,Data),
-  show({Name, "~p,\n\tsend (~p: ~p),\n\ttrace: ~p.", [State, Label, Payload, Trace1], Data1}),
+  show({Name, "~p,\n\t\t\tsend (~p: ~p),\n\t\t\ttrace: ~p.", [State, Label, Payload, Trace1], Data1}),
   {next_state, NextState, Data1};
 
 %% from wrong states, and queue enabled 
@@ -397,12 +421,12 @@ when is_map_key(State, Map) and is_map(Meta) ->
   #{meta:=#{queue:=#{enabled:=ActionQueueEnabled}}} = Action,
   case ActionQueueEnabled of
     true -> %% this message is flagged to be queued 
-      show(verbose, {Name, "~p,\n\twrong state to send (~p: ~p),\n\tand global-queue option set to true,\n\tand message can be queued,\n\taction: ~p.", [State, Label, Payload, Action], Data}),
+      show(verbose, {Name, "~p,\n\t\t\twrong state to send (~p: ~p),\n\t\t\tand global-queue option set to true,\n\t\t\tand message can be queued,\n\t\t\taction: ~p.", [State, Label, Payload, Action], Data}),
       Off1 = Off ++ [Action];
     _ -> %% this message has been specifically flagged to not be queued
       Off1 = Off,
       %% assuming mixed-states are modelled as two (with silent/timeout edge between them)
-      show( verbose, {"~p, wrong state to send (~p: ~p),\n\tand global-queue option set to true,\n\tbut -- message explicitly flagged to not be queue-able:\n\t~p.", [State, Label, Payload, Action]},
+      show( verbose, {"~p, wrong state to send (~p: ~p),\n\t\t\tand global-queue option set to true,\n\t\t\tbut -- message explicitly flagged to not be queue-able:\n\t\t\t~p.", [State, Label, Payload, Action]},
             else, {"~p, unusual, cannot add to queue: ~p.", [State, {Label, Payload}]}, {Name, Data})
   end,
   %% next data has updated off-queue 
@@ -424,7 +448,7 @@ when is_map_key(State, Map) and is_map(Meta) ->
   %% assimulate into map-format with full meta
   Action = new_queued_action(Label, Payload, Meta),
   %% assuming mixed-states are modelled as two (with silent/timeout edge between them)
-  show( verbose, {"~p, wrong state to send (~p: ~p),\n\tand global-queue option set to false,\n\tbut -- message flagged to be queue-able:\n\t~p.", [State, Label, Payload, Action]}, 
+  show( verbose, {"~p, wrong state to send (~p: ~p),\n\t\t\tand global-queue option set to false,\n\t\t\tbut -- message flagged to be queue-able:\n\t\t\t~p.", [State, Label, Payload, Action]}, 
         else, {"~p, added to queue: ~p.", [State, {Label, Payload}]}, {Name, Data}),
   %% add to queue
   Off1 = Off ++ [Action],
@@ -450,7 +474,7 @@ when is_map_key(State, Map) and is_atom(map_get(Label, map_get(recv, map_get(Sta
     true ->
       case ForwardAny or lists:member(Label, ForwardLabels) of
         true ->
-          show(verbose, {Name, "~p,\n\tforwarding msg to ~p.", [State, ForwardTo], Data}),
+          show(verbose, {Name, "~p,\n\t\t\tforwarding msg to ~p.", [State, ForwardTo], Data}),
           ForwardTo ! {self(), Label, Payload};
         _ -> ok
       end;
@@ -461,7 +485,7 @@ when is_map_key(State, Map) and is_atom(map_get(Label, map_get(recv, map_get(Sta
     true -> %% check when to flush
       case FlushAfterAny or lists:member(Label, FlushAfterLabels) of
         true -> 
-          show(verbose, {Name, "~p,\n\tflushing queue after receiving.", [State], Data}),
+          show(verbose, {Name, "~p,\n\t\t\tflushing queue after receiving.", [State], Data}),
           Queue1 = Queue#{on=>[],off=>[]};
         _ -> Queue1 = Queue
       end; 
@@ -480,12 +504,12 @@ when is_map_key(State, Map) and is_atom(map_get(Label, map_get(recv, map_get(Sta
   Trace1 = [NextState] ++ Trace,
   %% update data
   Data1 = Data#{msgs=>Msgs1,queue=>Queue2,trace=>Trace1},
-  show({Name, "~p,\n\trecv (~p: ~p) -> ~p.", [State, Label, Payload, NextState], Data1}),
+  show({Name, "~p,\n\t\t\trecv (~p: ~p) -> ~p.", [State, Label, Payload, NextState], Data1}),
   {next_state, NextState, Data1};
 
 %% from wrong states 
 handle_event(info, {CoPartyID, Label, Payload}, State, #{name:=Name,coparty_id:=CoPartyID}=Data) ->
-  show(verbose, {"~p, wrong state to recv (~p: ~p), postponing,\n\tdata: ~p.", [State, Label, Payload, Data]}, else, {"~p, wrong state to recv (~p: ~p), postponing.", [State, Label, Payload]}, {Name, Data}),
+  show(verbose, {"~p, wrong state to recv (~p: ~p), postponing,\n\t\t\tdata: ~p.", [State, Label, Payload, Data]}, else, {"~p, wrong state to recv (~p: ~p), postponing.", [State, Label, Payload]}, {Name, Data}),
   {keep_state_and_data, [postpone]};
 
 
@@ -499,12 +523,12 @@ handle_event(info, {CoPartyID, Label, Payload}, State, #{name:=Name,coparty_id:=
 
 %% during processing
 handle_event(state_timeout, NextState, State, #{name:=Name}=Data) when NextState=:=State ->
-  show(verbose, {Name, "~p,\n\tinternal timeout (~p),\n\tdata: ~p.", [State, NextState, Data], Data}),
+  show(verbose, {Name, "~p,\n\t\t\tinternal timeout (~p),\n\t\t\tdata: ~p.", [State, NextState, Data], Data}),
   {next_state, NextState, Data};
 
 %% mixed-choice
 handle_event(state_timeout, NextState, State, #{name:=Name}=Data) ->
-  show({Name, "~p,\n\tinternal timeout (~p).", [State, NextState], Data}),
+  show({Name, "~p,\n\t\t\tinternal timeout (~p).", [State, NextState], Data}),
   {next_state, NextState, Data};
 
 
@@ -516,7 +540,7 @@ handle_event(state_timeout, NextState, State, #{name:=Name}=Data) ->
 %% retreive latest message of given label
 %% % % % % % %
 handle_event({call, From}, {recv, Label}, State, #{name:=Name,msgs:=Msgs}=Data) -> 
-  show({Name, "~p,\n\tlooking for msg with label (~p).", [State, Label], Data}),
+  show({Name, "~p,\n\t\t\tlooking for msg with label (~p).", [State, Label], Data}),
   case maps:get(Label, Msgs, no_msg_found_under_label) of
     no_msg_found_under_label=Err -> 
       show({"~p, no msgs with label (~p) found.", [State, Label], Data}),
@@ -541,7 +565,7 @@ handle_event({call, From}, {recv, Label}, State, #{name:=Name,msgs:=Msgs}=Data) 
 %% change options (single surface level key-val)
 handle_event({call, From}, {options, OptionKey, Map}, State, #{name:=Name,options:=Options}=Data) 
 when is_map_key(OptionKey, Options) and is_map(Map) ->    
-  show({Name, "~p,\n\tchanging option:\n\t~p => ~p.", [State, OptionKey, Map], Data}),
+  show({Name, "~p,\n\t\t\tchanging option:\n\t\t\t~p => ~p.", [State, OptionKey, Map], Data}),
   CurrentOption = maps:get(OptionKey, Options),
   NewOption = nested_map_merger(CurrentOption, Map),
   Options1 = maps:put(OptionKey, NewOption, Options),
@@ -551,17 +575,17 @@ when is_map_key(OptionKey, Options) and is_map(Map) ->
     
 %% request copy of options
 handle_event({call, From}, get_options, State, #{name:=Name,options:=Options}=Data) ->    
-  show(verbose, {Name, "~p,\n\tsharing options with ~p,\n\tOptions: ~p.", [State, From, Options], Data}),
+  show(verbose, {Name, "~p,\n\t\t\tsharing options with ~p,\n\t\t\tOptions: ~p.", [State, From, Options], Data}),
   {keep_state, Data, [{reply, From, {ok, Options}}]};
 
 %% request copy of data
 handle_event({call, From}, get_data, State, #{name:=Name}=Data) ->    
-  show(verbose, {Name, "~p,\n\tsharing data with ~p,\n\tData: ~p.", [State, From, Data], Data}),
+  show(verbose, {Name, "~p,\n\t\t\tsharing data with ~p,\n\t\t\tData: ~p.", [State, From, Data], Data}),
   {keep_state, Data, [{reply, From, {ok, Data}}]};
 
 %% request fsm terminate
 handle_event({call, _From}, {terminate, Reason}, State, #{name:=Name}=Data) ->
-  show({Name, "~p,\n\tinstructed to terminate,\n\treason: ~p.", [State, Reason], Data}),
+  show({Name, "~p,\n\t\t\tinstructed to terminate,\n\t\t\treason: ~p.", [State, Reason], Data}),
   StopData = stop_data([{reason, Reason}, {data, Data}]), 
   {next_state, stop_state, StopData};
 
@@ -574,7 +598,7 @@ handle_event({call, _From}, {terminate, Reason}, State, #{name:=Name}=Data) ->
 %% anything else
 %% % % % % % %
 handle_event(EventType, EventContent, State, #{name:=Name}=Data) ->
-  show({Name, "~p,\n\terror, reached unhandled event...\n\tEventType: ~p,\n\tEventContent: ~p,\n\tData: ~p.", [State, EventType, EventContent, Data], Data}),
+  show({Name, "~p,\n\t\t\terror, reached unhandled event...\n\t\t\tEventType: ~p,\n\t\t\tEventContent: ~p,\n\t\t\tData: ~p.", [State, EventType, EventContent, Data], Data}),
   StopData = stop_data([{reason, unhandled_event}, {data, Data}]), 
   {next_state, stop_state, StopData}.
 

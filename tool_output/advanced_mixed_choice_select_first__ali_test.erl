@@ -1,6 +1,6 @@
--module('advanced_mixed_choice_select_first__ali_test.erl').
+-module(advanced_mixed_choice_select_first__ali_test).
 
--file("advanced_mixed_choice_select_first__ali_test.erl", 1).
+-file("advanced_mixed_choice_select_first__ali_test", 1).
 
 -define(MONITORED, false).
 
@@ -9,9 +9,8 @@
           map =>
               #{state2_select_after => #{send => #{first => state3_recv_after, third => stop_state}}, state3_recv_after => #{recv => #{second => stop_state}},
                 state12_std => #{send => #{sixth => stop_state}}, state9_branch_after => #{recv => #{fourth => stop_state, fifth => stop_state}}},
-          timeouts =>
-              #{state2_select_after => {3000, state9_branch_after}, state3_recv_after => {t1, error_state}, state9_branch_after => {t1, standard_state}},
-          resets => #{init_state => #{t1 => 5000}}, timers => #{}}).
+          timeouts => #{state2_select_after => {3000, state9_branch_after}}, resets => #{init_state => #{t1 => 5000}},
+          timers => #{t1 => #{state3_recv_after => error_state, state9_branch_after => standard_state}}}).
 
 -define(PROTOCOL_SPEC,
         {timer,

@@ -26,7 +26,7 @@ to_monitor_spec(Fsm) ->
 
   Spec = to_spec(InitState,0,Edges,States, RecMap, InitSpec),
 
-  ?SHOW("input fsm...\nEdges:\n\t~p,\nStates:\n\t~p,\nRecMap:\n\t~p,\nfinished spec:\n\t~p.",[Edges,States,RecMap,Spec]),
+  ?GAP(),?GAP(),?GAP(),?GAP(),?GAP(),?SHOW("input fsm...\nEdges:\n\t~p,\nStates:\n\t~p,\nRecMap:\n\t~p,\nfinished spec:\n\t~p.",[to_map(Edges),States,RecMap,Spec]),
 
   % timer:sleep(5000),
 
@@ -39,10 +39,10 @@ to_monitor_spec(Fsm) ->
 %   pass;
 
 %% @doc generic handler
-to_spec(State, StateID, Edges, States, RecMap, Spec) ->
-  ?GAP(),
-  %% get relevant edges
-  RelevantEdges = get_outgoing_edges(StateID,Edges),
+to_spec(State, StateID, Edges, States, _RecMap, Spec) ->
+  %% get relevant edges (and convert to map)
+  RelevantEdges = to_map(get_outgoing_edges(StateID,Edges)),
+  ?GAP(),?SHOW("entering...\t(~p:~p)\nRelevantEdges:\n\t~p.",[StateID,State,RelevantEdges]),
 
   %% check if init_state is not ready
   case (State=/=init_state) and ((maps:get(init,Spec)=:=init_state) and is_state_initialisable(State)) of
@@ -52,13 +52,35 @@ to_spec(State, StateID, Edges, States, RecMap, Spec) ->
     _ -> InitSpec = Spec
   end,
 
+  %% check if recursive
+  InitRecursiveVars = get_recursive_vars(StateID, _RecMap),
+  %% there can only be zero or one
+  ?assert(length(InitRecursiveVars)<2),
+  case length(InitRecursiveVars)>0 of
+    true -> %% do not explore recursive state more than once
+      case maps:get(StateID,_RecMap,false) of
+        true -> %% already explored
+          % ?SHOW("\n(~p:~p) recursion already explored (is true).",[StateID,State]),
+          RecMap = _RecMap;
+        _ -> %% not been visited before
+          % ?SHOW("\n(~p:~p) is new recursive state.",[StateID,State]),
+          %% make sure it wont be visited next time
+          RecMap = maps:put(StateID, true, _RecMap)
+          % to_spec(ToState, ToStateID, Edges, States, RecMap, NoFutureResolveSpec)
+      end;
+    _ -> %% is not a recursive state
+      % ?SHOW("\n(~p:~p) is not a recursive state,\nRecMap:\n\t~p.",[StateID,State,RecMap]),
+      % to_spec(ToState, ToStateID, Edges, States, RecMap, NoFutureResolveSpec)
+      RecMap = _RecMap
+  end,
+
   % %% check for stateid in states_to_resolve, and then reverse and add current state
   % InitSpec = check_resolvable_state(State,StateID,Spec),
 
   %% create new spec from combination of all other specs reachable via edges
-  OutSpec = lists:foldl(fun(_Edge, InSpec) -> 
-    %% convert to map
-    Edge = to_map(_Edge),
+  OutSpec = lists:foldl(fun(Edge, InSpec) -> 
+    % %% convert to map
+    % Edge = to_map(_Edge),
     %% update resolvable states (that havent been resolved by current state) to next edge
     % UpdatedSpec = update_resolvable_states(Edge, InSpec),
     % ?SHOW("\n(~p:~p)\nedge:\n\t~p.\n",[StateID,State,Edge]),
@@ -82,20 +104,20 @@ to_spec(State, StateID, Edges, States, RecMap, Spec) ->
           % ?SHOW("\n(~p:~p) is error state.",[StateID,State]),
           NoFutureResolveSpec;
         _ -> %% check if recursive
-          RecursiveVars = get_recursive_vars(StateID, RecMap),
+          RecursiveVars = get_recursive_vars(ToStateID, RecMap),
           %% there can only be zero or one
           ?assert(length(RecursiveVars)<2),
           case length(RecursiveVars)>0 of
             true -> %% do not explore recursive state more than once
-              case maps:get(StateID,RecMap,false) of
+              case maps:get(ToStateID,RecMap,false) of
                 true -> %% already explored
-                  % ?SHOW("\n(~p:~p) recursion already explored (is true).",[StateID,State]),
+                  ?SHOW("\n(~p:~p) -> (~p,~p) recursion already explored (is true).",[StateID,State,ToStateID,ToState]),
                   NoFutureResolveSpec;
                 _ -> %% not been visited before
                   % ?SHOW("\n(~p:~p) is new recursive state.",[StateID,State]),
                   %% make sure it wont be visited next time
-                  RecMap1 = maps:put(StateID, true, RecMap),
-                  to_spec(ToState, ToStateID, Edges, States, RecMap1, NoFutureResolveSpec)
+                  % RecMap1 = maps:put(StateID, true, RecMap),
+                  to_spec(ToState, ToStateID, Edges, States, RecMap, NoFutureResolveSpec)
               end;
             _ -> %% is not a recursive state
               % ?SHOW("\n(~p:~p) is not a recursive state,\nRecMap:\n\t~p.",[StateID,State,RecMap]),
@@ -310,7 +332,7 @@ when (is_atom(Ref) or is_integer(Ref)) ->
   %% get timeouts 
   OldTimeouts = maps:get(timeouts, Spec),
   %% make sure does not already have timeout
-  ?SHOW("\nStateName: ~p,\nToState: ~p,\nOldTimeouts:\n\t~p.",[StateName,ToState,OldTimeouts]),
+  ?SHOW("\nStateName: ~p,\nToState: ~p,\nOldTimeouts:\n\t~p.\n",[StateName,ToState,OldTimeouts]),
   ?assert(not is_map_key(StateName,OldTimeouts)),
   %% add timeout
   NewTimeouts = maps:put(StateName, {Ref, ToState}, OldTimeouts),
@@ -341,7 +363,7 @@ when is_atom(Timer) ->
 
 add_to_timers(StateName,Timer,ToState,Spec) 
 when is_list(Timer) ->
-  add_to_timeouts(StateName,list_to_atom(Timer),ToState,Spec).
+  add_to_timers(StateName,list_to_atom(Timer),ToState,Spec).
 %%
 
 %% @doc adds timer set to map for State Name
