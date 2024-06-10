@@ -42,9 +42,9 @@ The tool can be built using rebar3:
 rebar3 compile
 ```
 
-## 2. Step-by-Step Instructions
+## Step-by-Step Instructions
 
-### Running Stub Generation (via toolchain)
+### Stub Generation (via toolchain)
 
 Compile and enter the rebar3 shell:
 ```erl
@@ -62,12 +62,18 @@ gen_stub:gen(basic_send_recv,ali:spec(basic_send_recv),"_ali_test.erl").
 ```
 Will generate a stub named `basic_send_recv_ali_test.erl` to `/tool_output/`, using the protocol retrned by `ali:spec(basic_send_recv)`.
 
-
-Alternatively, the above is the same as writing:
+Alternatively, the above is the same as writing: (via a helper function)
 ```erl
 gen_stub:gen(ali,spec,basic_send_recv,"_ali_test.erl").
 ```
-(via a helper function)
+
+Additionally, a file named `mon_spec_basic_send_recv_ali_test.erl` will be created in `/tool_output/` containing the FSM map used by the monitor.
+This file is already included in the generated stubs automatically, to allow more convenient enabling/disabling of the runtime monitors.
+
+### Running `/Sample Project/`
+
+For now, please see [`/sample_project/`](https://github.com/jonahpears/Erlang-on-TOAST-timeout-protocol-reengineering-implementation-/tree/main/sample_project).
+(This page will be updated shortly.)
 
 
 # need to update
