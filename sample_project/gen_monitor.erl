@@ -70,6 +70,9 @@ start_link(List) when is_list(List) ->
   InitSusID = maps:get(start_id,Data),
   InitSusID ! {self(), starting_as, PID},
 
+  % receive {InitSusID, sus_id, SusID} -> ok end,
+  % Data1 = maps:put(sus_id, SusID, Data),
+
   {ok, PID}.
 
 
@@ -185,7 +188,7 @@ handle_event(enter, _OldState, init_setup_state=State, #{name:=Name,coparty_id:=
 
 handle_event(state_timeout, wait_to_finish, init_setup_state=State, 
 #{name:=Name,coparty_id:=undefined,fsm:=#{init:=Init},options:=Options}=Data) ->
-  show({Name, "~p,\n\t\t\twaiting to finish setup.", [State], Data}),
+  show({Name, "~p,\n\t\t\twaiting to finish setup,\nData:\n\t~p.", [State,Data], Data}),
   receive
     {_SupID, sup_init, CoPartyID} ->
       show({Name, "~p,\n\t\t\treceived coparty ID (~p).", [State,CoPartyID], Data}),

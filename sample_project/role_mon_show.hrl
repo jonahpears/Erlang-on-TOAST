@@ -3,7 +3,7 @@
                                     {show,5} ]}).
 
 
-show({Str, Args, #{options:=#{printout:=#{enabled:=true}}}=_Data}) -> printout(Str, Args);
+show({Str, Args, #{options:=#{printout:=#{enabled:=true}},role:=#{name:=Name}}=_Data}) -> printout(Name,Str, Args);
 
 show({Name, Str, Args, #{options:=#{printout:=#{enabled:=true}}}=_Data}) -> printout(Name, Str, Args);
 

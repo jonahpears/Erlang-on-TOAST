@@ -38,8 +38,14 @@ stub_start_link() -> stub_start_link([]).
 
 %% @doc 
 stub_start_link(Args) when ?MONITORED=:=true ->
-  printout("~p (set to be monitored), args:\n\t~p.",[?FUNCTION_NAME,Args]),
-  Params = maps:from_list(Args),
+  _Params = maps:from_list(Args),
+  RegID = maps:get(reg_id, _Params, ?MODULE),
+  case RegID of
+    ?MODULE -> Params = _Params;
+    _ -> Params = maps:remove(reg_id, _Params)
+  end,
+
+  printout(RegID, "~p (set to be monitored), Params:\n\t~p.",[?FUNCTION_NAME,Params]),
 
   %% if ?MONITORED, then either MONITOR_SPEC is map, or params contains 
   case is_boolean(?MONITOR_SPEC) of 
@@ -49,14 +55,15 @@ stub_start_link(Args) when ?MONITORED=:=true ->
     _ -> MonitorSpec = ?MONITOR_SPEC
   end,
 
-  MonitorName = list_to_atom("mon_"++atom_to_list(maps:get(reg_id,Params,unknown_id))),
+  MonitorName = list_to_atom("mon_"++atom_to_list(RegID)),
 
-  MonitorArgs = maps:to_list(maps:remove(reg_id,Params)),
+  MonitorArgs = maps:to_list(Params),
 
   %% spawn monitor within same node 
   % {MonitorID, _MonitorRef} = erlang:spawn_monitor(node(), gen_monitor, start_link, [Args++[{fsm,MonitorSpec}]]),
   InitMonitorID = erlang:spawn_link(node(), gen_monitor, start_link, [MonitorArgs++[{fsm,MonitorSpec},{name,MonitorName},{start_id,self()}]]),
-  printout("~p, InitMonitorID: ~p.",[?FUNCTION_NAME,InitMonitorID]),
+
+  printout(RegID, "~p, InitMonitorID: ~p.",[?FUNCTION_NAME,InitMonitorID]),
 
   %% wait for message from monitor with actual ID
   receive {InitMonitorID, starting_as, MonitorID} -> ok end,
@@ -84,8 +91,8 @@ stub_start_link(Args) ->
 
 %% @doc called after start_link returns
 stub_init(Args) when ?MONITORED=:=true ->
-  printout("~p (monitored), args:\n\t~p.",[?FUNCTION_NAME,Args]),
   Params = maps:from_list(Args),
+  printout(Params,"~p (monitored), args:\n\t~p.",[?FUNCTION_NAME,Args]),
   _PID = self(),
 
   %% unpack from param map
@@ -93,8 +100,10 @@ stub_init(Args) when ?MONITORED=:=true ->
 
   StartID = maps:get(start_id,Params),
   MonitorID = maps:get(monitor_id,Params),
-  printout("~p, StartID: ~p.",[?FUNCTION_NAME,StartID]),
-  printout("~p, MonitorID: ~p.",[?FUNCTION_NAME,MonitorID]),
+  printout(Params,"~p, StartID: ~p.",[?FUNCTION_NAME,StartID]),
+  printout(Params,"~p, MonitorID: ~p.",[?FUNCTION_NAME,MonitorID]),
+
+  
 
   %% enter setup phase with monitor
   case gen_statem:call(MonitorID, {StartID,setup,self()}) of 
