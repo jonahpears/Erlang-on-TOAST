@@ -6,7 +6,21 @@
                                     {default_stop_data,0},
                                     {new_queued_action,3},
                                     {default_queued_action,0},
-                                    {default_action_meta,0} ]}).
+                                    {default_action_meta,0},
+                                    {default_options,0},
+                                    {default_options,1},
+                                    {reset_return_state,1} ]}).
+
+reset_return_state(#{queue:=#{state_to_return_to:=To}=Queue}=Data) ->
+  ?VSHOW("resetting from (~p) to undefined.",[To],Data),
+  maps:put(queue,maps:put(state_to_return_to,undefined,Queue),Data).
+
+
+
+
+%%%%%%%%%%%%
+%% data functions
+%%%%%%%%%%%%
 
 data() -> data([]).
 
@@ -21,6 +35,9 @@ default_data() ->
      coparty_id => undefined, 
      fsm => #{ init => undefined, %% initial state
                timeouts => #{}, %% outgoing silent edges from states
+               timers => #{}, %% timers and maps to states they can trigger in and then lead to
+               resets => #{}, %% states to reset certain timers in to what value
+               enter_flags => #{}, %% signify which things have been done on enter current state, reset each new state
                map => #{} }, %% outgoing edges from states
      trace => [], %% list of state-names reached
      msgs => #{}, %% received messages (maps labels to lists of payloads)
@@ -29,6 +46,29 @@ default_data() ->
                  check_recvs => [],
                  state_to_return_to => undefined },
      options => default_options() }.
+
+
+default_options() -> 
+  #{ printout => default_options(printout),
+    %  delayable_sends => default_options(delayable_sends),
+    %  queue => default_options(queue),
+    %  forward_receptions => default_options(forward_receptions),
+    %  support_auto_label => default_options(support_auto_label) %% only relevant to sending actions
+    }.
+
+default_options(printout) -> #{ enabled => true, verbose => false, termination => true };
+
+default_options(delayable_sends) -> #{ enabled => false };
+default_options(queue) -> 
+  #{ enabled => false, 
+     flush_after_recv => #{ enabled => false, 
+                            after_any => false, 
+                            after_labels => [] },
+     aging => #{ enabled => false,
+                 max_age => -1 } %% ignore local ages too
+    };
+default_options(forward_receptions) -> #{ enabled => true, any => true, labels => [] };
+default_options(support_auto_label) -> #{ enabled => false }.
 
 
 new_queued_action(Label, Payload, Meta) when is_list(Meta) -> 

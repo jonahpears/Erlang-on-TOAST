@@ -3,7 +3,25 @@
 
 -behaviour(gen_statem).
 
--include("toast_data_records.hrl").
+% -include("toast_data_records.hrl").
+
+-define(SHOW(Str,Args,Data),
+  #{options:=#{printout:=#{enabled:=Enabled}}} = Data,
+  case Enabled of 
+    true -> %% check if state is available to use
+      case lists:member(state,maps:keys(Data)) of 
+        true -> printout(Data, "~p, "++Str,[maps:get(state,Data)]++Args);
+        _ -> printout(Data, "~p, "++Str,[?FUNCTION_NAME]++Args)
+      end;
+    _ -> ok
+  end ).
+
+-define(VSHOW(Str,Args,Data),
+  #{options:=#{printout:=#{enabled:=Enabled,verbose:=Verbose}}} = Data,
+  case (Enabled and Verbose) of 
+    true -> printout(Data, "(verbose) ~p, "++Str,[?FUNCTION_NAME]++Args);
+    _ -> ok
+  end ).
 
 %% gen_statem
 -export([ start_link/0,
@@ -27,120 +45,173 @@
 -include_lib("stdlib/include/assert.hrl").
 
 -include("printout.hrl").
--include("role_mon_show.hrl").
+
+
+% -include("role_mon_show.hrl").
 -include("nested_map_merger.hrl").
 -include("list_to_map_builder.hrl").
 -include("list_to_map_getter.hrl").
 -include("list_to_map_setter.hrl").
 -include("role_mon_data.hrl").
--include("role_mon_options.hrl").
+% -include("role_mon_options.hrl").
 
+%% @doc callback mode, we use hand_event_function to develop monitors better suited to parameterised fsm.
+callback_mode() -> [handle_event_function, state_enter].
 
+%% @doc started with no params, this will not work.
+%% needs to be started with data map, as found in "role_mon_data.hrl"
+%% this will be redirected, and use default params. (which have no FSM, so will fail.)
+start_link() -> start_link([]).
 
-start_link(List) when is_list(List) -> 
+%% @doc started with list, redirects to case with data map.
+start_link(List) when is_list(List) ->
   %% get data-map from list
   Data = data(List),
-  show({"~p.", [?FUNCTION_NAME], Data}),
+  start_link(Data);
+%%
 
-  #{name := Name} = Data,
-  % #{role := Role} = Data,
-  show({Name, "~p,\ndata:\t~p.", [?FUNCTION_NAME, Data], Data}),
-
-  % RegID = maps:get(reg_id,Data,err_no_role_id),
-  % show({Name, "~p,\n\t\t\treg_id: ~p.", [?FUNCTION_NAME, RegID], Data}),
+%% @doc starts init in same node.
+start_link(#{name:=Name}=Data) when is_map(Data) -> 
+  ?SHOW("",[],Data),
+  ?VSHOW("\ndata:\t~p.",[Data],Data),
 
   %% start in same node
   Ret = gen_statem:start_link({local, gen_monitor}, gen_monitor, [Data], []),
+  ?VSHOW("Ret: ~p.",[Ret],Data),
+  
   case Ret of
     {ok,_PID} -> PID = _PID;
     _ -> PID = self()
   end,
-  % show({Name, "~p, Ret: ~p.", [?FUNCTION_NAME, Ret], Data}),
 
-  % InitSusID = maps:get(sus_init_id,Data),
-  % InitSusID ! {self(), mon_starting_as, PID},
-
-  % SusID = maps:get(sus_id,Data),
-  % SusID ! {self(), mon_starting_as, PID},
-
-  % receive {InitSusID, sus_id, SusID} -> ok end,
-  % Data1 = maps:put(sus_i)
-
-  show({Name, "leaving ~p as ~p.", [?FUNCTION_NAME, PID], Data}),
-
+  ?SHOW("starting as: ~p.",[PID],Data)
   {ok, PID}.
+%%
+
+%% @doc called during start_link, and the monitor will begin from here (with fresh pid).
+init([#{name:=Name}=Data]) when is_map(Data) -> 
+  ?SHOW("",[],Data),
+  ?VSHOW("\ndata:\t~p.",[Data],Data),
+  %% enter setup state
+  {ok, setup_state}.
+%%
 
 
+%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% monitor termination
+%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% @doc stop function
+stop() -> gen_statem:stop(?MODULE).
+
+%% @doc termination due to emergency_signal
+%% will dump contents of Data to output if options specify.
+terminate(Reason, emergency_signal=_State, #{name:=Name,options:=#{printout:=#{termination:=Dump}}}=Data) ->
+  case Dump of 
+    true -> ?SHOW("reason: ~p,\ndata:\t~p.",[Reason,Data],Data);
+    _ -> ?SHOW("reason: ~p.",[Reason],Data)
+  end;
+%%
+  
+
+%% @doc general termination
+%% will dump contents of Data to output if options specify.
+terminate(Reason, State, #{name:=Name,options:=#{printout:=#{termination:=Dump}}}=Data) ->
+  case Dump of 
+    true -> ?SHOW("reason: ~p,\ndata:\t~p.",[Reason,Data],Data);
+    _ -> ?SHOW("reason: ~p.",[Reason],Data)
+  end;
+%%
+  
 
 
-start_link() -> 
-  printout("~p.", [self()]),
-  start_link([]).
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% monitor master-enter event
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% @doc when we enter a new state and have not updated the data stored in our data yet, update it here.
+%% this event re-applies the enter event to redirect to the next most applicable enter event
+%% (keeps the auto-printing state up-to-date.)
+handle_event(enter, _OldState, State, #{state:=DataState,enter_flags:=_Flags}=Data)
+when State=/=DataState -> 
+  %% update to new state
+  Data1 = maps:put(state,State,Data),
+  %% reset enter flags
+  Data2 = maps:put(enter_flags,#{},Data1),
+  ?SHOW("(->).",[],Data2),
+  {repeat_state, Data2};
+%%
 
 
+%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% monitor setup
+%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% @doc state enter clause for setup_state, second only to the master enter event (above).
+%% catch before start to allow monitor to finish setting up with the session and for the monitored process to set options.
+%% (immediately silently-timeouts to do this.)
+handle_event(enter, _OldState, setup_state=State, #{name:=Name,coparty_id:=undefined}=Data) -> 
+  Data1 = reset_return_state(Data),
+  {keep_state, Data1, [{state_timeout, 0, wait_to_finish}]};
+%%
 
 
-callback_mode() -> [handle_event_function, state_enter].
+%% @doc timeout state used when setting up to allow monitor to finish setting up with the session and for the monitored process to set options.
+handle_event(state_timeout, wait_to_finish, setup_state=State, #{name:=Name,coparty_id:=undefined,sus_id:=SusID,sus_init_id:=SusInitID,session_id:=SessionID,role:=Role,fsm:=#{init:=Init},options:=_Options}=Data) ->
+  ?VSHOW("beginning setup.",[],Data),
 
+  ?assert(is_pid(SessionID)),
+  ?VSHOW("session_id: ~p.",[SessionID],Data),
 
+  %% pass back to sus the monitor id (they have the outdated one from start_link only)
+  %% we send all this information to ensure credibility of monitor to sus
+  SusID ! {{self(), is_monitor}, {SusInitID, proof_init_id}, {in_session, SessionID}},
+  ?VSHOW("sent to sus:\n\t{ {~p, is_monitor}, {~p, proof_init_id}, {in_session, ~p} }",[self(),SusInitID,SessionID],Data),
 
+  %% pretend to be monitored process in session, act as they would to session
+  SessionID ! {self(),role,Role},
+  ?VSHOW("sent to session: {~p, role, ~p}",[self(),Role],Data),
 
-init([Data]) when is_map(Data) -> 
-  %% get name and role from data
-  #{name := Name} = Data,
-  % #{role := Role} = Data,
-  show({Name, "~p, finished process params,\nData:\t~p.", [?FUNCTION_NAME,Data], Data}),
-  % show({Name, "~p,data:\n\t\t\t~p.", [?FUNCTION_NAME, Data], Data}),
+  %% wait to receive coparty id from session
+  receive {SessionID, coparty_id, CoPartyID} ->
+    Data1 = maps:put(coparty_id,CoPartyID,Data),
+    ?VSHOW("received coparty_id from session: ~p.",[CoPartyID],Data1),
+    %% exchange init message
+    CoPartyID ! {self(), init},
+    receive {CoPartyID, init} -> 
+      %% contact with coparty_id
+      ?VSHOW("successfully exchanged 'init' messages with coparty.",[],Data1),
+      %% send ready once finished setup with sus
+      SessionID ! {self(), ready},
+      ?VSHOW("signalled to session readiness -- now entering setup param phase.",[],Data1),
+      %% begin processing sus_requests
+      {ok, Data2} = process_setup_params(Data1),
+      ?VSHOW("finished setup param phase.",[],Data2),
+      %% wait for signal from session
+      ?VSHOW("waiting for session start signal.",[],Data2),
+      receive {SessionID, start} -> 
+        %% pass onto sus (from session)
+        SusID ! {SessionID, start},
+        ?VSHOW("received start signal and forwarded to sus.",[],Data2),
+        {next_state,Init,Data2} 
+      end 
+    end
+  end;
+%%
 
-  %% get app ID and send self()
-  % [{app_id,AppID}|_T] = ets:lookup(toast,app_id),
-  % SessionID = maps:get(session_id, Data),
-  % SessionID ! {role, Role, mon, self()},
-  % show({Name, "~p,\n\t\t\tregistered with app.", [?FUNCTION_NAME], Data}),
-
-
-
-  {ok, setup_state, Data}.
-
-
-
-
-stop() -> 
-  printout("~p.", [?FUNCTION_NAME]),
-  gen_statem:stop(?MODULE).
-
-
-
-
-terminate(Reason, emergency_signal=_State, #{name:=Name}=Data) ->
-  show({Name, "~p,\n\t\t\t(timeout)...\n\t\t\treason: ~p,\n\t\t\tdata: ~p.", [?FUNCTION_NAME, Reason, Data], Data});
-
-terminate(Reason, State, #{name:=Name}=Data) ->
-  show({Name, "~p, (~p), reason: ~p,\ndata:\t~p.", [?FUNCTION_NAME, State, Reason, Data], Data}).
-
-
-
-
-%% generic callbacks
-send(Label, Msg) -> gen_statem:cast(?MODULE, {send, Label, Msg}).
-recv(Label) -> gen_statem:call(?MODULE, {recv, Label}).
-
-
+%% @doc loop until monitored process signals no more options to be set.
+%% options are set by specifying the key within options, and providing a map which is then merged on-top of the existing (with priority to the newer map).
 process_setup_params(#{coparty_id:=CoPartyID,sus_id:=SusID,options:=Options,name:=Name}=Data) ->
-  show({Name, "~p, enter, waiting to receive.",[?FUNCTION_NAME],Data}),
+  ?VSHOW("waiting for option to be set.",[],Data),
   receive 
     %% finished setup, forward to coparty and continue as normal
     {SusID, ready, finished_setup} -> 
-      % show({Name, "~p, ready finished_setup, waiting to receive from CoParty (~p).",[?FUNCTION_NAME,CoPartyID],Data}),
-      % CoPartyID ! {self(), ready, finished_setup},
-      % receive {CoPartyID, ready, finished_setup} ->
-        show({Name, "~p, received ready finished_setup from Sus.",[?FUNCTION_NAME],Data}),
-        % SusID ! {self(), ready, finished_setup},
+        ?VSHOW("sus (~p) is ready, finished setting options.",[SusID],Data),
         {ok, Data};
-      % end;
+
     %% continue to process more options
     {SusID, setup_options, {OptionKey, Map}} ->
-      show({Name, "~p, setup_option:\n\t{~p => ~p}.",[?FUNCTION_NAME,OptionKey,Map],Data}),
+      ?VSHOW("setting (~p) to: ~p.",[OptionKey,Map],Data),
       %% merge with current option
       CurrentOption = maps:get(OptionKey, Options),
       NewOption = nested_map_merger(CurrentOption, Map),
@@ -148,111 +219,203 @@ process_setup_params(#{coparty_id:=CoPartyID,sus_id:=SusID,options:=Options,name
       Options1 = maps:put(OptionKey, NewOption, Options),
       %% update data with new options
       Data1 = Data#{options=>Options1},
-      show({Name, "~p, updated option: (for key: ~p)\nold:\t~p,\n\nnew:\t~p.",[?FUNCTION_NAME,OptionKey,CurrentOption,NewOption],Data}),
+      ?VSHOW("updated (~p)...\n\tfrom:\t~p,\n\tto:\t~p.",[OptionKey,CurrentOption,NewOption],Data),
       %% repeat until ready signal
       process_setup_params(Data1)
   end.
-
-
-%% catch before start (to receive the CoPartyID)
-handle_event(enter, _OldState, setup_state=State, #{name:=Name,coparty_id:=undefined}=Data) -> 
-  Data1 = maps:put(state_to_return_to, undefined, Data),
-  show({Name, "(->) ~p.", [State], Data1}),
-  {keep_state, Data1, [{state_timeout, 0, wait_to_finish}]};
-
-
-handle_event(state_timeout, wait_to_finish, setup_state=State, 
-#{name:=Name,coparty_id:=undefined,sus_id:=SusID,session_id:=SessionID,role:=Role,fsm:=#{init:=Init},options:=_Options}=Data) ->
-  show({Name, "~p,\n\t\t\twaiting to finish setup, Data:\n\t~p.", [State,Data], Data}),
-
-  ?assert(is_pid(SessionID)),
-  show({Name, "~p, session_id: ~p.",[State,SessionID],Data}),
-
-  %% act as role in session
-  SessionID ! {self(),role,Role},
-
-  %% pass sus monitor id
-  SusID ! {{self(), is_monitor}, {maps:get(sus_init_id,Data), proof_init_id}, {in_session, SessionID}},
+%%
 
 
 
-  show({Name, "~p,\n\t(~p ! {~p, role, ~p}).",[State,SessionID,self(),Role],Data}),
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% monitor stopping
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-  %% wait to receive coparty id from session
-  receive {SessionID, coparty_id, CoPartyID} ->
-    Data1 = maps:put(coparty_id,CoPartyID,Data),
-    %% exchange init message
-    CoPartyID ! {self(), init},
-    receive {CoPartyID, init} -> 
-      %% contact with coparty_id
-      show({Name, "~p, coparty_id: ~p.",[State,CoPartyID],Data}),
-      %% send ready once finished setup with sus
-      SessionID ! {self(), ready},
-      %% begin processing sus_requests
-      {ok, Data2} = process_setup_params(Data1),
-      show({Name, "~p, finished setting up options:\nData:\t~p.",[State,Data2],Data2}),
-      %% wait for signal from session
-      show({Name, "~p, waiting for session start signal.",[State],Data2}),
-      receive {SessionID, start} -> 
-        show({Name, "~p, received start signal!",[State],Data2}),
-        %% pass onto sus (from session)
-        SusID ! {SessionID, start},
-        {next_state,Init,Data2} 
-      end 
-    end
-  end;
+%% @doc catch before stop.
+%% notice StopData is used rather than Data. this contains the reason for termination.
+%% @see state_timeout case below.
+handle_event(enter, _OldState, stop_state=State, #{data:=#{name:=Name}=Data}=StopData) -> 
+  {keep_state, StopData, [{state_timeout, 0, exit_deferral}]};
+%%
 
-  % receive
-  %   {_SupID, sup_init, CoPartyID} ->
-  %     show({Name, "~p,\n\t\t\treceived coparty ID (~p).", [State,CoPartyID], Data}),
-  %     show(verbose, {Name, "~p,\n\t\t\toptions:\n\t\t\t~p.", [State,Options], Data}),
-  %     Data1 = Data#{coparty_id => CoPartyID, trace => [Init]},
-  %     show(verbose, {Name, "leaving ~p, entering ~p.", [State,Init], Data1}),
-  %     {next_state, Init, Data1}
-  % end;
+%% @doc catch before stop, state_timeout immediately reached once entering stop_state.
+%% users may extend this defintion (copy/paste) to debug certain termination reasons, or perform specific behaviour before terminating depending on reason.
+handle_event(state_timeout, exit_deferral, stop_state=_State, #{reason:=Reason,data:=Data}=_StopData) -> 
+  ?VSHOW("reason: ~p.",[Reason],Data),
+  {stop, Reason, StopData};
+%%
+
+%% @doc catching entering stop_state without StopData.
+%% wraps Data in generic StopData and reenters
+handle_event(enter, _OldState, stop_state=State, #{name:=Name}=Data) -> 
+  StopData = stop_data([{reason, normal}, {data, Data}]), 
+  {repeat_state, StopData};
+%%
 
 
-%% receive initial ID of system being monitored (before they have entered init)
-handle_event({call,From},{init,{exchange_ids,StartID,InitID}},_State,#{start_id:=undefined}=Data) ->
-  printout("~p, init exchange_ids,\n\t\t\tstart_id: ~p,\n\t\t\tinit_id: ~p.",[?FUNCTION_NAME,StartID,InitID]),
-  Data1 = maps:put(start_id,StartID,Data),
-  Data2 = maps:put(init_id,InitID,Data1),
-  {keep_state,Data2,[{reply,From,ok}]};
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% monitor emergency-stop 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% @doc example of extension for reserved actions (beyond scope of TOAST protocols.)
+%% below, `emergency_signal` allow the monitored process to directly signal the supervisor, by causing an abnormal termination of the monitor.
+%% @see stop_state above
+handle_event(enter, _OldState, emergency_signal=State, #{name:=Name}=Data) ->
+  StopData = stop_data([{reason, sus_issued_signal}, {data, Data}]),
+  {keep_state, StopData, [{state_timeout, 0, goto_stop}]};
+%%
+
+%% @see stop_state state_timeout above
+handle_event(state_timeout, goto_stop, emergency_signal=_State, Data) ->
+  {next_state, stop_state, Data};
+%%
 
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% monitor enter state & reset timers
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%% receive real ID of system being monitored
-handle_event({call,From},{StartID,setup,SusID},_State,#{start_id:=StartID}=Data) ->
-  printout("~p,\n\t\t\tstart_id: ~p,\n\t\t\tsus_id: ~p.",[?FUNCTION_NAME,StartID,SusID]),
-  Data1 = maps:put(sus_id,SusID,Data),
-  {keep_state,Data1,[{reply,From,ok}]};
-
-
-
-
-%% % % % % % %
-%% handling instructions from user/implementation/controller
-%% % % % % % %
-
-%% normal sending actions (when in a proper state)
-handle_event(info, {act, send, Label, Payload, Meta}, State, #{name:=Name,fsm:=#{map:=Map}}=Data) 
-when is_map_key(State, Map) ->
-  show({Name, "~p,\n\t\t\tinstruction, send:\n\t\t\t{~p, ~p, ~p}.", [State, Label, Payload, Meta], Data}),
-  Meta1 = maps:from_list(Meta),
-  %% make sure special "from_queue" is not inserted
-  Meta2 = maps:remove(from_queue, Meta1),
-  {keep_state_and_data, [{next_event, cast, {send, Label, Payload, Meta2}}]};
-
-%% normal sending actions (but caught when other actions are being processed) -- postpone
-handle_event(info, {act, send, _Label, _Payload, _Meta}, State, #{name:=Name}=Data) ->
-  show(verbose, {Name, "~p,\n\t\t\tpostponing send instruction...", [State], Data}),
-  {keep_state_and_data, [postpone]};
+%% @doc entering a state that is due to reset (some) timer(s)
+%% starts the timers with the necessary amount of time and then flags them as done for the next 
+handle_event(enter, _OldState, State, #{fsm:=#{resets:=Resets},enter_flags:=Flags,queue:=#{state_to_return_to:=undefined}}=Data)
+when is_map_key(State, Resets) and not is_map_key(resets,Flags) ->
+  %% flag resets to not enter this again on re-entry
+  Data1 = maps:put(enter_flags,maps:put(resets,true,Flags),Data),
+  %% get timers to be reset
+  TimersToReset = maps:get(State,Resets),
+  ?VSHOW("timers to be reset: ~p.",[TimersToReset],Data1),
+  %% for each, start them
+  maps:foreach(fun(K,V) -> erlang:start_timer(V,self(),list_to_atom("timer_"++atom_to_list(K))), TimersToReset),
+  %% re-enter state to perform other startup activities
+  {repeat_state, Data1};
+%%
 
 
-%% mistakingly try to request message received under label
-handle_event(info, {act, recv, Label}, State, #{name:=Name}=Data) ->
-  show({Name, "~p,\n\t\t\t{recv, ~p},\n\n\t\t\tThis is a mistake! To retrieve messages use:\n\t\t\t\t\"gen_statem:call(?THIS_PID, {recv, ~p}).\"", [State, Label, Label], Data}),
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% monitor enter state & set integer timeouts
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% @doc entering a state with a timeout (integer)
+%% (we do not have to set timer timeouts, as they are triggered automatically when a message is received from the timer.)
+handle_event(enter, _OldState, State, #{fsm:=#{timeouts:=Timeouts,map:=Map},enter_flags:=Flags,queue:=#{state_to_return_to:=undefined}}=Data)
+when is_map_key(State, Timeouts) and is_integer(elem(1,map_get(State, Timeouts))) and not is_map_key(timeouts,Flags) ->
+  %% flag resets to not enter this again on re-entry
+  Data1 = maps:put(enter_flags,maps:put(timeouts,true,Flags),Data),
+  %% get timeout
+  {Duration, ToState} = maps:get(State, Timeouts),
+  ?VSHOW("timeout of (~p) to: ~p.",[Duration,ToState],Data1),
+  %% get current actions
+  Actions = maps:get(State, Map, none),
+  case Actions of 
+    none -> 
+      ?VSHOW("unusual -- expected state to have actions but found none,\ndata:\t~p.",[Data1],Data1),
+    _ -> 
+      ?SHOW("has timeout (~pms) to: ~p.",[Duration,ToState]),
+      %% manually check verbose
+      #{options:=#{printout:=#{verbose:=Verbose}}} = Data,
+      case Verbose of 
+        true -> 
+          %% assuming mixed-states are modelled as two (with silent/timeout edge between them)
+          Action = lists:nth(1, maps:keys(Actions)),
+          %% get outgoing edges
+          #{Action:=Edges} = Actions,
+          EdgeStr = lists:foldl(fun({Label, Succ}, Acc) -> 
+            Acc ++ [io_lib:format("\n\t\t\t~p: <~p> -> ~p",[Action, Label, Succ])] 
+          end, [], maps:to_list(Edges)),
+          %% print
+          ?VSHOW("available actions:\n\t~s,",[lists:fold(fun({Label, Succ}, AccIn) -> AccIn++[io_lib:format("",[Action,Label,Succ])] end, [], maps:to_list(maps:get()))]);
+        _ -> ok
+      end
+  end,
+  %% 
+  {repeat_state, Data1, [{state_timeout, Duration, ToState}]};
+%%
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% monitor process queued sending actions
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% TODO update the old ones for here
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% monitor process postponed receptions
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% TODO update the old ones for here
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% monitor ground-enter state
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% @doc here the monitor will re-enter for the final time, having finished all other applicable state_enter functions
+handle_event(enter, _OldState, State, Data) -> 
+  ?VSHOW("grounded enter-state reached. (no other state-enter applications)",[],Data),
   keep_state_and_data;
+%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% transparent monitoring 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%% @doc forward/send messages from monitored process to co-party.
+%% this even handles sending messages prescribed to currently occur.
+handle_event(info, {SusID, Label, Payload}, State, #{name:=Name,coparty_id:=CoPartyID,sus_id:=SusID,fsm:=#{map:=Map},msgs:=Msgs,trace:=Trace,queue:=Queue}=Data) 
+when is_map_key(State, Map) and is_atom(map_get(Label, map_get(send, map_get(State, Map)))) ->  
+  %% send message to co-party
+  CoPartyID ! {self(), Label, Payload},
+  %% get next state
+  #{State:=#{send:=#{Label:=NextState}}} = Map,
+  %% update trace
+  Trace1 = [NextState] ++ Trace,
+  Data1 = maps:put(trace,Trace1,Data),
+  ?SHOW("send (~p) -> ~p.",[Label,Payload,NextState],Data1),
+  {next_state, NextState, Data1};
+%%  
+
+%% @doc monitored process attempted to send a message that is not (currently, possibly) prescribed by the protocol.
+%% this event allows such an attempt to be postponed until the next state.
+handle_event(info, {SusID, Label, Payload}, State, #{name:=Name,coparty_id:=_CoPartyID,sus_id:=SusID}=Data) ->
+  ?SHOW("warning, sending (~p) is not prescribed at this time, postponing.",[Label],Data),
+  %% logging this message has been postponed
+  %% TODO
+  {keep_state, Data1, [postpone]};
+%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% fsm protocol monitoring
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% fsm protocol monitoring
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+% %% % % % % % %
+% %% handling instructions from user/implementation/controller
+% %% % % % % % %
+
+% %% normal sending actions (when in a proper state)
+% handle_event(info, {act, send, Label, Payload, Meta}, State, #{name:=Name,fsm:=#{map:=Map}}=Data) 
+% when is_map_key(State, Map) ->
+%   show({Name, "~p,\n\t\t\tinstruction, send:\n\t\t\t{~p, ~p, ~p}.", [State, Label, Payload, Meta], Data}),
+%   Meta1 = maps:from_list(Meta),
+%   %% make sure special "from_queue" is not inserted
+%   Meta2 = maps:remove(from_queue, Meta1),
+%   {keep_state_and_data, [{next_event, cast, {send, Label, Payload, Meta2}}]};
+
+% %% normal sending actions (but caught when other actions are being processed) -- postpone
+% handle_event(info, {act, send, _Label, _Payload, _Meta}, State, #{name:=Name}=Data) ->
+%   show(verbose, {Name, "~p,\n\t\t\tpostponing send instruction...", [State], Data}),
+%   {keep_state_and_data, [postpone]};
+
+
+% %% mistakingly try to request message received under label
+% handle_event(info, {act, recv, Label}, State, #{name:=Name}=Data) ->
+%   show({Name, "~p,\n\t\t\t{recv, ~p},\n\n\t\t\tThis is a mistake! To retrieve messages use:\n\t\t\t\t\"gen_statem:call(?THIS_PID, {recv, ~p}).\"", [State, Label, Label], Data}),
+%   keep_state_and_data;
 
 
 
@@ -262,163 +425,136 @@ handle_event(info, {act, recv, Label}, State, #{name:=Name}=Data) ->
 %% custom init/stop wrappers
 %% % % % % % %
 
-%% catch before stop
-handle_event(enter, _OldState, stop_state=State, #{data:=#{name:=Name}=Data}=StopData) -> 
-  show({Name, "(->) ~p.", [State], Data}),
-  {keep_state, StopData, [{state_timeout, 0, exit_deferral}]};
-
-handle_event(state_timeout, exit_deferral, stop_state=_State, #{reason:=Reason,data:=#{name:=_Name}=Data}=_StopData) -> 
-  % show({Name, "~p,\n\t~p, Data: \n\t~p.", [State, Reason, Data], Data}),
-  {stop, Reason, Data};
-
-
-%% stop state, reenter with stopdata, terminate normally
-handle_event(enter, _OldState, stop_state=State, #{name:=Name}=Data) -> 
-  show({Name, "(->) ~p.", [State], Data}),
-  StopData = stop_data([{reason, normal}, {data, Data}]), 
-  {repeat_state, StopData};
-
-
-
 
 
 %% % % % % % %
 %% states enter
 %% % % % % % %
 
-%% state enter, issue timeout (stop and cause supervisor to notice)
-handle_event(enter, _OldState, emergency_signal=State, #{name:=Name}=Data) ->
-  show({Name, "(->) ~p.", [State], Data}),
-  StopData = stop_data([{reason, protocol_issued_timeout}, {data, Data}]),
-  {keep_state, StopData, [{state_timeout, 0, goto_stop}]};
-
-handle_event(state_timeout, goto_stop, emergency_signal=_State, Data) ->
-  {next_state, stop_state, Data};
 
 
 
-
-%% state enter, mixed choice (and no queued actions)
-handle_event(enter, _OldState, State, #{name:=Name,fsm:=#{timeouts:=Timeouts,map:=Map},queue:=#{state_to_return_to:=undefined}}=Data)
-when is_map_key(State, Timeouts) ->
-  %% get timeout
-  {TimeoutDuration, TimeoutState} = maps:get(State, Timeouts),
-  %% get current actions
-  Actions = maps:get(State, Map, none),
-  %% display available actions if verbose
-  #{options:=#{printout:=#{verbose:=Verbose}}} = Data,
-  case Verbose of 
-    true -> 
-      %% assuming mixed-states are modelled as two (with silent/timeout edge between them)
-      Action = lists:nth(1, maps:keys(Actions)),
-      %% get outgoing edges
-      #{Action:=Edges} = Actions,
-      EdgeStr = lists:foldl(fun({Label, Succ}, Acc) -> Str = io_lib:format("\n\t\t\t~p: <~p> -> ~p",[Action, Label, Succ]), Acc ++ [Str] end, [], maps:to_list(Edges)),
-      show(verbose, {Name, "(->) ~p [t:~p], actions:~s.", [State, TimeoutDuration, EdgeStr], Data});
-    _ ->
-      show({Name, "(->) ~p [t:~p].", [State, TimeoutDuration], Data})
-  end,
-  %% if no actions, this is unusual (and likely unintended)
-  case Actions==none of
-    true -> 
-      show({Name, "~p,\n\t\t\tunusual, no actions from this state:\n\t\t\t~p.", [State, Map], Data});
-    _ -> ok
-  end,
-  {keep_state, Data, [{state_timeout, TimeoutDuration, TimeoutState}]};
+% %% state enter, mixed choice (and no queued actions)
+% handle_event(enter, _OldState, State, #{name:=Name,fsm:=#{timeouts:=Timeouts,map:=Map},queue:=#{state_to_return_to:=undefined}}=Data)
+% when is_map_key(State, Timeouts) ->
+%   %% get timeout
+%   {TimeoutDuration, TimeoutState} = maps:get(State, Timeouts),
+%   %% get current actions
+%   Actions = maps:get(State, Map, none),
+%   %% display available actions if verbose
+%   #{options:=#{printout:=#{verbose:=Verbose}}} = Data,
+%   case Verbose of 
+%     true -> 
+%       %% assuming mixed-states are modelled as two (with silent/timeout edge between them)
+%       Action = lists:nth(1, maps:keys(Actions)),
+%       %% get outgoing edges
+%       #{Action:=Edges} = Actions,
+%       EdgeStr = lists:foldl(fun({Label, Succ}, Acc) -> Str = io_lib:format("\n\t\t\t~p: <~p> -> ~p",[Action, Label, Succ]), Acc ++ [Str] end, [], maps:to_list(Edges)),
+%       show(verbose, {Name, "(->) ~p [t:~p], actions:~s.", [State, TimeoutDuration, EdgeStr], Data});
+%     _ ->
+%       show({Name, "(->) ~p [t:~p].", [State, TimeoutDuration], Data})
+%   end,
+%   %% if no actions, this is unusual (and likely unintended)
+%   case Actions==none of
+%     true -> 
+%       show({Name, "~p,\n\t\t\tunusual, no actions from this state:\n\t\t\t~p.", [State, Map], Data});
+%     _ -> ok
+%   end,
+%   {keep_state, Data, [{state_timeout, TimeoutDuration, TimeoutState}]};
 
 
 
 
-%% state enter, no queued actions and no mixed-choice
-handle_event(enter, _OldState, State, #{name:=Name,fsm:=#{map:=Map},queue:=#{state_to_return_to:=undefined}=Queue}=Data) ->
-  %% get current actions
-  Actions = maps:get(State, Map, none),
-  %% display available actions if verbose
-  #{options:=#{printout:=#{verbose:=Verbose}}} = Data,
-  case Verbose of 
-    true -> 
-      %% assuming mixed-states are modelled as two (with silent/timeout edge between them)
-      Action = lists:nth(1, maps:keys(Actions)),
-      %% get outgoing edges
-      #{Action:=Edges} = Actions,
-      EdgeStr = lists:foldl(fun({Label, Succ}, Acc) -> Str = io_lib:format("\n\t\t\t~p: <~p> -> ~p",[Action, Label, Succ]), Acc ++ [Str] end, [], maps:to_list(Edges)),
-      show(verbose, {Name, "(->) ~p, actions:~s.", [State, EdgeStr], Data});
-    _ ->
-      show({Name, "(->) ~p.", [State], Data})
-  end,
-  %% if no actions, this is unusual (and likely unintended)
-  case Actions==none of
-    true -> 
-      show({Name, "~p,\n\t\t\tunusual, no actions from this state: ~p.", [State, Map], Data});
-    _ -> ok
-  end,
-  %% since any queued actions have been processed, clear 'check_recvs'
-  Queue1 = Queue#{check_recvs => []},
-  Data1 = Data#{queue => Queue1},
-  {keep_state, Data1};
+% %% state enter, no queued actions and no mixed-choice
+% handle_event(enter, _OldState, State, #{name:=Name,fsm:=#{map:=Map},queue:=#{state_to_return_to:=undefined}=Queue}=Data) ->
+%   %% get current actions
+%   Actions = maps:get(State, Map, none),
+%   %% display available actions if verbose
+%   #{options:=#{printout:=#{verbose:=Verbose}}} = Data,
+%   case Verbose of 
+%     true -> 
+%       %% assuming mixed-states are modelled as two (with silent/timeout edge between them)
+%       Action = lists:nth(1, maps:keys(Actions)),
+%       %% get outgoing edges
+%       #{Action:=Edges} = Actions,
+%       EdgeStr = lists:foldl(fun({Label, Succ}, Acc) -> Str = io_lib:format("\n\t\t\t~p: <~p> -> ~p",[Action, Label, Succ]), Acc ++ [Str] end, [], maps:to_list(Edges)),
+%       show(verbose, {Name, "(->) ~p, actions:~s.", [State, EdgeStr], Data});
+%     _ ->
+%       show({Name, "(->) ~p.", [State], Data})
+%   end,
+%   %% if no actions, this is unusual (and likely unintended)
+%   case Actions==none of
+%     true -> 
+%       show({Name, "~p,\n\t\t\tunusual, no actions from this state: ~p.", [State, Map], Data});
+%     _ -> ok
+%   end,
+%   %% since any queued actions have been processed, clear 'check_recvs'
+%   Queue1 = Queue#{check_recvs => []},
+%   Data1 = Data#{queue => Queue1},
+%   {keep_state, Data1};
 
 
 
 
-%% state enter, begin handling queued actions
-handle_event(enter, _OldState, State, #{name:=Name,queue:=#{on:=[],off:=Off,state_to_return_to:=undefined}}=Data) when is_list(Off) ->
-  show({Name, "(->) ~p, with (~p) queued actions.", [State, length(Off)], Data}),
-  {keep_state_and_data, [{state_timeout,0,begin_process_queue}]};
+% %% state enter, begin handling queued actions
+% handle_event(enter, _OldState, State, #{name:=Name,queue:=#{on:=[],off:=Off,state_to_return_to:=undefined}}=Data) when is_list(Off) ->
+%   show({Name, "(->) ~p, with (~p) queued actions.", [State, length(Off)], Data}),
+%   {keep_state_and_data, [{state_timeout,0,begin_process_queue}]};
 
-handle_event(state_timeout, begin_process_queue, State, #{name:=Name,queue:=#{on:=[],off:=Off,state_to_return_to:=undefined}=Queue}=Data) ->
-  show(verbose, {Name, "(->) ~p, (state_timeout).", [State], Data}),
-  %% move off-queue to (active) on-queue
-  Queue1 = Queue#{on=>Off,off=>[],state_to_return_to=>State},
-  Data1 = Data#{queue=>Queue1},
-  {repeat_state, Data1};
-
-
+% handle_event(state_timeout, begin_process_queue, State, #{name:=Name,queue:=#{on:=[],off:=Off,state_to_return_to:=undefined}=Queue}=Data) ->
+%   show(verbose, {Name, "(->) ~p, (state_timeout).", [State], Data}),
+%   %% move off-queue to (active) on-queue
+%   Queue1 = Queue#{on=>Off,off=>[],state_to_return_to=>State},
+%   Data1 = Data#{queue=>Queue1},
+%   {repeat_state, Data1};
 
 
-%% state enter, continue handling queued actions (list Off may be non-empty, containing those already tried this state)
-handle_event(enter, _OldState, State, #{name:=Name,queue:=#{on:=On,state_to_return_to:=StateToReturnTo}}=Data) when is_list(On) and StateToReturnTo=/=undefined ->
-  show( verbose, {"(->) ~p (handling queue),\n\t\t\tdata: ~p.", [State,Data]},
-        else, {"(->) ~p (handling queue).", [State]}, {Name, Data}),
-  {keep_state_and_data, [{state_timeout,0,continue_process_queue}]};
 
-handle_event(state_timeout, continue_process_queue, State, 
-#{ name:=Name, 
-   queue:=#{on:=[#{label:=Label,payload:=Payload,meta:=#{aging:=#{enabled:=LocalAgingEnabled,age:=Age}=Aging,drop:=#{after_recv:=DropAfterRecv,after_labels:=DropAfterLabels}}=Meta}=H|T], check_recvs:=CheckRecvs, state_to_return_to:=StateToReturnTo}=Queue,
-   options:=#{queue:=#{enabled:=true,aging:=#{enabled:=GlobalAgingEnabled,max_age:=MaxAge}}}}=Data) when is_map(Meta) ->
-  show({Name, "(->) ~p, queued action: ~p.", [State, H]}),
-  %% update next data
-  Queue1 = Queue#{on=>T},
-  Data1 = Data#{queue=>Queue1},
-  %% check if this should be dropped due to contents of check_recvs
-  DoNotDrop = lists:foldl(fun(Elem, Acc) -> Acc and lists:member(Elem, CheckRecvs) end, true, DropAfterLabels),
-  case DoNotDrop or DropAfterRecv of
-    true ->
-      Aging1 = Aging#{age=>Age+1},
-      Meta1 = maps:put(aging, Aging1, Meta),
-      Meta2 = maps:put(from_queue, true, Meta1),
-      %% check if aging enabled
-      case MaxAge of
-        -1 -> %% overrides both global and local aging, disabling them both
-          {next_state, StateToReturnTo, Data1, [{next_event, cast, {send, Label, Payload, Meta2}}]};
-        _ -> %% need to check if message is aged and valid to send
-          case GlobalAgingEnabled or LocalAgingEnabled of
-            true -> %% aging applies to this action
-              case Age>=MaxAge of
-                true -> %% message is young enough to try again
-                  {next_state, StateToReturnTo, Data1, [{next_event, cast, {send, Label, Payload, Meta2}}]};
-                _ -> %% message is too old to try again
-                  {next_state, StateToReturnTo, Data1}
-              end;
-            _ -> %% message cannot be aged
-              {next_state, StateToReturnTo, Data1, [{next_event, cast, {send, Label, Payload, Meta2}}]}
-          end
-      end;
-    _ -> %% this queued action has flagged itself to be dropped after a recent receive
-      show( verbose, {"~p, dropped queued action (~p: ~p) since:\n\t\t\tdrop_after_recv: ~p,\n\t\t\tdrop_after_labels: ~p,\n\t\t\tcheck_recvs: ~p.", [State, Label, Payload, DropAfterRecv, DropAfterLabels, CheckRecvs]},
-            else, {"~p, dropped queued action (~p: ~p).", [State, Label, Payload]}, 
-            {Name, Data1} ),
-      {next_state, StateToReturnTo, Data1}
-  end;
+
+% %% state enter, continue handling queued actions (list Off may be non-empty, containing those already tried this state)
+% handle_event(enter, _OldState, State, #{name:=Name,queue:=#{on:=On,state_to_return_to:=StateToReturnTo}}=Data) when is_list(On) and StateToReturnTo=/=undefined ->
+%   show( verbose, {"(->) ~p (handling queue),\n\t\t\tdata: ~p.", [State,Data]},
+%         else, {"(->) ~p (handling queue).", [State]}, {Name, Data}),
+%   {keep_state_and_data, [{state_timeout,0,continue_process_queue}]};
+
+% handle_event(state_timeout, continue_process_queue, State, 
+% #{ name:=Name, 
+%    queue:=#{on:=[#{label:=Label,payload:=Payload,meta:=#{aging:=#{enabled:=LocalAgingEnabled,age:=Age}=Aging,drop:=#{after_recv:=DropAfterRecv,after_labels:=DropAfterLabels}}=Meta}=H|T], check_recvs:=CheckRecvs, state_to_return_to:=StateToReturnTo}=Queue,
+%    options:=#{queue:=#{enabled:=true,aging:=#{enabled:=GlobalAgingEnabled,max_age:=MaxAge}}}}=Data) when is_map(Meta) ->
+%   show({Name, "(->) ~p, queued action: ~p.", [State, H]}),
+%   %% update next data
+%   Queue1 = Queue#{on=>T},
+%   Data1 = Data#{queue=>Queue1},
+%   %% check if this should be dropped due to contents of check_recvs
+%   DoNotDrop = lists:foldl(fun(Elem, Acc) -> Acc and lists:member(Elem, CheckRecvs) end, true, DropAfterLabels),
+%   case DoNotDrop or DropAfterRecv of
+%     true ->
+%       Aging1 = Aging#{age=>Age+1},
+%       Meta1 = maps:put(aging, Aging1, Meta),
+%       Meta2 = maps:put(from_queue, true, Meta1),
+%       %% check if aging enabled
+%       case MaxAge of
+%         -1 -> %% overrides both global and local aging, disabling them both
+%           {next_state, StateToReturnTo, Data1, [{next_event, cast, {send, Label, Payload, Meta2}}]};
+%         _ -> %% need to check if message is aged and valid to send
+%           case GlobalAgingEnabled or LocalAgingEnabled of
+%             true -> %% aging applies to this action
+%               case Age>=MaxAge of
+%                 true -> %% message is young enough to try again
+%                   {next_state, StateToReturnTo, Data1, [{next_event, cast, {send, Label, Payload, Meta2}}]};
+%                 _ -> %% message is too old to try again
+%                   {next_state, StateToReturnTo, Data1}
+%               end;
+%             _ -> %% message cannot be aged
+%               {next_state, StateToReturnTo, Data1, [{next_event, cast, {send, Label, Payload, Meta2}}]}
+%           end
+%       end;
+%     _ -> %% this queued action has flagged itself to be dropped after a recent receive
+%       show( verbose, {"~p, dropped queued action (~p: ~p) since:\n\t\t\tdrop_after_recv: ~p,\n\t\t\tdrop_after_labels: ~p,\n\t\t\tcheck_recvs: ~p.", [State, Label, Payload, DropAfterRecv, DropAfterLabels, CheckRecvs]},
+%             else, {"~p, dropped queued action (~p: ~p).", [State, Label, Payload]}, 
+%             {Name, Data1} ),
+%       {next_state, StateToReturnTo, Data1}
+%   end;
 
 
 
@@ -533,29 +669,6 @@ handle_event(state_timeout, continue_process_queue, State,
 
 
 
-%% % % % % % %
-%% sending actions from sus_id
-%% % % % % % %
-
-%% from correct states
-handle_event(info, {SusID, Label, Payload}, State, #{name:=Name,coparty_id:=CoPartyID,sus_id:=SusID,fsm:=#{map:=Map},msgs:=Msgs,trace:=Trace,queue:=Queue}=Data) 
-when is_map_key(State, Map) and is_atom(map_get(Label, map_get(send, map_get(State, Map)))) ->  
-  %% send message to co-party
-  CoPartyID ! {self(), Label, Payload},
-  %% get next state
-  #{State:=#{send:=#{Label:=NextState}}} = Map,
-  %% update trace
-  Trace1 = [NextState] ++ Trace,
-  Data1 = maps:put(trace,Trace1,Data),
-  show({Name, "~p, send (~p: ~p) -> ~p,\n\ttrace:\t~p.", [State, Label, Payload, NextState, Trace1], Data1}),
-  {next_state, NextState, Data1};
-  
-
-%% from wrong states 
-handle_event(info, {SusID, Label, Payload}, State, #{name:=Name,coparty_id:=_CoPartyID,sus_id:=SusID}=Data) ->
-  show(verbose, {"~p, wrong state to send (~p: ~p), postponing,\n\t\t\tdata: ~p.", [State, Label, Payload, Data]}, else, {"~p, wrong state to recv (~p: ~p), postponing.", [State, Label, Payload]}, {Name, Data}),
-  {keep_state_and_data, [postpone]};
-
 
 
 
@@ -572,8 +685,9 @@ when is_map_key(State, Map) and is_atom(map_get(Label, map_get(recv, map_get(Sta
   %   true ->
   %     case ForwardAny or lists:member(Label, ForwardLabels) of
   %       true ->
-          show({Name, "~p, forwarding msg to ~p.", [State, SusID], Data}),
-          SusID ! {self(), Label, Payload},
+  ?VSHOW("received (~p), forwarding to: ~p.",[Label,SusID]),
+          % show({Name, "~p, forwarding msg to ~p.", [State, SusID], Data}),
+  SusID ! {self(), Label, Payload},
   %       _ -> ok
   %     end;
   %   _ -> ok
@@ -591,26 +705,27 @@ when is_map_key(State, Map) and is_atom(map_get(Label, map_get(recv, map_get(Sta
   Queue1 = Queue,
   % end,
   %% add to list of receives to check next time we enter state
-  #{check_recvs:=CheckRecvs} = Queue1,
-  Queue2 = Queue#{check_recvs=>CheckRecvs ++ [Label]},
-  %% add to front of list of messages received under this label
-  Payloads = maps:get(Label, Msgs, []),
-  Payloads1 = [Payload] ++ Payloads,
-  Msgs1 = Msgs#{Label => Payloads1},
+  % #{check_recvs:=CheckRecvs} = Queue1,
+  % Queue2 = Queue#{check_recvs=>CheckRecvs ++ [Label]},
+  % %% add to front of list of messages received under this label
+  % Payloads = maps:get(Label, Msgs, []),
+  % Payloads1 = [Payload] ++ Payloads,
+  % Msgs1 = Msgs#{Label => Payloads1},
   %% get next state
   #{State:=#{recv:=#{Label:=NextState}}} = Map,
   %% update trace
   Trace1 = [NextState] ++ Trace,
   %% update data
-  Data1 = Data#{msgs=>Msgs1,queue=>Queue2,trace=>Trace1},
-  show({Name, "~p, recv (~p: ~p) -> ~p,\n\ttrace:\t~p.", [State, Label, Payload, NextState,Trace1], Data1}),
+  % Data1 = Data#{msgs=>Msgs1,queue=>Queue2,trace=>Trace1},
+  Data1 = Data#{trace=>Trace1},
+  ?SHOW("recv (~p) -> ~p.",[Label,NextState]),
   {next_state, NextState, Data1};
 
 %% from wrong states 
 handle_event(info, {CoPartyID, Label, Payload}, State, #{name:=Name,coparty_id:=CoPartyID}=Data) ->
-  show(verbose, {"~p, wrong state to recv (~p: ~p), postponing,\n\t\t\tdata: ~p.", [State, Label, Payload, Data]}, else, {"~p, wrong state to recv (~p: ~p), postponing.", [State, Label, Payload]}, {Name, Data}),
+  % show(verbose, {"~p, wrong state to recv (~p: ~p), postponing,\n\t\t\tdata: ~p.", [State, Label, Payload, Data]}, else, {"~p, wrong state to recv (~p: ~p), postponing.", [State, Label, Payload]}, {Name, Data}),
   {keep_state_and_data, [postpone]};
-
+%%
 
 
 
@@ -622,14 +737,15 @@ handle_event(info, {CoPartyID, Label, Payload}, State, #{name:=Name,coparty_id:=
 
 %% during processing
 handle_event(state_timeout, NextState, State, #{name:=Name}=Data) when NextState=:=State ->
-  show(verbose, {Name, "~p,\n\t\t\tinternal timeout (~p),\n\t\t\tdata: ~p.", [State, NextState, Data], Data}),
+  % show(verbose, {Name, "~p,\n\t\t\tinternal timeout (~p),\n\t\t\tdata: ~p.", [State, NextState, Data], Data}),
   {next_state, NextState, Data};
+%%
 
 %% mixed-choice
 handle_event(state_timeout, NextState, State, #{name:=Name}=Data) ->
-  show({Name, "~p,\n\t\t\tinternal timeout (~p).", [State, NextState], Data}),
+  % show({Name, "~p,\n\t\t\tinternal timeout (~p).", [State, NextState], Data}),
   {next_state, NextState, Data};
-
+%%
 
 
 
@@ -639,19 +755,19 @@ handle_event(state_timeout, NextState, State, #{name:=Name}=Data) ->
 %% retreive latest message of given label
 %% % % % % % %
 handle_event({call, From}, {recv, Label}, State, #{name:=Name,msgs:=Msgs}=Data) -> 
-  show({Name, "~p,\n\t\t\tlooking for msg with label (~p).", [State, Label], Data}),
+  % show({Name, "~p,\n\t\t\tlooking for msg with label (~p).", [State, Label], Data}),
   case maps:get(Label, Msgs, no_msg_found_under_label) of
     no_msg_found_under_label=Err -> 
-      show({"~p, no msgs with label (~p) found.", [State, Label], Data}),
+      % show({"~p, no msgs with label (~p) found.", [State, Label], Data}),
       ReplyMsg = {error, Err};
     Matches -> 
       NumMsgs = lists:length(Matches),
       H = lists:nth(1, Matches),
-      show({"~p, found msg (~p: ~p) out of ~p.", [State, Label, H, NumMsgs], Data}),
+      % show({"~p, found msg (~p: ~p) out of ~p.", [State, Label, H, NumMsgs], Data}),
       ReplyMsg = {ok, #{  label => Label, matches => Matches }}
   end,
   {keep_state_and_data, [{reply, From, ReplyMsg}]};
-
+%%
 
 
 
@@ -661,32 +777,32 @@ handle_event({call, From}, {recv, Label}, State, #{name:=Name,msgs:=Msgs}=Data) 
 %% handle external requests to 
 %% % % % % % %
 
-%% change options (single surface level key-val)
-handle_event({call, From}, {options, OptionKey, Map}, State, #{name:=Name,options:=Options}=Data) 
-when is_map_key(OptionKey, Options) and is_map(Map) ->    
-  show({Name, "~p,\n\t\t\tchanging option:\n\t\t\t~p => ~p.", [State, OptionKey, Map], Data}),
-  CurrentOption = maps:get(OptionKey, Options),
-  NewOption = nested_map_merger(CurrentOption, Map),
-  Options1 = maps:put(OptionKey, NewOption, Options),
-  Data1 = Data#{options=>Options1},
-  % show(verbose, {Name, "~p,\n\tupdated: ~p => ~p,\n\told: ~p\n\tnew: ~p.", [State,OptionKey, Map,Options,Options1], Data1}),
-  {keep_state, Data1, [{reply, From, ok}]};
+% %% change options (single surface level key-val)
+% handle_event({call, From}, {options, OptionKey, Map}, State, #{name:=Name,options:=Options}=Data) 
+% when is_map_key(OptionKey, Options) and is_map(Map) ->    
+%   show({Name, "~p,\n\t\t\tchanging option:\n\t\t\t~p => ~p.", [State, OptionKey, Map], Data}),
+%   CurrentOption = maps:get(OptionKey, Options),
+%   NewOption = nested_map_merger(CurrentOption, Map),
+%   Options1 = maps:put(OptionKey, NewOption, Options),
+%   Data1 = Data#{options=>Options1},
+%   % show(verbose, {Name, "~p,\n\tupdated: ~p => ~p,\n\told: ~p\n\tnew: ~p.", [State,OptionKey, Map,Options,Options1], Data1}),
+%   {keep_state, Data1, [{reply, From, ok}]};
     
-%% request copy of options
-handle_event({call, From}, get_options, State, #{name:=Name,options:=Options}=Data) ->    
-  show(verbose, {Name, "~p,\n\t\t\tsharing options with ~p,\n\t\t\tOptions: ~p.", [State, From, Options], Data}),
-  {keep_state, Data, [{reply, From, {ok, Options}}]};
+% %% request copy of options
+% handle_event({call, From}, get_options, State, #{name:=Name,options:=Options}=Data) ->    
+%   show(verbose, {Name, "~p,\n\t\t\tsharing options with ~p,\n\t\t\tOptions: ~p.", [State, From, Options], Data}),
+%   {keep_state, Data, [{reply, From, {ok, Options}}]};
 
-%% request copy of data
-handle_event({call, From}, get_data, State, #{name:=Name}=Data) ->    
-  show(verbose, {Name, "~p,\n\t\t\tsharing data with ~p,\n\t\t\tData: ~p.", [State, From, Data], Data}),
-  {keep_state, Data, [{reply, From, {ok, Data}}]};
+% %% request copy of data
+% handle_event({call, From}, get_data, State, #{name:=Name}=Data) ->    
+%   show(verbose, {Name, "~p,\n\t\t\tsharing data with ~p,\n\t\t\tData: ~p.", [State, From, Data], Data}),
+%   {keep_state, Data, [{reply, From, {ok, Data}}]};
 
-%% request fsm terminate
-handle_event({call, _From}, {terminate, Reason}, State, #{name:=Name}=Data) ->
-  show({Name, "~p,\n\t\t\tinstructed to terminate,\n\t\t\treason: ~p.", [State, Reason], Data}),
-  StopData = stop_data([{reason, Reason}, {data, Data}]), 
-  {next_state, stop_state, StopData};
+% %% request fsm terminate
+% handle_event({call, _From}, {terminate, Reason}, State, #{name:=Name}=Data) ->
+%   show({Name, "~p,\n\t\t\tinstructed to terminate,\n\t\t\treason: ~p.", [State, Reason], Data}),
+%   StopData = stop_data([{reason, Reason}, {data, Data}]), 
+%   {next_state, stop_state, StopData};
 
 
 
@@ -697,7 +813,8 @@ handle_event({call, _From}, {terminate, Reason}, State, #{name:=Name}=Data) ->
 %% anything else
 %% % % % % % %
 handle_event(EventType, EventContent, State, #{name:=Name}=Data) ->
-  show({Name, "~p,\n\t\t\terror, reached unhandled event...\n\t\t\tEventType: ~p,\n\t\t\tEventContent: ~p,\n\t\t\tData: ~p.", [State, EventType, EventContent, Data], Data}),
+  % show({Name, "~p,\n\t\t\terror, reached unhandled event...\n\t\t\tEventType: ~p,\n\t\t\tEventContent: ~p,\n\t\t\tData: ~p.", [State, EventType, EventContent, Data], Data}),
+  ?SHOW("error occured, unhandled event... (stopping)\nState:\t~p,\nEventType:\t~p,\nEventContent:\t~p,\nData:\t~p.",[State,EventType,EventContent,Data]),
   StopData = stop_data([{reason, unhandled_event}, {data, Data}]), 
   {next_state, stop_state, StopData}.
-
+%%
