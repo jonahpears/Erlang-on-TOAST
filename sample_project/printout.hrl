@@ -12,7 +12,7 @@ printout(#{role:=#{name:=Name}}=_Data, Str, Params)
 when is_map(_Data) and is_atom(Name) and is_list(Str) -> 
   printout(Name,Str,Params);
   
-printout(_Data, Str, Params)
-when is_list(Str) ->
-  printout(Str,Params).
+printout(Data, Str, Params)
+when is_list(Data) and is_list(Str) ->
+  printout(maps:from_list(Data),Str,Params).
 

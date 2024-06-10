@@ -2,6 +2,18 @@
 
 -file("basic_send_recv__ali_test.erl", 1).
 
+-define(SHOW_ENABLED, true).
+
+-define(SHOW(Str,Args,Data), 
+  case ?SHOW_ENABLED of
+    true -> printout(Data, ?SHOW_MONITORED++"~p, "++Str,[?FUNCTION_NAME]++Args);
+    _ -> ok
+  end).
+
+-define(DO_SHOW(Str,Args,Data), printout(Data, ?SHOW_MONITORED++"~p, "++Str,[?FUNCTION_NAME]++Args)).
+
+-define(SHOW_MONITORED, case ?MONITORED of true -> "(monitored) "; _ -> "" end).
+
 -define(MONITORED, false).
 
 -define(MONITOR_SPEC,
@@ -24,33 +36,53 @@ start_link(Args) -> stub_start_link(Args).
 
 %% @doc 
 init(Args) -> 
-  printout("~p, args:\n\t ~p.",[?FUNCTION_NAME,Args]),
-  stub_init(Args),self().
+  ?DO_SHOW("args:\n\t~p.",[Args],Args),
 
-%% @doc Adds default empty list for Data.
-%% @see run/2.
-run(CoParty) -> run(CoParty, []).
+  {ok,Data} = stub_init(Args),
+  ?DO_SHOW("data:\n\t~p.",[Data],Data),
 
-%% @doc Called immediately after a successful initialisation.
-%% Add any setup functionality here, such as for the contents of Data.
-%% @param CoParty is the process ID of the other party in this binary session.
-%% @param Data is a list to store data inside to be used throughout the program.
-run(CoParty, Data) -> printout("~p, CoParty: ~p.",[?FUNCTION_NAME,CoParty]),main(CoParty, Data). %% add any init/start preperations below, before entering main
+  CoParty = maps:get(coparty_id,Data),
+  SessionID = maps:get(session_id,Data),
+  
+  case (?MONITORED=:=true) of 
+    true -> 
+    %% add calls to specify behaviour of monitor here (?)
+    
+    ?DO_SHOW("finished setting options for monitor.",[],Data);
+    _ -> ok
+  end,
+
+  %% wait for signal from session
+  receive {SessionID, start} -> 
+    ?SHOW("received start signal from session.",[],Data),
+    % % run(CoPartyID, default_map()) 
+    % {ok, Data2}
+    run(CoParty, Data)
+  end.
+
+run(CoParty) -> run(CoParty, #{coparty_id => CoParty, timers => #{}, msgs => #{}}).
+
+run(CoParty, Data) -> 
+  ?DO_SHOW("Data:\n\t~p.\n",[Data],Data),
+  main(CoParty, Data).
 
 main(CoParty, Data) ->
     Data1 = Data,
     Payload_Msg1 = payload,
+    ?SHOW("sent msg1: ~p.",[Payload_Msg1],Data1),
     CoParty ! {self(), msg1, Payload_Msg1},
+    ?SHOW("waiting to recv msgA.",[],Data1),
     receive
         {CoParty, msgA, Payload_MsgA} ->
             Data2 = save_msg(msgA, Payload_MsgA, Data1),
+            ?SHOW("recv'd msgA: ~p.",[Payload_MsgA],Data2),
             stopping(CoParty, Data2)
     end.
 
-%% @doc Adds default reason 'normal' for stopping.
-%% @see stopping/3.
-stopping(CoParty, Data) -> printout("~p.",[?FUNCTION_NAME]), stopping(normal, CoParty, Data).
-
+stopping(CoParty, Data) -> 
+  ?SHOW("\nData:\t~p.",[Data],Data),
+  stopping(normal, CoParty, Data).
+  
 %% @doc Adds default reason 'normal' for stopping.
 %% @param Reason is either atom like 'normal' or tuple like {error, more_details_or_data}.
 stopping(normal = _Reason, _CoParty, _Data) -> exit(normal);

@@ -26,6 +26,6 @@ default_options(queue) ->
      aging => #{ enabled => false,
                  max_age => -1 } %% ignore local ages too
     };
-default_options(forward_receptions) -> #{ enabled => false, to => undefined, any => false, labels => [] };
+default_options(forward_receptions) -> #{ enabled => true, any => true, labels => [] };
 default_options(support_auto_label) -> #{ enabled => false }.
 
