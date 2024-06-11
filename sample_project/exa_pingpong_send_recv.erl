@@ -1,6 +1,6 @@
--module('basic_send_recv').
+-module(exa_pingpong_send_recv).
 
--file("basic_send_recv.erl", 1).
+-file("exa_pingpong_send_recv.erl", 1).
 
 %% @doc both the below used to determine whether a kind of log should be allowed to output to the terminal.
 -define(SHOW_ENABLED, true).
