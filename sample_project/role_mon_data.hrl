@@ -31,8 +31,9 @@ default_data() ->
      sus_init_id => undefined,
      sus_id => undefined,
      role => undefined,
-     name => undefined, 
+    %  name => undefined, 
      coparty_id => undefined, 
+     process_timers => #{},
      fsm => #{ init => undefined, %% initial state
                timeouts => #{}, %% outgoing silent edges from states
                timers => #{}, %% timers and maps to states they can trigger in and then lead to
@@ -49,14 +50,14 @@ default_data() ->
 
 
 default_options() -> 
-  #{ printout => default_options(printout),
+  #{ printout => default_options(printout)
     %  delayable_sends => default_options(delayable_sends),
     %  queue => default_options(queue),
     %  forward_receptions => default_options(forward_receptions),
     %  support_auto_label => default_options(support_auto_label) %% only relevant to sending actions
     }.
 
-default_options(printout) -> #{ enabled => true, verbose => false, termination => true };
+default_options(printout) -> #{ enabled => true, verbose => true, termination => true };
 
 default_options(delayable_sends) -> #{ enabled => false };
 default_options(queue) -> 

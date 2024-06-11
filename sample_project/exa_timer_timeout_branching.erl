@@ -81,6 +81,9 @@ init(Args) ->
     true -> 
     %% add calls to specify behaviour of monitor here (?)
     
+    %% set printout to be verbose
+    CoParty ! {self(), setup_options, {printout, #{enabled=>true,verbose=>true,termination=>true}}},
+    
     CoParty ! {self(), ready, finished_setup},
     ?VSHOW("finished setting options for monitor.",[],Data);
     _ -> ok

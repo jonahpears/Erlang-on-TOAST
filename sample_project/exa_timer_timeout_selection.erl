@@ -33,7 +33,7 @@
 %% @doc if true, process will be started with an inline monitor within the session.
 %% note: monitored processes use ?MONITOR_SPEC as a protocol specification for communication.
 %% @see function `stub_start_link/1` (in `stub.hrl`).
--define(MONITORED, false).
+-define(MONITORED, true).
 
 %% @doc protocol specification in FSM form, used by monitors.
 %% @see macro `?PROTOCOL_SPEC', from which this FSM map is derived.
@@ -80,6 +80,9 @@ init(Args) ->
   case (?MONITORED=:=true) of 
     true -> 
     %% add calls to specify behaviour of monitor here (?)
+
+    %% set printout to be verbose
+    CoParty ! {self(), setup_options, {printout, #{enabled=>true,verbose=>true,termination=>true}}},
     
     CoParty ! {self(), ready, finished_setup},
     ?VSHOW("finished setting options for monitor.",[],Data);

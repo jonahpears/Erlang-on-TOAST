@@ -39,7 +39,7 @@ this header file contains all of the helper-functions used by our stubs to seeml
 
 use the code below to *only* compile:
 ```erl
-c(exa_pingpong_recv_send), c(exa_pingpong_send_recv), c(toast_sup), c(toast_app).
+c(exa_pingpong_recv_send), c(exa_pingpong_send_recv), c(gen_monitor), c(toast_sup), c(toast_app).
 ```
 
 the code below will run the implementation using `toast_app` and `toast_sup`:
@@ -47,6 +47,7 @@ the code below will run the implementation using `toast_app` and `toast_sup`:
 c(exa_pingpong_recv_send), 
 c(exa_pingpong_send_recv), 
 c(toast_sup), c(toast_app), 
+c(gen_monitor),
 toast_app:start([
   {role, #{module=>exa_pingpong_recv_send,name=>rs_pong}},
   {role, #{module=>exa_pingpong_send_recv,name=>sr_ping}}]),
@@ -84,6 +85,7 @@ or, compile and run with the following command:
 c(exa_timer_timeout_selection), 
 c(exa_timer_timeout_branching), 
 c(toast_sup), c(toast_app), 
+c(gen_monitor),
 toast_app:start([
   {role, #{module=>exa_timer_timeout_selection,name=>selector}},
   {role, #{module=>exa_timer_timeout_branching,name=>brancher}}]),
@@ -96,6 +98,7 @@ toast_app:run().
 c(exa_timer_timeout_selection), 
 c(exa_timer_timeout_branching), 
 c(toast_sup), c(toast_app), 
+c(gen_monitor),
 toast_app:start([
   {role, #{module=>exa_timer_timeout_branching,name=>brancher}},
   {role, #{module=>exa_timer_timeout_selection,name=>selector}}]),

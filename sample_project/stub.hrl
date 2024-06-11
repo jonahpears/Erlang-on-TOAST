@@ -53,12 +53,12 @@ stub_start_link(Args) when ?MONITORED=:=true ->
   Name = maps:get(name, maps:get(role, Params)),
   MonitorName = list_to_atom("mon_"++atom_to_list(Name)),
 
-  MonitorArgs = maps:to_list(Params),
+  MonitorArgs = maps:to_list(maps:put(role,maps:put(name,MonitorName,maps:get(role,Params)),Params)),
 
   PID = self(),
 
   %% spawn monitor within same node 
-  MonitorID = erlang:spawn_link(node(), gen_monitor, start_link, [MonitorArgs++[{fsm,MonitorSpec},{name,MonitorName},{sus_init_id, PID},{sus_id, erlang:spawn_link(?MODULE, init, [Args++[{sus_init_id, PID}, {name, Name}]])}]]),
+  MonitorID = erlang:spawn_link(node(), gen_monitor, start_link, [MonitorArgs++[{fsm,MonitorSpec},{sus_init_id, PID},{sus_id, erlang:spawn_link(?MODULE, init, [Args++[{sus_init_id, PID}]])}]]),
 
   ?SHOW("MonitorID: ~p.",[MonitorID],Params),
   {ok, MonitorID};
@@ -146,10 +146,10 @@ default_map() -> #{timers=>maps:new(),msgs=>maps:new(),coparty_id=>undefined}.
 %% if the timer is already set, then the timer is reset.
 %% similar to the other definitions of `set_timer`, except goes via the monitor.
 set_timer(Name, Duration, #{coparty_id:=CoParty,timers:=Timers}=Data) when ?MONITORED=:=true -> 
-  %% pass request to monitor (via coparty)
-  % CoParty ! {self(), set_timer, {Name, Duration, Data}}
   ?VSHOW("about to call (~p).",[CoParty],Data),
-  Timers1 = gen_statem:call(CoParty,{set_timer, {Name, Duration, Timers}}),
+  %% call monitor synchronously to do this
+  %% monitor returns their updated copy of timer map.
+  Timers1 = gen_statem:call(CoParty,{set_timer, {Name, Duration}}),
   ?VSHOW("received response from (~p),\nold timers:\t~p,\nnew timers:\t~p.",[CoParty,Timers,Timers1],Data),
   %% return with updated timers
   maps:put(timers,Timers1,Data);
