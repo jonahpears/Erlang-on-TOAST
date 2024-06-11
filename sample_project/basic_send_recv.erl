@@ -1,21 +1,42 @@
--module('basic_send_recv__ali_test').
+-module('basic_send_recv').
 
--file("basic_send_recv__ali_test.erl", 1).
+-file("basic_send_recv.erl", 1).
 
+%% @doc both the below used to determine whether a kind of log should be allowed to output to the terminal.
 -define(SHOW_ENABLED, true).
+-define(SHOW_VERBOSE, ?SHOW_ENABLED and true).
 
+%% @doc macro for showing output to terminal, enabled only when ?SHOW_ENABLED is true.
+%% also shows whether this is coming from a monitored process.
+%% @see function `printout/3`.
 -define(SHOW(Str,Args,Data), 
   case ?SHOW_ENABLED of
     true -> printout(Data, ?SHOW_MONITORED++"~p, "++Str,[?FUNCTION_NAME]++Args);
     _ -> ok
   end).
 
+%% @doc similar to ?SHOW, but for outputs marked as verbose, using ?SHOW_VERBOSE.
+%% @see macro `?SHOW`.
+-define(VSHOW(Str,Args,Data), 
+  case ?SHOW_VERBOSE of
+    true -> printout(Data, ?SHOW_MONITORED++"~p, "++Str,[?FUNCTION_NAME]++Args);
+    _ -> ok
+  end).
+
+%% @doc an override to output to terminal, regardless of ?SHOW_ENABLED.
+%% @see macro `?SHOW`.
 -define(DO_SHOW(Str,Args,Data), printout(Data, ?SHOW_MONITORED++"~p, "++Str,[?FUNCTION_NAME]++Args)).
 
+%% @doc macro used in ?SHOW (and derived) for signalling if the process is monitored or not.
 -define(SHOW_MONITORED, case ?MONITORED of true -> "(monitored) "; _ -> "" end).
 
+%% @doc if true, process will be started with an inline monitor within the session.
+%% note: monitored processes use ?MONITOR_SPEC as a protocol specification for communication.
+%% @see function `stub_start_link/1` (in `stub.hrl`).
 -define(MONITORED, false).
 
+%% @doc protocol specification in FSM form, used by monitors.
+%% @see macro `?PROTOCOL_SPEC', from which this FSM map is derived.
 -define(MONITOR_SPEC,
         #{init => state1_std, 
           map =>  #{state1_std => #{send => #{msg1 => state2_std}}, 
@@ -23,6 +44,10 @@
           timeouts => #{},
           resets => #{}, 
           timers => #{}}).
+
+%% @doc original input protocol specification used to generate this stub, and derive the FSM map used by monitors (when enabled).
+%% protocol language used is a subset of TOAST. 
+-define(PROTOCOL_SPEC, {act, s_msg1, {act, r_msgA, endP}}).
 
 -export([run/1,run/2,stopping/2,start_link/0,start_link/1,init/1]).
 

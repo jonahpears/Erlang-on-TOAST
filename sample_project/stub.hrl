@@ -176,7 +176,8 @@ stub_init(Args) when ?MONITORED=:=true ->
   % end;
 %%
 
-%% @doc 
+%% @doc init function for unmonitored process.
+%% 
 stub_init(Args) ->
   Params = maps:from_list(Args),
   ?SHOW("Params:\n\t~p.",[Params],Params),
