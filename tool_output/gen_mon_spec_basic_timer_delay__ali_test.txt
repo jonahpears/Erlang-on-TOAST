@@ -1,6 +1,0 @@
-#{init => state2_std,
-  map =>
-      #{state2_std => #{send => #{before_t => state3_unexpected_delay_state}},
-        state4_std => #{send => #{after_t => stop_state}}},
-  timeouts => #{state3_unexpected_delay_state => {t,state4_std}},
-  resets => #{init_state => #{t => 5000}}}.

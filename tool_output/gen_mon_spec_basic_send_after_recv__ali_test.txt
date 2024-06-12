@@ -1,6 +1,0 @@
-#{init => state1_send_after,
-  map =>
-      #{state5_std => #{recv => #{after_5s => stop_state}},
-        state1_send_after => #{send => #{before_5s => stop_state}}},
-  timeouts => #{state1_send_after => {5000,state5_std}},
-  resets => #{}}.

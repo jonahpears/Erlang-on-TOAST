@@ -1,3 +1,0 @@
-#{init => state1_std,
-  map => #{state1_std => #{recv => #{msg1 => stop_state}}},
-  timeouts => #{},resets => #{}}.

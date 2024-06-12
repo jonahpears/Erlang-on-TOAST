@@ -1,4 +1,0 @@
-#{init => state1_send_after,
-  map => #{state1_send_after => #{send => #{msg => stop_state}}},
-  timeouts => #{state1_send_after => {50,error_state}},
-  resets => #{}}.

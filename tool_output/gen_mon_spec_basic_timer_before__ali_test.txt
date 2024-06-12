@@ -1,4 +1,0 @@
-#{init => state2_std,
-  map => #{state2_std => #{send => #{after_t => stop_state}}},
-  timeouts => #{},
-  resets => #{init_state => #{t => 5000}}}.

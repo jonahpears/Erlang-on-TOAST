@@ -136,15 +136,94 @@ gentest(implemented) ->
 %% TODO::  - ideally, just use callback function in main, and leave function as it is 
 %% TODO::  - however, still some issues in the function scope, in all except standard recursive states
 gentest(tests) -> 
+  %% basic actions
+  gen_stub:gen(ali,spec,basic_recv,"test.erl"),
+  gen_stub:gen(ali,spec,basic_send,"test.erl"),
+  gen_stub:gen(ali,spec,basic_send_recv,"test.erl"),
+  gen_stub:gen(ali,spec,basic_recv_send,"test.erl"),
+
+  %% basic loops
+  gen_stub:gen(ali,spec,basic_send_loop,"test.erl"),
+  gen_stub:gen(ali,spec,basic_recv_loop,"test.erl"),
+  gen_stub:gen(ali,spec,basic_send_recv_loop,"test.erl"),
+  gen_stub:gen(ali,spec,basic_recv_send_loop,"test.erl"),
+
+  %% basic timers
+  gen_stub:gen(ali,spec,basic_timer_before,"test.erl"),
+  gen_stub:gen(ali,spec,basic_timer_after,"test.erl"),
+
+  %% basic delays
+  gen_stub:gen(ali,spec,basic_delay,"test.erl"),
+  gen_stub:gen(ali,spec,basic_timer_delay,"test.erl"),
+
+  %% basic timeouts
+  gen_stub:gen(ali,spec,basic_recv_after_send,"test.erl"),
+  gen_stub:gen(ali,spec,basic_recv_after_recv,"test.erl"),
+  gen_stub:gen(ali,spec,basic_recv_after_timer_send,"test.erl"),
+  gen_stub:gen(ali,spec,basic_recv_after_timer_recv,"test.erl"),
+
+  %% basic co-timeouts
+  gen_stub:gen(ali,spec,basic_send_after_send,"test.erl"),
+  gen_stub:gen(ali,spec,basic_send_after_recv,"test.erl"),
+  gen_stub:gen(ali,spec,basic_send_after_timer_send,"test.erl"),
+  gen_stub:gen(ali,spec,basic_send_after_timer_recv,"test.erl"),
+
+  %% basic choices
+  gen_stub:gen(ali,spec,basic_branch,"test.erl"),
+  gen_stub:gen(ali,spec,basic_select,"test.erl"),
+
+  %% advanced timeouts
+  gen_stub:gen(ali,spec,basic_branch_after_send,"test.erl"),
+  gen_stub:gen(ali,spec,basic_branch_after_recv,"test.erl"),
+  gen_stub:gen(ali,spec,basic_branch_after_timer_send,"test.erl"),
+  gen_stub:gen(ali,spec,basic_branch_after_timer_recv,"test.erl"),
+
+  %% advanced co-timeouts
+  gen_stub:gen(ali,spec,basic_select_after_send,"test.erl"),
+  gen_stub:gen(ali,spec,basic_select_after_recv,"test.erl"),
+  gen_stub:gen(ali,spec,basic_select_after_timer_send,"test.erl"),
+  gen_stub:gen(ali,spec,basic_select_after_timer_recv,"test.erl"),
+
+  %% basic if-statements
+  gen_stub:gen(ali,spec,basic_if_then,"test.erl"),
+  gen_stub:gen(ali,spec,basic_if_not_then,"test.erl"),
+  gen_stub:gen(ali,spec,basic_if_then_else,"test.erl"),
+  gen_stub:gen(ali,spec,basic_if_not_then_else,"test.erl"),
+
+  %% basic if-statement loops
+  gen_stub:gen(ali,spec,basic_if_then_loop,"test.erl"),
+  gen_stub:gen(ali,spec,basic_if_not_then_loop,"test.erl"),
+  gen_stub:gen(ali,spec,basic_if_then_else_loop,"test.erl"),
+  gen_stub:gen(ali,spec,basic_if_not_then_else_loop,"test.erl"),
+
+  %% advanced mixed-choice
+  gen_stub:gen(ali,spec,advanced_mixed_choice_send_first,"test.erl"),
+  gen_stub:gen(ali,spec,advanced_mixed_choice_recv_first,"test.erl"),
+  gen_stub:gen(ali,spec,advanced_mixed_choice_select_first,"test.erl"),
+  gen_stub:gen(ali,spec,advanced_mixed_choice_branch_first,"test.erl"),
+
+  %% advanced mixed-choice loops
+  gen_stub:gen(ali,spec,advanced_mixed_choice_send_first_loop,"test.erl"),
+  gen_stub:gen(ali,spec,advanced_mixed_choice_recv_first_loop,"test.erl"),
+  gen_stub:gen(ali,spec,advanced_mixed_choice_select_first_loop,"test.erl"),
+  gen_stub:gen(ali,spec,advanced_mixed_choice_branch_first_loop,"test.erl"),
+
+
+
+
+
+
+
+
   %% tests for the spec extractor
   % ok=gentest(basic_delays),
   % ok=gentest(basic_timeouts),
   % ok=gentest(basic_cotimeouts),
 
 
-  %% tests for the stub generator
-  gen_stub:gen(ali,spec,basic_if_then_else_loop,"_ali_test.erl"),%% TODO:: fix as above
-  ok=gentest(advanced_mixed_choice_loops),%% TODO:: fix as above
+  % %% tests for the stub generator
+  % gen_stub:gen(ali,spec,basic_if_then_else_loop,"_ali_test.erl"),%% TODO:: fix as above
+  % ok=gentest(advanced_mixed_choice_loops),%% TODO:: fix as above
   ok;
 
 gentest(all) -> 

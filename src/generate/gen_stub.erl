@@ -77,6 +77,25 @@ build_monitor_spec(Fsm,FileName) ->
 %% @doc Takes Fsm, returns list for Forms
 build_module_forms(Protocol, Fsm, ModuleName,MonitorSpec) -> 
   
+  %% create basic form for module
+  Form = merl_build:init_module(ModuleName),
+
+  % ?SHOW("Form: ~p.",[Form]),
+
+  Forms =  merl_build:add_attribute(define,  [merl:var('MONITORED'),               merl:var('false')], Form),
+  Forms1 = merl_build:add_attribute(define,  [merl:var('SHOW_MONITORED'),          merl:term('case ?MONITORED of true -> "(monitored) "; _ -> "" end')], Forms),
+  Forms2 = merl_build:add_attribute(define,  [merl:var('SHOW_ENABLED'),            merl:var('true')], Forms1),
+  Forms3 = merl_build:add_attribute(define,  [merl:term('SHOW(Str, Args, Data)'),  merl:term('case ?SHOW_ENABLED of true -> printout(Data, ?SHOW_MONITORED++"~p, "++Str, [?FUNCTION_NAME]++Args); _ -> ok end')], Forms2),
+  Forms4 = merl_build:add_attribute(define,  [merl:var('SHOW_VERBOSE'),            merl:term('?SHOW_ENABLED and true')], Forms3),
+  Forms5 = merl_build:add_attribute(define,  [merl:term('VSHOW(Str, Args, Data)'), merl:term('case ?SHOW_VERBOSE of true -> printout(Data, ?SHOW_MONITORED++"(verbose) ~p, "++Str, [?FUNCTION_NAME]++Args); _ -> ok end')], Forms4),
+  Forms6 = merl_build:add_attribute(define,  [merl:var('MONITOR_SPEC'),            merl:term(MonitorSpec)], Forms5),
+  Forms7 = merl_build:add_attribute(define,  [merl:var('PROTOCOL_SPEC'),           merl:term(Protocol)], Forms6),
+  Forms8 = merl_build:add_attribute(include, [merl:term("stub.hrl")],Forms7),
+
+  MainForms = Forms8,
+
+  ?SHOW("\nForms:\t~p.",[MainForms]),
+
   %% fsm is composed of list of edges and map of states to edges.
   %% mixed-states have both sending and receiving actions/edges.
   %% states are not mixed.
@@ -86,46 +105,18 @@ build_module_forms(Protocol, Fsm, ModuleName,MonitorSpec) ->
   %% for each state, generate corresponding snippet
   % StateFuns = maps:fold(fun(K, V, AccIn) -> AccIn ++ [state_fun(K, V, Edges, States, RecMap)] end, [], States),
   Funs = build_funs(Edges, States, RecMap, ModuleName),
-
   % ?SHOW("funs: \n~p.", [Funs]),
-
-  %% get edges of communication
-  _ActionEdges = lists:filter(fun(Edge) -> (Edge#edge.edge_data#edge_data.trans_type==action) and ((not Edge#edge.is_silent) and (not Edge#edge.is_custom_end)) end, Edges),
-
-  %% for each edge, generate corresponding snippet.
-  %% function edge_fun 
-  % _EdgeFuns = lists:foldl(fun(Edge, AccIn) -> AccIn ++ [edge_fun(Edge, ?MOD)] end, [], ActionEdges),
-
-  %% create basic form for module
-  Form = merl_build:init_module(ModuleName),
-
-  % ?SHOW("Form: ~p.",[Form]),
-
-  Forms = merl_build:add_attribute(define, [merl:var('MONITORED'), merl:var('false')], Form),
-
-  Forms1 = merl_build:add_attribute(define, [merl:var('MONITOR_SPEC'),merl:term(MonitorSpec)],Forms),
-  
-  Forms2 = merl_build:add_attribute(define, [merl:var('PROTOCOL_SPEC'),merl:term(Protocol)],Forms1),
-
-  Forms3 = merl_build:add_attribute(include, [merl:term("stub.hrl")],Forms2),
-
-  %% export function found in stub.hrl
-
-  MainForms = Forms3,
-
-  ?SHOW("\nForms:\n\t~p.",[MainForms]),
 
   %% add the functions to the module
   AddFuns = fun({Exported, Name, Clauses}=_Fun, AccForm) -> 
     % ?SHOW("AddFun:\n\t~p.",[_Fun]),
     _F = merl_build:add_function(Exported, Name, Clauses, AccForm), 
     % ?SHOW("Returning:\n\t~p.",[_F]), 
-    _F end,
-  _ModuleForm = merl_build:module_forms(lists:foldl(AddFuns, MainForms, Funs)),
-  % ?SHOW("_ModuleForm:\n\t~p.", [_ModuleForm]),
-  _ModuleForm.
-  %% return module (list of forms)
-  % {ok, ModuleForm}.
+    _F 
+  end,
+  ModuleForm = merl_build:module_forms(lists:foldl(AddFuns, MainForms, Funs)),
+  ?VSHOW("ModuleForm:\n\t~p.", [ModuleForm]),
+  ModuleForm.
 %%
 
 %% TODO go through each state, add their actions as clauses to the current "scope_fun" IFF they are not in the recmap. otherwise, start a new "scope_fun" that is called at the appropriate time
@@ -190,84 +181,11 @@ build_state_fun(Edges, States, RecMap, StateID, {Scope,ScopeID},ModuleName) ->
 
   % ?SHOW("_StateFuns:\n\t~p.",[_StateFuns]),
 
-  % StateFuns = lists:foldl(WrapClauses, [], _StateFuns),
-
   %% add all of the empty stubs
   StateFuns = lists:foldl(fun(FunName, AccIn) ->
     AccIn++[{false,FunName,[?Q(["(Data) -> extend_with_functionality"])]}]
   end, _StateFuns, EmptyFuns),
 
-  ?SHOW("StateFuns:\n\t~p.",[StateFuns]),
+  ?VSHOW("StateFuns:\n\t~p.",[StateFuns]),
 
   StateFuns.
-
-  
-  % %% make each clause of each function ?Q
-  % WrapClause = fun(Clause, AccClauses) -> 
-  %   % ?SHOW("WrapClause:\n\t~p.",[Clause]),
-  %   %% check if ?Q returns list already (if comments are present, then 1st elem is clauses and 2nd is comments)
-  %   QClause=?Q(Clause),
-  %   if 
-  %     is_list(QClause) -> _AccClauses = AccClauses++[lists:nth(1,QClause)],
-  %     ?SHOW("QClause, removed comments from clauses to avoid issues:\n\t~p.",[lists:nthtail(1,QClause)]);
-  %     is_tuple(QClause) -> _AccClauses = AccClauses++[QClause];
-  %     true -> 
-  %       ?SHOW("QClause, unexpected return: (not list or tuple):\n\t~p.",[QClause]), 
-  %     _AccClauses= AccClauses++[QClause]
-  %   end,
-  %   % ?SHOW("_AccClauses:\n\t~p.",[_AccClauses]),
-  %   _AccClauses
-  % end,
-  % WrapClauses = fun({Exported, FunName, Clauses}, AccFuns) -> 
-  %   % ?GAP(),?SHOW("WrapClauses.",[]),
-  %   _AccFuns = AccFuns++[{Exported,FunName,lists:foldl(WrapClause, [], Clauses)}], 
-  %   % ?SHOW("_AccFuns:\n\t~p.",[_AccFuns]),
-  %   _AccFuns
-  % end,
-
-
-  % %% if non-standard state, then get special snippet
-  % case State of
-  %   init_state -> %% get snippet, go to next
-  %     {Signal, SpecialFuns, NextState} = gen_snippets:special_state(State, StateID, Edges),
-  %     case Signal of
-  %       next_state -> %% e.g.: state=:=init_state
-  %         {NextStateID, NextStateFunName} = NextState,
-  %         NextFuns = build_state_fun(Edges,States,RecMap,NextStateID,{NextStateFunName,-1}),
-  %         % ?SHOW("NextFuns: ~p.",[NextFuns]),
-  %         Funs = SpecialFuns++NextFuns;
-  %       none -> %% e.g.: state=:=custom_end_state
-  %         Funs = SpecialFuns;
-  %       _ -> %% unknown/other
-  %         Funs = SpecialFuns
-  %       end;
-  %   custom_end_state -> %% return nothing
-  %     Funs = gen_snippets:state(State, StateID, {main,-1}, Edges, States, RecMap);
-  %   _ -> %% normal state, build snippets,
-  %     StateFuns = gen_snippets:state(State, StateID, {Scope,ScopeID}, Edges, States, RecMap),
-  %     %% make each clause of each function ?Q
-  %     WrapClause = fun(Clause, AccClauses) -> 
-  %         % ?SHOW("WrapClause:\n\t~p.",[Clause]),
-  %         %% check if ?Q returns list already (if comments are present, then 1st elem is clauses and 2nd is comments)
-  %         QClause=?Q(Clause),
-  %         if 
-  %           is_list(QClause) -> _AccClauses = AccClauses++[lists:nth(1,QClause)],
-  %           ?SHOW("QClause, removed comments from clauses to avoid issues:\n\t~p.",[lists:nthtail(1,QClause)]);
-  %           is_tuple(QClause) -> _AccClauses = AccClauses++[QClause];
-  %           true -> 
-  %             ?SHOW("QClause, unexpected return: (not list or tuple):\n\t~p.",[QClause]), 
-  %           _AccClauses= AccClauses++[QClause]
-  %         end,
-  %         % ?SHOW("_AccClauses:\n\t~p.",[_AccClauses]),
-  %         _AccClauses
-  %       end,
-  %     WrapClauses = fun({Exported, FunName, Clauses}, AccFuns) -> 
-  %         % ?GAP(),?SHOW("WrapClauses.",[]),
-  %         _AccFuns = AccFuns++[{Exported,FunName,lists:foldl(WrapClause, [], Clauses)}], 
-  %         % ?SHOW("_AccFuns:\n\t~p.",[_AccFuns]),
-  %         _AccFuns
-  %       end,
-  %     Funs = lists:foldl(WrapClauses, [], StateFuns)
-  % end,
-  %% funs contains list of [{true, FunName, FunClauses}, ...]
-  % Funs.
