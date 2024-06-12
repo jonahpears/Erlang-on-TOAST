@@ -3,4 +3,4 @@
       #{state1_branch_after =>
             #{recv => #{act_msgA => stop_state,act_msgB => stop_state}}},
   timeouts => #{state1_branch_after => {50,error_state}},
-  resets => #{},timers => #{}}.
+  resets => #{}}.

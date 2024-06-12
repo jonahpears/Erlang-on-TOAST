@@ -6,7 +6,7 @@
 
 -define(MONITOR_SPEC,
         #{init => state2_if_else, map => #{state3_std => #{send => #{finished => stop_state}}, state6_std => #{send => #{data => stop_state}}}, timeouts => #{},
-          resets => #{init_state => #{t => 5000}}, timers => #{}}).
+          resets => #{init_state => #{t => 5000}}}).
 
 -define(PROTOCOL_SPEC, {timer, "t", 5000, {if_not_timer, "t", {act, s_finished, endP}, else, {act, s_data, endP}}}).
 

@@ -7,4 +7,4 @@
             #{send =>
                   #{msgA => state2_std,msgB => state5_std,
                     msgC => state7_std}}},
-  timeouts => #{},resets => #{},timers => #{}}.
+  timeouts => #{},resets => #{}}.

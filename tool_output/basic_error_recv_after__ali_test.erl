@@ -6,7 +6,7 @@
 
 -define(MONITOR_SPEC,
         #{init => state1_recv_after, map => #{state1_recv_after => #{recv => #{msg => stop_state}}}, timeouts => #{state1_recv_after => {50, error_state}},
-          resets => #{}, timers => #{}}).
+          resets => #{}}).
 
 -define(PROTOCOL_SPEC, {act, r_msg, endP, aft, 50, error}).
 

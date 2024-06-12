@@ -5,9 +5,8 @@
         state9_send_after =>
             #{send => #{second => state1_unexpected_timer_start_state}},
         state12_std => #{recv => #{third => state12_std}}},
-  timeouts => #{state2_recv_after => {3000,state9_send_after}},
-  resets => #{init_state => #{t1 => 5000}},
-  timers =>
-      #{t1 =>
-            #{state3_send_after => error_state,
-              state9_send_after => standard_state}}}.
+  timeouts =>
+      #{state2_recv_after => {3000,state9_send_after},
+        state3_send_after => {t1,error_state},
+        state9_send_after => {t1,state12_std}},
+  resets => #{init_state => #{t1 => 5000}}}.

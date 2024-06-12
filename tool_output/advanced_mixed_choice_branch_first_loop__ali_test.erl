@@ -14,12 +14,10 @@
                 state14_branch_after => #{recv => #{seventh => state15_send_after, nine => stop_state}},
                 state15_send_after => #{send => #{eighth => state2_branch_after}},
                 state21_select_after => #{send => #{ten => state14_branch_after, eleven => stop_state}}, state24_std => #{recv => #{twleve => stop_state}}},
-          timeouts => #{state2_branch_after => {3000, state10_select_after}, state14_branch_after => {3000, state21_select_after}},
-          resets => #{init_state => #{t1 => 5000}},
-          timers =>
-              #{t1 =>
-                    #{state3_send_after => error_state, state10_select_after => standard_state, state15_send_after => error_state,
-                      state21_select_after => standard_state}}}).
+          timeouts =>
+              #{state2_branch_after => {3000, state10_select_after}, state3_send_after => {t1, error_state}, state10_select_after => {t1, state13_std},
+                state14_branch_after => {3000, state21_select_after}, state15_send_after => {t1, error_state}, state21_select_after => {t1, state24_std}},
+          resets => #{init_state => #{t1 => 5000}}}).
 
 -define(PROTOCOL_SPEC,
         {timer,

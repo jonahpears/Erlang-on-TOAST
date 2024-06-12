@@ -6,8 +6,8 @@
 
 -define(MONITOR_SPEC,
         #{init => state2_std,
-          map => #{state2_std => #{send => #{before_t => state3_unexpected_delay_state}}, state4_std => #{send => #{after_t => stop_state}}}, timeouts => #{},
-          resets => #{init_state => #{t => 5000}}, timers => #{t => #{state3_unexpected_delay_state => standard_state}}}).
+          map => #{state2_std => #{send => #{before_t => state3_unexpected_delay_state}}, state4_std => #{send => #{after_t => stop_state}}},
+          timeouts => #{state3_unexpected_delay_state => {t, state4_std}}, resets => #{init_state => #{t => 5000}}}).
 
 -define(PROTOCOL_SPEC, {timer, "t", 5000, {act, s_before_t, {delay, "t", {act, s_after_t, endP}}}}).
 

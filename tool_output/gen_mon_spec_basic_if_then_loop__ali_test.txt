@@ -1,5 +1,4 @@
 #{init => state2_if_else,
   map => #{state3_std => #{send => #{finished => state2_if_else}}},
   timeouts => #{},
-  resets => #{init_state => #{t => 5000}},
-  timers => #{}}.
+  resets => #{init_state => #{t => 5000}}}.

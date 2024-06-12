@@ -8,6 +8,5 @@
             #{send =>
                   #{msgA => state3_std,msgB => state6_std,
                     msgC => state8_std}}},
-  timeouts => #{},
-  resets => #{init_state => #{t => 5000}},
-  timers => #{t => #{state2_select_after => standard_state}}}.
+  timeouts => #{state2_select_after => {t,state10_std}},
+  resets => #{init_state => #{t => 5000}}}.

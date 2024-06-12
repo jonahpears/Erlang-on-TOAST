@@ -6,7 +6,7 @@
 
 -define(MONITOR_SPEC,
         #{init => state1_unexpected_branch_state, map => #{state1_unexpected_branch_state => #{recv => #{act_msgA => stop_state, act_msgB => error_state}}},
-          timeouts => #{}, resets => #{}, timers => #{}}).
+          timeouts => #{}, resets => #{}}).
 
 -define(PROTOCOL_SPEC, {branch, [{msgA, endP}, {msgB, error}]}).
 

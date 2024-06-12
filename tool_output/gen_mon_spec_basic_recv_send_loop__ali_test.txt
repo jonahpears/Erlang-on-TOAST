@@ -2,4 +2,4 @@
   map =>
       #{state1_std => #{recv => #{msg1 => state2_std}},
         state2_std => #{send => #{msgA => state2_std}}},
-  timeouts => #{},resets => #{},timers => #{}}.
+  timeouts => #{},resets => #{}}.

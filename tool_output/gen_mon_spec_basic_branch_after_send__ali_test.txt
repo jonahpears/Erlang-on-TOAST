@@ -8,4 +8,4 @@
                   #{msg1 => state2_std,msg2 => state5_std,msg3 => state7_std}},
         state9_std => #{send => #{timeout => stop_state}}},
   timeouts => #{state1_branch_after => {5000,state9_std}},
-  resets => #{},timers => #{}}.
+  resets => #{}}.

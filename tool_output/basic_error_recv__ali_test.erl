@@ -4,7 +4,7 @@
 
 -define(MONITORED, false).
 
--define(MONITOR_SPEC, #{init => state1_std, map => #{state1_std => #{recv => #{msg => error_state}}}, timeouts => #{}, resets => #{}, timers => #{}}).
+-define(MONITOR_SPEC, #{init => state1_std, map => #{state1_std => #{recv => #{msg => error_state}}}, timeouts => #{}, resets => #{}}).
 
 -define(PROTOCOL_SPEC, {act, r_msg, error}).
 

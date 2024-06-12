@@ -6,7 +6,7 @@
 
 -define(MONITOR_SPEC,
         #{init => state1_select_after, map => #{state1_select_after => #{send => #{act_msgA => stop_state, act_msgB => stop_state}}},
-          timeouts => #{state1_select_after => {50, error_state}}, resets => #{}, timers => #{}}).
+          timeouts => #{state1_select_after => {50, error_state}}, resets => #{}}).
 
 -define(PROTOCOL_SPEC, {select, [{msgA, endP}, {msgB, endP}], aft, 50, error}).
 

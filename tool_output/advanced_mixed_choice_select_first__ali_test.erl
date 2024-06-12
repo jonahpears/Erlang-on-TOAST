@@ -9,8 +9,8 @@
           map =>
               #{state2_select_after => #{send => #{first => state3_recv_after, third => stop_state}}, state3_recv_after => #{recv => #{second => stop_state}},
                 state12_std => #{send => #{sixth => stop_state}}, state9_branch_after => #{recv => #{fourth => stop_state, fifth => stop_state}}},
-          timeouts => #{state2_select_after => {3000, state9_branch_after}}, resets => #{init_state => #{t1 => 5000}},
-          timers => #{t1 => #{state3_recv_after => error_state, state9_branch_after => standard_state}}}).
+          timeouts => #{state2_select_after => {3000, state9_branch_after}, state3_recv_after => {t1, error_state}, state9_branch_after => {t1, state12_std}},
+          resets => #{init_state => #{t1 => 5000}}}).
 
 -define(PROTOCOL_SPEC,
         {timer,

@@ -10,7 +10,7 @@
               #{state3_std => #{recv => #{msg1 => stop_state}}, state6_std => #{recv => #{msg2 => stop_state}}, state8_std => #{recv => #{msg3 => stop_state}},
                 state10_std => #{recv => #{timeout => stop_state}},
                 state2_select_after => #{send => #{msgA => state3_std, msgB => state6_std, msgC => state8_std}}},
-          timeouts => #{}, resets => #{init_state => #{t => 5000}}, timers => #{t => #{state2_select_after => standard_state}}}).
+          timeouts => #{state2_select_after => {t, state10_std}}, resets => #{init_state => #{t => 5000}}}).
 
 -define(PROTOCOL_SPEC,
         {timer,

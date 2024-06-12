@@ -20,7 +20,6 @@ to_monitor_spec(Fsm) ->
   InitState = state_name(maps:get(0,States),0),
   InitSpec = #{ init => InitState,
                 timeouts => #{},
-                timers => #{},
                 resets => #{},
                 map => #{} },
 
@@ -248,10 +247,11 @@ edge_spec(#{to:=To,is_silent:=true,is_timeout:=true,edge_data:=#{timeout:=#{ref:
   StateName = state_name(State, StateID),
   %% update with this edge
   %% update with this edge
-  NewSpec = case is_integer(Timeout) of
-    true -> add_to_timeouts(StateName,Timeout,ToStateName,Spec);
-    _ -> add_to_timers(StateName,Timeout,ToState,Spec)
-  end,
+  % NewSpec = case is_integer(Timeout) of
+  %   true -> add_to_timeouts(StateName,Timeout,ToStateName,Spec);
+  %   _ -> add_to_timers(StateName,Timeout,ToState,Spec)
+  % end,
+  NewSpec = add_to_timeouts(StateName,Timeout,ToStateName,Spec),
   % ?GAP(),?SHOW("\n(~p:~p)\nSpec:\n\t~p,\nNewSpec:\n\t~p,\nStates:\n\t~p.\n",[StateID,State,Spec,NewSpec,States]),
   %% return new spec
   % {NewSpec, undefined};
@@ -269,10 +269,11 @@ edge_spec(#{to:=To,is_silent:=true,is_delay:=true,edge_data:=#{delay:=#{ref:=Del
   
   StateName = state_name(State, StateID),
   %% update with this edge
-  NewSpec = case is_integer(Delay) of
-    true -> add_to_timeouts(StateName,Delay,ToStateName,Spec);
-    _ -> add_to_timers(StateName,Delay,ToState,Spec)
-  end,
+  % NewSpec = case is_integer(Delay) of
+  %   true -> add_to_timeouts(StateName,Delay,ToStateName,Spec);
+  %   _ -> add_to_timers(StateName,Delay,ToState,Spec)
+  % end,
+  NewSpec = add_to_timeouts(StateName,Delay,ToStateName,Spec),
   % ?GAP(),?SHOW("\n(~p:~p)\nSpec:\n\t~p,\nNewSpec:\n\t~p,\nStates:\n\t~p.\n",[StateID,State,Spec,NewSpec,States]),
   %% return new spec
   % {NewSpec, undefined};
@@ -345,26 +346,26 @@ when is_list(Ref) ->
   add_to_timeouts(StateName,list_to_atom(Ref),ToState,Spec).
 %%
 
-%% @doc adds to timer map a transition from StateName and ToState
-%% note: make sure to name the State before this function
-add_to_timers(StateName,Timer,ToState,Spec)
-when is_atom(Timer) ->
-  %% get timers 
-  OldTimers = maps:get(timers, Spec),
-  OldTimerMap = maps:get(Timer, OldTimers, #{}),
-  %% make sure StateName does not already have trigger for this Timer
-  ?assert(not is_map_key(StateName,OldTimerMap)),
-  %% add 
-  NewTimerMap = maps:put(StateName, ToState, OldTimerMap),
-  NewTimers = maps:put(Timer, NewTimerMap, OldTimers),
-  %% return updated map
-  maps:put(timers, NewTimers, Spec);
-%%
+% %% @doc adds to timer map a transition from StateName and ToState
+% %% note: make sure to name the State before this function
+% add_to_timers(StateName,Timer,ToState,Spec)
+% when is_atom(Timer) ->
+%   %% get timers 
+%   OldTimers = maps:get(timers, Spec),
+%   OldTimerMap = maps:get(Timer, OldTimers, #{}),
+%   %% make sure StateName does not already have trigger for this Timer
+%   ?assert(not is_map_key(StateName,OldTimerMap)),
+%   %% add 
+%   NewTimerMap = maps:put(StateName, ToState, OldTimerMap),
+%   NewTimers = maps:put(Timer, NewTimerMap, OldTimers),
+%   %% return updated map
+%   maps:put(timers, NewTimers, Spec);
+% %%
 
-add_to_timers(StateName,Timer,ToState,Spec) 
-when is_list(Timer) ->
-  add_to_timers(StateName,list_to_atom(Timer),ToState,Spec).
-%%
+% add_to_timers(StateName,Timer,ToState,Spec) 
+% when is_list(Timer) ->
+%   add_to_timers(StateName,list_to_atom(Timer),ToState,Spec).
+% %%
 
 %% @doc adds timer set to map for State Name
 %% note: make sure to name the State before this function

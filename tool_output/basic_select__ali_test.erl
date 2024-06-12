@@ -9,7 +9,7 @@
           map =>
               #{state2_std => #{recv => #{msg1 => stop_state}}, state5_std => #{recv => #{msg2 => stop_state}}, state7_std => #{recv => #{msg3 => stop_state}},
                 state1_unexpected_select_state => #{send => #{msgA => state2_std, msgB => state5_std, msgC => state7_std}}},
-          timeouts => #{}, resets => #{}, timers => #{}}).
+          timeouts => #{}, resets => #{}}).
 
 -define(PROTOCOL_SPEC, {select, [{s_msgA, {act, r_msg1, endP}}, {s_msgB, {act, r_msg2, endP}}, {s_msgC, {act, r_msg3, endP}}]}).
 

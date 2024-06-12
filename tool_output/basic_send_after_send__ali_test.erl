@@ -6,7 +6,7 @@
 
 -define(MONITOR_SPEC,
         #{init => state1_send_after, map => #{state5_std => #{send => #{after_5s => stop_state}}, state1_send_after => #{send => #{before_5s => stop_state}}},
-          timeouts => #{state1_send_after => {5000, state5_std}}, resets => #{}, timers => #{}}).
+          timeouts => #{state1_send_after => {5000, state5_std}}, resets => #{}}).
 
 -define(PROTOCOL_SPEC, {act, s_before_5s, endP, aft, 5000, {act, s_after_5s, endP}}).
 

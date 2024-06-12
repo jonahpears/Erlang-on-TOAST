@@ -2,6 +2,5 @@
   map =>
       #{state2_send_after => #{send => #{before_5s => stop_state}},
         state6_std => #{recv => #{after_5s => stop_state}}},
-  timeouts => #{},
-  resets => #{init_state => #{t => 5000}},
-  timers => #{t => #{state2_send_after => standard_state}}}.
+  timeouts => #{state2_send_after => {t,state6_std}},
+  resets => #{init_state => #{t => 5000}}}.
