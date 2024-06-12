@@ -94,17 +94,6 @@ toast_app:run().
 
 
 
-```erl
-c(exa_timer_timeout_selection), 
-c(exa_timer_timeout_branching), 
-c(toast_sup), c(toast_app), 
-c(gen_monitor),
-toast_app:start([
-  {role, #{module=>exa_timer_timeout_branching,name=>brancher}},
-  {role, #{module=>exa_timer_timeout_selection,name=>selector}}]),
-toast_app:run().
-```
-
 
 
 
