@@ -65,10 +65,14 @@ build_monitor_spec(Fsm,FileName) ->
     pass -> MonitorSpec; %% skip while developing tool
     _ ->
       %% write to file
-      OutputPath = output_location() ++"gen_mon_spec_"++ FileName ++ ".txt",
-      case file:write_file(OutputPath, io_lib:fwrite("~p.\n",[MonitorSpec])) of
-        ok -> ?SHOW("file:write_file success: ~p.", [OutputPath]);
-        Else -> ?SHOW("file:write_file failed: ~p.", [Else])
+      case false of 
+        true -> 
+          OutputPath = output_location() ++"gen_mon_spec_"++ FileName ++ ".txt",
+          case file:write_file(OutputPath, io_lib:fwrite("~p.\n",[MonitorSpec])) of
+            ok -> ?SHOW("file:write_file success: ~p.", [OutputPath]);
+            Else -> ?SHOW("file:write_file failed: ~p.", [Else])
+          end;
+        _ -> ok
       end,
       MonitorSpec
   end.
@@ -82,14 +86,14 @@ build_module_forms(Protocol, Fsm, ModuleName,MonitorSpec) ->
 
   % ?SHOW("Form: ~p.",[Form]),
 
-  Forms =  merl_build:add_attribute(define,  [merl:var('MONITORED'),               merl:var('false')], Form),
-  Forms1 = merl_build:add_attribute(define,  [merl:var('SHOW_MONITORED'),          merl:term('case ?MONITORED of true -> "(monitored) "; _ -> "" end')], Forms),
-  Forms2 = merl_build:add_attribute(define,  [merl:var('SHOW_ENABLED'),            merl:var('true')], Forms1),
-  Forms3 = merl_build:add_attribute(define,  [merl:term('SHOW(Str, Args, Data)'),  merl:term('case ?SHOW_ENABLED of true -> printout(Data, ?SHOW_MONITORED++"~p, "++Str, [?FUNCTION_NAME]++Args); _ -> ok end')], Forms2),
-  Forms4 = merl_build:add_attribute(define,  [merl:var('SHOW_VERBOSE'),            merl:term('?SHOW_ENABLED and true')], Forms3),
-  Forms5 = merl_build:add_attribute(define,  [merl:term('VSHOW(Str, Args, Data)'), merl:term('case ?SHOW_VERBOSE of true -> printout(Data, ?SHOW_MONITORED++"(verbose) ~p, "++Str, [?FUNCTION_NAME]++Args); _ -> ok end')], Forms4),
-  Forms6 = merl_build:add_attribute(define,  [merl:var('MONITOR_SPEC'),            merl:term(MonitorSpec)], Forms5),
-  Forms7 = merl_build:add_attribute(define,  [merl:var('PROTOCOL_SPEC'),           merl:term(Protocol)], Forms6),
+  Forms =  merl_build:add_attribute(define,  [merl:var('MONITORED'),              merl:var('false')], Form),
+  Forms1 = merl_build:add_attribute(define,  [merl:var('SHOW_MONITORED'),         merl:var('case ?MONITORED of true -> "(monitored) "; _ -> "" end')], Forms),
+  Forms2 = merl_build:add_attribute(define,  [merl:var('SHOW_ENABLED'),           merl:var('true')], Forms1),
+  Forms3 = merl_build:add_attribute(define,  [merl:var('SHOW(Str, Args, Data)'),  merl:var('case ?SHOW_ENABLED of true -> printout(Data, ?SHOW_MONITORED++"~p, "++Str, [?FUNCTION_NAME]++Args); _ -> ok end')], Forms2),
+  Forms4 = merl_build:add_attribute(define,  [merl:var('SHOW_VERBOSE'),           merl:var('?SHOW_ENABLED and true')], Forms3),
+  Forms5 = merl_build:add_attribute(define,  [merl:var('VSHOW(Str, Args, Data)'), merl:var('case ?SHOW_VERBOSE of true -> printout(Data, ?SHOW_MONITORED++"(verbose) ~p, "++Str, [?FUNCTION_NAME]++Args); _ -> ok end')], Forms4),
+  Forms6 = merl_build:add_attribute(define,  [merl:var('MONITOR_SPEC'),           merl:term(MonitorSpec)], Forms5),
+  Forms7 = merl_build:add_attribute(define,  [merl:var('PROTOCOL_SPEC'),          merl:term(Protocol)], Forms6),
   Forms8 = merl_build:add_attribute(include, [merl:term("stub.hrl")],Forms7),
 
   MainForms = Forms8,

@@ -188,31 +188,49 @@ when not is_map_key(_Name, _Timers) ->
   {ko, no_such_timer}.
 
 
-%%%%%%%%%%%%%%%%%%%%%%%
-%%% message management
-%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% message management (received)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% @doc saves message to data to front of list under that label
-save_msg(Label, Payload, #{msgs:=Msgs}=Data) ->
+save_msg(Kind, Label, Payload, #{logs:=Logs,msgs:=Msgs}=Data) when is_atom(Kind) and is_atom(Label) ->
+  case Kind of 
+    send -> MapName = logs, Map = Logs;
+    recv -> MapName = msgs, Map = Msgs
+  end,
   %% add to head of corresponding list
-  maps:put(msgs, maps:put(Label, [Payload]++maps:get(Label,Msgs,[]), Msgs), Data).
+  maps:put(Map, maps:put(Label, [Payload]++maps:get(Label,Map,[]), Map), Data).
 %%
 
+
 %% @doc retrieves message from front of list
-get_msg(Label, #{msgs:=Msgs}=_Data) ->
-  case maps:get(Label, Msgs, []) of
+get_msg(Kind, Label, #{logs:=Logs,msgs:=Msgs}=_Data) when is_atom(Kind) and is_atom(Label) ->
+  case Kind of 
+    send -> Map = Logs;
+    recv -> Map = Msgs
+  end,
+  case maps:get(Label, Map, []) of
     [] -> undefined;
     [H|_T] -> H
   end.
 %%
 
 %% @doc retrieves all messages under label
-get_msgs(Label, #{msgs:=Msgs}=_Data) ->
-  case maps:get(Label, Msgs, []) of
+get_msgs(Kind, Label, #{logs:=Logs,msgs:=Msgs}=_Data) when is_atom(Kind) and is_atom(Label) ->
+  case Kind of 
+    send -> Map = Logs;
+    recv -> Map = Msgs
+  end,
+  case maps:get(Label, Map, []) of
     [] -> undefined;
     [_H|_T]=All -> All
   end.
 %%
+
+%% @doc by default will all be for recving messages
+save_msg(Label, Payload, Data) when is_atom(Label) and is_map(Data) -> save_msg(recv, Label, Payload, Data).
+get_msg(Label, Data) when is_atom(Label) and is_map(Data) -> get_msg(recv, Label, Data).
+get_msgs(Label, Data) when is_atom(Label) and is_map(Data) -> get_msgs(recv, Label, Data).
 
 
 
