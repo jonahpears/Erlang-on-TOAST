@@ -9,7 +9,7 @@
   #{options:=#{printout:=#{enabled:=Enabled}}} = Data,
   case Enabled of 
     true -> %% check if state is available to use
-      case lists:member(state,maps:keys(Data)) of 
+      case is_map_key(state,Data) of 
         true -> printout(Data, "~p, "++Str,[maps:get(state,Data)]++Args);
         _ -> printout(Data, "~p, "++Str,[?FUNCTION_NAME]++Args)
       end;
@@ -19,7 +19,11 @@
 -define(VSHOW(Str,Args,Data),
   #{options:=#{printout:=#{enabled:=Enabled,verbose:=Verbose}}} = Data,
   case (Enabled and Verbose) of 
-    true -> printout(Data, "(verbose) ~p, "++Str,[?FUNCTION_NAME]++Args);
+    true -> 
+      case is_map_key(state,Data) of 
+        true -> printout(Data, "(verbose) ~p, "++Str,[maps:get(state,Data)]++Args);
+        _ -> printout(Data, "(verbose) ~p, "++Str,[?FUNCTION_NAME]++Args)
+      end;
     _ -> ok
   end ).
 
@@ -75,8 +79,10 @@ start_link(Data) when is_map(Data) ->
   ?SHOW("",[],Data),
   ?VSHOW("\ndata:\t~p.",[Data],Data),
 
+  Name = maps:get(name,maps:get(role,Data)),
+
   %% start in same node
-  Ret = gen_statem:start_link({local, gen_monitor}, gen_monitor, [Data], []),
+  Ret = gen_statem:start_link({local, Name}, gen_monitor, [Data], []),
   % ?VSHOW("Ret: ~p.",[Ret],Data),
   
   case Ret of
@@ -106,7 +112,7 @@ stop() -> gen_statem:stop(?MODULE).
 
 %% @doc termination due to emergency_signal
 %% will dump contents of Data to output if options specify.
-terminate(Reason, emergency_signal=_State, #{options:=#{printout:=#{termination:=Dump}}}=Data) ->
+terminate(Reason, emergency_signal=_State, #{data:=#{options:=#{printout:=#{termination:=Dump}}}=Data}=_StopData) ->
   case Dump of 
     true -> ?SHOW("reason: ~p,\ndata:\t~p.",[Reason,Data],Data);
     _ -> ?SHOW("reason: ~p.",[Reason],Data)
@@ -116,7 +122,7 @@ terminate(Reason, emergency_signal=_State, #{options:=#{printout:=#{termination:
 
 %% @doc general termination
 %% will dump contents of Data to output if options specify.
-terminate(Reason, _State, #{options:=#{printout:=#{termination:=Dump}}}=Data) ->
+terminate(Reason, _State, #{data:=#{options:=#{printout:=#{termination:=Dump}}}=Data}=_StopData) ->
   case Dump of 
     true -> ?SHOW("reason: ~p,\ndata:\t~p.",[Reason,Data],Data);
     _ -> ?SHOW("reason: ~p.",[Reason],Data)
@@ -186,9 +192,9 @@ handle_event(state_timeout, wait_to_finish, setup_state=_State, #{coparty_id:=un
       ?VSHOW("signalled to session readiness -- now entering setup param phase.",[],Data1),
       %% begin processing sus_requests
       Processed = process_setup_params(Data1),
-      ?SHOW("processed return: ~p.",[Processed],Data1),
+      % ?VSHOW("processed return:\n~p.",[Processed],Data1),
       {ok, Data2} = Processed,
-      ?VSHOW("finished setup param phase.",[],Data2),
+      ?VSHOW("finished setup param phase,\nData:\t~p.",[Data2],Data2),
       %% wait for signal from session
       ?VSHOW("waiting for session start signal.",[],Data2),
       receive {SessionID, start} -> 
@@ -268,27 +274,59 @@ when is_map_key(State, Resets) and not is_map_key(resets,Flags) ->
   {repeat_state, Data1};
 %%
 
+
 %% @doc for setting/resetting timers at the request of the monitored process.
 %% @returns an updated map of timers.
-handle_event({call, From}, {set_timer, {Name, Duration}}, _State, #{process_timers:=Timers}=Data) -> 
+handle_event({call, From}, {set_timer, {Name, Duration}, StubTimers}, _State, #{process_timers:=Timers}=Data) -> 
   %% check timer exists 
   ?VSHOW("checking timer (~p) exists.",[Name],Data),
   case is_map_key(Name,Timers) of 
     true ->
       %% then cancel (make sure not running)
+      ?SHOW("resetting timer (~p).",[maps:get(Name,Timers)],Data),
       erlang:cancel_timer(maps:get(Name,Timers));
     
     _ -> ok
   end,
   %% start new timer
   TID = erlang:start_timer(Duration, self(), Name),
-  Timers1 = maps:put(Name, TID, Timers),
+  Timers1 = maps:put(Name, {false,TID}, Timers),
+  StubTimers1 = maps:put(Name, TID, StubTimers),
   Data1 = maps:put(timers, Timers1, Data),
   ?VSHOW("updated timers, returning update to sus.",[],Data1),
   %% return
-  {keep_statem, Data1, [{reply, From, Timers1}]};
+  {keep_state, Data1, [{reply, From, StubTimers1}]};
 %%
 
+
+%% @doc for handling timers completeing.
+%% automatically forward timers back to monitored process.
+handle_event(info, {timeout, TimerRef, Timer}, State, #{sus_id:=SusID,timers:=Timers,fsm:=#{timeouts:=Timeouts}}=Data)
+when is_map_key(Timer,Timers) and is_reference(TimerRef) and is_atom(Timer) ->
+  ?VSHOW("timer (~p) has completed.",[Timer],Data),
+  %% forward to monitored process 
+  SusID ! {timeout, TimerRef, Timer},
+  %% signal timer has completed
+  Data1 = maps:put(timers,maps:put(Timer,{true,TimerRef},Timers),Data),
+  %% check if this corresponds to a timeout (immediate)
+  case is_map_key(State,Timeouts) of
+    true ->
+      StateTimeout = maps:get(State,Timeouts),
+      ?VSHOW("state has timeout: ~p.",[StateTimeout],Data1),
+      {Timeout, TimeoutState} = StateTimeout,
+      %% check if corresponds to this
+      case Timeout=:=Timer of 
+        true -> 
+          ?VSHOW("continuing to timeout state: ~p.",[TimeoutState],Data1),
+          {next_state, TimeoutState, Data1};
+        _ ->
+          ?VSHOW("state has timeouts, but none are relevant to (~p).",[Timer],Data1),
+          {keep_state, Data1}
+      end;
+    %% continue as normal
+    _ -> {keep_state, Data1}
+  end;
+%%
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% monitor enter state & set integer timeouts
@@ -297,7 +335,9 @@ handle_event({call, From}, {set_timer, {Name, Duration}}, _State, #{process_time
 %% @doc entering a state with a timeout (integer)
 %% (we do not have to set timer timeouts, as they are triggered automatically when a message is received from the timer.)
 handle_event(enter, _OldState, State, #{fsm:=#{timeouts:=Timeouts,map:=Map},enter_flags:=Flags,queue:=#{state_to_return_to:=undefined}}=Data)
-when is_map_key(State, Timeouts) and (is_integer(element(1,map_get(State, Timeouts))) and (not is_map_key(timeouts,Flags))) ->
+when is_map_key(State, Timeouts) 
+and (is_integer(element(1,map_get(State, Timeouts))) 
+and (not is_map_key(timeouts,Flags))) ->
   %% flag resets to not enter this again on re-entry
   Data1 = maps:put(enter_flags,maps:put(timeouts,true,Flags),Data),
   %% get timeout
@@ -367,7 +407,7 @@ when is_map_key(State, Map) and is_atom(map_get(Label, map_get(send, map_get(Sta
   %% update trace
   Trace1 = [NextState] ++ Trace,
   Data1 = maps:put(trace,Trace1,Data),
-  ?SHOW("send (~p) -> ~p.",[Label,Payload,NextState],Data1),
+  ?SHOW("send (~p: ~p) -> ~p.",[Label,Payload,NextState],Data1),
   {next_state, NextState, Data1};
 %%  
 
@@ -832,11 +872,11 @@ process_setup_params(#{sus_id:=SusID,options:=Options}=Data) ->
 
     %% continue to process more options
     {SusID, setup_options, {OptionKey, Map}} ->
-      ?SHOW("setting (~p) to: ~p.",[OptionKey,Map],Data),
+      ?SHOW("setting options for (~p).",[OptionKey],Data),
       %% merge with current option
       CurrentOption = maps:get(OptionKey, Options),
       NewOption = nested_map_merger(CurrentOption, Map),
-      ?SHOW("new option: ~p.",[NewOption],Data),
+      % ?SHOW("new option: ~p.",[NewOption],Data),
       %% update options with merged option
       Options1 = maps:put(OptionKey, NewOption, Options),
       %% update data with new options

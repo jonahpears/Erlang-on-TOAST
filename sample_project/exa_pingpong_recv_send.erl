@@ -42,8 +42,9 @@
           map =>  #{state1_std => #{recv => #{msg1 => state2_std}}, 
                     state2_std => #{send => #{msgA => stop_state}}}, 
           timeouts => #{},
-          resets => #{}, 
-          timers => #{}}).
+          resets => #{}
+          % timers => #{}
+        }).
 
 %% @doc original input protocol specification used to generate this stub, and derive the FSM map used by monitors (when enabled).
 %% protocol language used is a subset of TOAST. 

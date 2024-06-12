@@ -33,7 +33,7 @@
 %% @doc if true, process will be started with an inline monitor within the session.
 %% note: monitored processes use ?MONITOR_SPEC as a protocol specification for communication.
 %% @see function `stub_start_link/1` (in `stub.hrl`).
--define(MONITORED, false).
+-define(MONITORED, true).
 
 %% @doc protocol specification in FSM form, used by monitors.
 %% @see macro `?PROTOCOL_SPEC', from which this FSM map is derived.
@@ -46,9 +46,10 @@
                     state6_std => #{send => #{msgB => stop_state}},
                     state8_std => #{send => #{msgC => stop_state}},
                     state10_std => #{send => #{timeout => stop_state}}},
-          timeouts => #{}, 
-          resets => #{init_state => #{t => 5000}}, 
-          timers => #{t => #{state2_branch_after => state10_std}}}).
+          timeouts => #{state2_branch_after => {t, state10_std}}, 
+          resets => #{init_state => #{t => 5000}}
+          % timers => #{t => #{state2_branch_after => state10_std}}
+          }).
 
 -define(PROTOCOL_SPEC,
         {timer, "t", 5000, {
@@ -133,11 +134,12 @@ main(CoParty, Data) ->
       ?DO_SHOW("timeout triggered on timer t.",[],Data1),
       Payload = "payload_timeout",
       CoParty ! {self(), timeout, Payload},
-      ?SHOW("sent timeout.",[],Data1)
+      ?SHOW("sent timeout.",[],Data1),
+      stopping(CoParty, Data1)
   end.
 
 stopping(CoParty, Data) -> 
-  ?VSHOW("stopping,\nData:\t~p.",[Data],Data),
+  ?VSHOW("\nData:\t~p.",[Data],Data),
   stopping(normal, CoParty, Data).
 
 stopping(normal = _Reason, _CoParty, _Data) -> 

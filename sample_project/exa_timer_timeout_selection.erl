@@ -46,9 +46,10 @@
                     state6_std => #{recv => #{msgB => stop_state}}, 
                     state8_std => #{recv => #{msgC => stop_state}},
                     state10_std => #{recv => #{timeout => stop_state}}},
-          timeouts => #{}, 
-          resets => #{init_state => #{t => 5000}}, 
-          timers => #{t => #{state2_select_after => state10_std}}}).
+          timeouts => #{state2_select_after => {t, state10_std}}, 
+          resets => #{init_state => #{t => 5000}}
+          % timers => #{t => #{state2_select_after => state10_std}}
+          }).
 
 -define(PROTOCOL_SPEC,
         {timer, "t", 5000, {
@@ -161,7 +162,7 @@ main(CoParty, Data) ->
   end.
 
 stopping(CoParty, Data) -> 
-  ?VSHOW("stopping,\nData:\t~p.",[Data],Data),
+  ?VSHOW("\nData:\t~p.",[Data],Data),
   stopping(normal, CoParty, Data).
 
 stopping(normal = _Reason, _CoParty, _Data) -> 

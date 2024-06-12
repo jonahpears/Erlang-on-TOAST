@@ -31,12 +31,14 @@ default_data() ->
      sus_init_id => undefined,
      sus_id => undefined,
      role => undefined,
+     state => undefined,
+     enter_flags => #{},
     %  name => undefined, 
      coparty_id => undefined, 
      process_timers => #{},
      fsm => #{ init => undefined, %% initial state
                timeouts => #{}, %% outgoing silent edges from states
-               timers => #{}, %% timers and maps to states they can trigger in and then lead to
+              %  timers => #{}, %% timers and maps to states they can trigger in and then lead to
                resets => #{}, %% states to reset certain timers in to what value
                enter_flags => #{}, %% signify which things have been done on enter current state, reset each new state
                map => #{} }, %% outgoing edges from states

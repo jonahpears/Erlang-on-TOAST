@@ -149,7 +149,7 @@ set_timer(Name, Duration, #{coparty_id:=CoParty,timers:=Timers}=Data) when ?MONI
   ?VSHOW("about to call (~p).",[CoParty],Data),
   %% call monitor synchronously to do this
   %% monitor returns their updated copy of timer map.
-  Timers1 = gen_statem:call(CoParty,{set_timer, {Name, Duration}}),
+  Timers1 = gen_statem:call(CoParty,{set_timer, {Name, Duration}, Timers}),
   ?VSHOW("received response from (~p),\nold timers:\t~p,\nnew timers:\t~p.",[CoParty,Timers,Timers1],Data),
   %% return with updated timers
   maps:put(timers,Timers1,Data);
