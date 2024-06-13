@@ -68,6 +68,7 @@ to_spec(State, StateID, Edges, States, _RecMap, Spec) ->
       RecMap = _RecMap
   end,
 
+
   %% create new spec from combination of all other specs reachable via edges
   OutSpec = lists:foldl(fun(Edge, InSpec) -> 
     %% add current state/edges to inspec

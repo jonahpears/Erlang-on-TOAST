@@ -142,11 +142,11 @@ gentest(tests) ->
   gen_stub:gen(ali,spec,basic_send_recv,"test.erl"),
   gen_stub:gen(ali,spec,basic_recv_send,"test.erl"),
 
-  % %% basic loops
-  % gen_stub:gen(ali,spec,basic_send_loop,"test.erl"),
-  % gen_stub:gen(ali,spec,basic_recv_loop,"test.erl"),
-  % gen_stub:gen(ali,spec,basic_send_recv_loop,"test.erl"),
-  % gen_stub:gen(ali,spec,basic_recv_send_loop,"test.erl"),
+  %% basic loops
+  gen_stub:gen(ali,spec,basic_send_loop,"test.erl"),
+  gen_stub:gen(ali,spec,basic_recv_loop,"test.erl"),
+  gen_stub:gen(ali,spec,basic_send_recv_loop,"test.erl"),
+  gen_stub:gen(ali,spec,basic_recv_send_loop,"test.erl"),
 
   % %% basic timers
   % gen_stub:gen(ali,spec,basic_timer_before,"test.erl"),

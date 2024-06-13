@@ -9,7 +9,7 @@
 -define(GAP(),io:format("\n\n")).
 
 -define(SHOW(String,Args),show("(~p:~p), "++String,[?LINE,?FUNCTION_NAME]++Args)).
--define(VSHOW(String,Args),case false of true -> show("(~p:~p), "++String,[?LINE,?FUNCTION_NAME]++Args); _ -> ok end).
+-define(VSHOW(String,Args),case true of true -> show("(~p:~p), "++String,[?LINE,?FUNCTION_NAME]++Args); _ -> ok end).
 
 -ifndef(Q).
 -include_lib("syntax_tools/include/merl.hrl").

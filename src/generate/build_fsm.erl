@@ -437,6 +437,8 @@ to_fsm({select, Branches, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, Pre
 %% @doc 
 to_fsm({rec, BoundVar, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
     RecMap1 = maps:put(BoundVar, PrevVis, RecMap),
+    %% ! swapping around for convenience
+    % RecMap1 = maps:put(PrevVis, BoundVar, RecMap),
     to_fsm(P, Edges, Nodes, RecMap1, PrevIndex, PrevVis, EndIndex, Clocks);
 
 %% @doc 

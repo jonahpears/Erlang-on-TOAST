@@ -17,3 +17,5 @@ _build/
 _checkouts/
 rebar.lock
 erlang_ls.config
+tool_output/*
+

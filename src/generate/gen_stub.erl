@@ -118,8 +118,11 @@ build_module_forms(Protocol, Fsm, ModuleName,MonitorSpec) ->
     % ?SHOW("Returning:\n\t~p.",[_F]), 
     _F 
   end,
+
   ModuleForm = merl_build:module_forms(lists:foldl(AddFuns, MainForms, Funs)),
-  ?VSHOW("ModuleForm:\n\t~p.", [ModuleForm]),
+
+  ?SHOW("\nModuleForm:\t~p.", [ModuleForm]),
+  
   ModuleForm.
 %%
 
@@ -134,62 +137,84 @@ build_module_forms(Protocol, Fsm, ModuleName,MonitorSpec) ->
 %% @returns list of functions 
 % -spec build_funs(list(), map(), map()) -> list().
 build_funs(Edges, States, RecMap, ModuleName) -> 
-  build_state_fun(Edges,States,RecMap,0,{main,-1}, ModuleName).
+
+  StateID = 0,
+  State = maps:get(StateID, States),
+
+  ?SHOW("\n\nEdges:\t~p,\nStates:\t~p,RecMap:\t~p,\n\ngenerating for \"~p\".\n\n",[Edges,States,RecMap,ModuleName]),
+
+  FunMap = gen_snippets:state(State, StateID, Edges, States, RecMap, #{}),
+
+  ?SHOW("\nFunMap:\t~p.\n",[FunMap]),
+
+  %% convert to list
+
+  StateFuns = maps:fold(fun(_K, V, Funs) -> 
+    Funs ++ V
+  end, [], FunMap),
+
+  ?SHOW("\nStateFuns:\t~p.\n",[StateFuns]),
+
+  StateFuns.
+
+
+
+  % build_state_fun(Edges,States,RecMap,0,{main,-1}, ModuleName).
 
 %% @doc states building program functions.
 %% if stateID is init then create run() function, which always leads to main() -- this is expected when no clauses or funs currently provided
-build_state_fun(Edges, States, RecMap, StateID, {Scope,ScopeID},ModuleName) ->
-  %% using assertions rather than guards for debugging purposes
-  ?assert(is_list(Edges)),
-  ?assert(is_map(States)),
-  ?assert(is_map(RecMap)),
-  ?assert(is_atom(Scope)),
-  ?assert(is_integer(ScopeID)),
-  ?assert(is_integer(StateID)),
-  %% 
-  ?GAP(),?SHOW("scope: ~p.", [Scope]),
+% build_state_fun(Edges, States, RecMap, StateID, {Scope,ScopeID},ModuleName) ->
+%   %% using assertions rather than guards for debugging purposes
+%   ?assert(is_list(Edges)),
+%   ?assert(is_map(States)),
+%   ?assert(is_map(RecMap)),
+%   ?assert(is_atom(Scope)),
+%   ?assert(is_integer(ScopeID)),
+%   ?assert(is_integer(StateID)),
+%   %% 
+%   ?GAP(),?SHOW("scope: ~p.", [Scope]),
   %% get state
-  State = maps:get(StateID, States),
+  % State = maps:get(StateID, States),
 
-  %% add run and main to states
-  _StatesEdit = maps:put(-2, run, States),
-  StatesEdit = maps:put(-1, main, _StatesEdit),
+  % %% add run and main to states
+  % _StatesEdit = maps:put(-2, run, States),
+  % StatesEdit = maps:put(-1, main, _StatesEdit),
 
-  %% get map of state funs
-  {_StateFunMap, _FunMap} = gen_snippets:state(State, StateID, {Scope,ScopeID},Edges,StatesEdit,RecMap, #{}),
+  % %% get map of state funs
+  % {_StateFunMap, _FunMap} = gen_snippets:state(State, StateID, {Scope,ScopeID},Edges,StatesEdit,RecMap, #{}),
 
-  EmptyFuns = maps:get(-3,_FunMap,[]),
-  FunMap = maps:remove(-3,_FunMap),
-  StateFunMap = _StateFunMap,
+  % EmptyFuns = maps:get(-3,_FunMap,[]),
+  % FunMap = maps:remove(-3,_FunMap),
+  % StateFunMap = _StateFunMap,
 
-  % ?GAP(),?SHOW("StateFunMap:\n\t~p,,\nEmptyFuns:\n\t~p,\nFunMap:\n\t~p.",[StateFunMap,EmptyFuns,FunMap]),?GAP(),
+  % % ?GAP(),?SHOW("StateFunMap:\n\t~p,,\nEmptyFuns:\n\t~p,\nFunMap:\n\t~p.",[StateFunMap,EmptyFuns,FunMap]),?GAP(),
 
-  ?SHOW("modulename: ~p.\n",[ModuleName]),
-  % timer:sleep(500),
+  % ?SHOW("modulename: ~p.\n",[ModuleName]),
+  % % timer:sleep(500),
 
-  %% convert to list
-  _StateFuns = lists:foldl(fun(K, Funs) ->
-    Funs ++ lists:foldl(fun(StateFun, AccIn) -> 
-      % ?SHOW("StateFun:\n\t~p.",[StateFun]),
-      AccIn++[{true,maps:get(K,FunMap),lists:foldl(fun(FunClause, _AccIn) ->
-      % ?SHOW("FunClause:\n\t~p.",[FunClause]),
-      QClause = ?Q(FunClause),
-        if %% remove comments if necessary
-          is_list(QClause) -> _AccIn++[lists:nth(1,QClause)];
-          is_tuple(QClause) -> _AccIn++[QClause];
-          true -> _AccIn++[QClause]
-        end
-      end, [], StateFun)}]
-    end, [], maps:get(K,StateFunMap,[]))
-  end, [], maps:keys(StateFunMap)),
+  % %% convert to list
+  % _StateFuns = lists:foldl(fun(K, Funs) ->
+  %   Funs ++ lists:foldl(fun(StateFun, AccIn) -> 
+  %     % ?SHOW("StateFun:\n\t~p.",[StateFun]),
+  %     AccIn++[{true,maps:get(K,FunMap),lists:foldl(fun(FunClause, _AccIn) ->
+  %     % ?SHOW("FunClause:\n\t~p.",[FunClause]),
+  %     QClause = ?Q(FunClause),
+  %       if %% remove comments if necessary
+  %         is_list(QClause) -> _AccIn++[lists:nth(1,QClause)];
+  %         is_tuple(QClause) -> _AccIn++[QClause];
+  %         true -> _AccIn++[QClause]
+  %       end
+  %     end, [], StateFun)}]
+  %   end, [], maps:get(K,StateFunMap,[]))
+  % end, [], maps:keys(StateFunMap)),
 
-  % ?SHOW("_StateFuns:\n\t~p.",[_StateFuns]),
+  % % ?SHOW("_StateFuns:\n\t~p.",[_StateFuns]),
 
-  %% add all of the empty stubs
-  StateFuns = lists:foldl(fun(FunName, AccIn) ->
-    AccIn++[{false,FunName,[?Q(["(Data) -> extend_with_functionality"])]}]
-  end, _StateFuns, EmptyFuns),
+  % %% add all of the empty stubs
+  % StateFuns = lists:foldl(fun(FunName, AccIn) ->
+  %   AccIn++[{false,FunName,[?Q(["(Data) -> extend_with_functionality"])]}]
+  % end, _StateFuns, EmptyFuns),
 
-  ?VSHOW("StateFuns:\n\t~p.",[StateFuns]),
+  % ?VSHOW("StateFuns:\n\t~p.",[StateFuns]),
 
-  StateFuns.
+  % StateFuns.

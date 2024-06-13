@@ -1,7 +1,12 @@
 -module(gen_snippets).
--compile({nowarn_unused_function,[ {state_name,2} ]}).
+% -compile({nowarn_unused_function,[ {state_name,2} ]}).
+
+-export([state/6,state/8]).
 
 -define(EXPORT_DEFAULT, false).
+
+%% disable parse transforms
+% -define(MERL_NO_TRANSFORM, true).
 
 -include_lib("syntax_tools/include/merl.hrl").
 -include_lib("stdlib/include/assert.hrl").
@@ -17,137 +22,433 @@
 -include("edge_snippets.hrl").
 -include("get_if_edges.hrl").
 
-
 %%%%%%%%%%%
 %%% state
 %%%%%%%%%%%
 
 %% @doc 
-%% 
--spec state(atom(), integer(), {atom(), integer()}, {list(), list()}, list(), map(), map(), map()) -> {list(), map()}.
+%% @returns map of state functions, between scopeIDs and program text.
+-spec state(atom(), integer(), list(), map(), map(), map()) -> map().
 
-%% @doc 
-state(State, StateID, {Scope, ScopeID}, {PrevData, StateData}, Edges, States, RecMap, FunMap) ->
-  %% string helpers
-
-  ?SHOW("building new state.\nstate:\t~p => ~p,\nscope:\t~p => ~p,\ndata:\t~p => ~p.",[StateID,State,ScopeID,Scope,PrevData,StateData]),
+%% @doc for first pass, sets up initial/stopping states 
+state(init_state=State, 0=StateID, Edges, States, RecMap, FunMap) ->
   
-  ?VSHOW("\nedges:\t~p,\nstates:\t~p,\nrecmap:\t~p,\nfunmap:\t~p.",[Edges,States,RecMap,FunMap]),
+  ?SHOW("starting new fsm.\nedges:\t~p,\nstates:\t~p,\nrecmap:\t~p,\nfunmap:\t~p.",[Edges,States,RecMap,FunMap]),
+
+  Scope = State,
+  ScopeID = StateID,
+
+  %% get run and init snippets
+  InitClauses = special_snippet_clauses(init, States),
+  RunClauses = special_snippet_clauses(run, States),
+
+  StopID = get_state_id(custom_end_state, States),
+  case StopID of 
+    
+    no_such_state ->
+      %% setup statefunmap (run/main/stopping) 
+      StateFunMap = #{%% init  
+                      -2 => InitClauses,
+                      %% run state
+                      -1 => RunClauses,
+                      %% main -- this is just a placeholder
+                      0 => []
+                    };
+
+        _ -> 
+          %% get stop snippet (specifically needed later on)
+          StopClauses = special_snippet_clauses(stop, States),
+          %% setup statefunmap (run/main/stopping) 
+          StateFunMap = #{%% init  
+                          -2 => InitClauses,
+                          %% run state
+                          -1 => RunClauses,
+                          %% main -- this is just a placeholder
+                          0 => [],
+                          %% stop state
+                          StopID => StopClauses
+                        }
+  end,
+
+
+  %% get single next state edge
+  RelevantEdges = get_outgoing_edges(StateID,Edges),
+  ?assert(length(RelevantEdges)==1),
+
+  %% get edge 
+  Edge = to_map(lists:nth(1,RelevantEdges)),
+  %% build from next state 
+  #{to:=ToStateID} = Edge,
+  %% get next state
+  #{ToStateID:=ToState} = States,
+
+  %% reverse directions of rec map
+  RevRecMap = maps:fold(fun(K,V,Rec) -> maps:put(V,K,Rec) end, #{}, RecMap),
+
+  %% get continuation
+  ContinuationSnippet = state(ToState, ToStateID, {Scope, ScopeID}, {0, 1}, Edges, States, RevRecMap, StateFunMap),
+  % ContinuationSnippet = states(ToState, ToStateID, {Scope, ScopeID}, {DataIndex, NextDataIndex}, Edges, States, RecMap, StateFunMap),
+  %% unpack 
+  {Continuation, NextFunMap, RecMap1} = ContinuationSnippet,
+
+  ?SHOW("(~p :: ~p)\nContinuation:\t~p.",[{ScopeID,Scope},{StateID,State},Continuation]),
+  ?VSHOW("(~p :: ~p)\nNextFunMap:\t~p.",[{ScopeID,Scope},{StateID,State},NextFunMap]),
+  ?VSHOW("(~p :: ~p)\nRecMap1:\t~p.",[{ScopeID,Scope},{StateID,State},RecMap1]),
+
+  %% add comments to snippets
+  MainComments = ["%% @doc the main loop of the stub implementation.",
+                  "%% CoParty is the process ID corresponding to either:",
+                  "%%   (1) the other party in the session;",
+                  "%%   (2) if this process is monitored, then the transparent monitor.",
+                  "%% Data is a map that accumulates messages received, sent and keeps track of timers as they are set.",
+                  "%% Any loops are implemented recursively, and have been moved to their own function scope.",
+                  "%% @see stub.hrl for further details and the functions themselves."],
+                  
+  Snippets = erl_syntax:add_precomments(lists:map(fun(Com) -> 
+    erl_syntax:comment([Com]) 
+  end, MainComments), ?Q(["(CoParty, Data) -> "]++Continuation)),
+
+  %% add the snippets within the body of main scope
+  ExitFunMap = maps:put(0,[{false, main, [ Snippets ]}],NextFunMap),
+  ?VSHOW("(~p :: ~p)\nExitFunMap:\t~p.",[{ScopeID,Scope},{StateID,State},ExitFunMap]),
+
+  %% check that all rec in rec map have been finished unfolding
+  FinishedUnfolding = maps:fold(fun(_K,Rec,Unfolding) ->
+    case Rec of
+      {unfolded, RecState, _} -> Unfolding and true;
+      _ -> Unfolding and false
+  end end, true, RecMap1),
+  ?assert(true=:=FinishedUnfolding),
+  %% pack as final recmap
+  ExitRecMap = RecMap1,
+
+  ?VSHOW("(~p :: ~p)\nExitRecMap:\t~p.",[{ScopeID,Scope},{StateID,State},ExitRecMap]),
+
+  %% return (snippets empty because no scope beyond this)
+  ExitFunMap.
+%%
+
+
+%% @doc for general states
+%% @returns tuple containing: 
+%% (1) list of strings for text of current scope within program.
+%% (2) map of state functions, between scopeIDs and program text.
+%% (3) recmap, updated with the information of the current unfoldings.
+-spec state(atom(), integer(), {atom(), integer()}, {list(), list()}, list(), map(), map(), map()) -> {list(), map(), map()}.
+
+state(State, StateID, {InScope, InScopeID}, {PrevDataIndex, StateDataIndex}, Edges, States, RecMap, FunMap) ->
+
+  %% create state datas
+  PrevData = state_data(PrevDataIndex),
+  StateData = state_data(StateDataIndex),
+
+  ?SHOW("building new state.\nstate:\t~p => ~p,\nscope:\t~p => ~p,\ndata:\t~p => ~p.",[StateID,State,InScopeID,InScope,PrevData,StateData]),
+  
+  % ?VSHOW("\nedges:\t~p,\nstates:\t~p,\nrecmap:\t~p,\nfunmap:\t~p.",[Edges,States,RecMap,FunMap]),
 
   %% check if recursive state, and if already explored
-  case maps:get(StateID,RecMap,not_recursive_state)=RecState of 
-    {already_unfolded, _Var, StrFun} -> %% just insert callback
-      %% return call to function
-      {[StrFun++"(CoParty, "++PrevData++")"], #{}};
-      
-    _ -> %% may be, but explore children first and see if any of them define it
+  InitRecState = maps:get(StateID,RecMap,not_recursive_state),
+  case InitRecState of 
 
+    %% if already unfolding, just insert callback
+    {already_unfolding, _Var, StrFun} -> 
+      RecMap1 = RecMap,
+      %% keep same scope
+      Scope = InScope,
+      ScopeID = InScopeID,
+      %% return call to function
+      ExitSnippet = [StrFun++"(CoParty, "++PrevData++")"], 
+      ExitFunMap = FunMap, 
+      ExitRecMap = RecMap,
+      
+      ?VSHOW("(~p :: ~p), is already unfolding, just insert callback,\nExitSnippet:\t~p.",[{InScopeID,InScope},{StateID,State},ExitSnippet]);
+
+    %% otherwise, proceed
+    _ -> 
+      %% but mark in the RecMap for any proceeding states explored
+      case InitRecState of 
+
+        %% not a recursive state
+        not_recursive_state -> 
+          RecMap1 = RecMap,
+          %% keep same scope/id
+          ScopeID = InScopeID,
+          Scope = InScope,
+          
+          ?VSHOW("(~p :: ~p), not_recursive_state,\nRecMap:\t~p.",[{InScopeID,InScope},{StateID,State},RecMap]);
+
+        %% is a recursive state, but not in new scope so restart
+        _ -> 
+          ?VSHOW("(~p :: ~p), updating recstate (~p) as already_unfolding.",[{InScopeID,InScope},{StateID,State},InitRecState]),
+          ?assert(InScopeID=/=StateID),
+          RecMap1 = maps:put(StateID,{already_unfolding,InitRecState,"loop_state"++integer_to_list(StateID)},RecMap),
+          %% mark scope/id to be new,
+          ScopeID = StateID,
+          Scope = State
+
+      end,
+
+      ?SHOW("(~p :: ~p), entering main build phase.",[{ScopeID,Scope},{StateID,State}]),
 
       %% get edges relevant to current state
       RelevantEdges = get_outgoing_edges(StateID,Edges),
 
-      %% get relevant string edges
-      StrEdges = #{},
+      %% explore from state
+      case State of 
 
-
-
-      Snippet = case State of 
         if_then_else_state -> 
-          Condition = maps:get(condition,StrEdges),
-          True = maps:get(true,StrEdges),
-          False = maps:get(false,StrEdges),
-          snippet({if_then, Condition, True, False}, {Scope, ScopeID}, {PrevData, StateData}, Edges, States, RecMap, FunMap);
+          ?assert(length(RelevantEdges)==2),
+
+          Condition = [],
+          True = [],
+          False = [],
+
+          {Snippet, StateFuns} = snippet({if_then, Condition, True, False}, {StateID, ScopeID}, {PrevData, StateData}),
+
+
+          %% TODO :: temporary
+          FinalFunMap = FunMap,
+          FinalRecMap = RecMap1,
+          ok;
+
 
         delay_state -> 
-          Duration = maps:get(duration,StrEdges),
-          Continuation = maps:get(continuation,StrEdges),
-          snippet({delay, Duration, Continuation}, {Scope, ScopeID}, {PrevData, StateData}, Edges, States, RecMap, FunMap);
-
-        standard_state -> 
-          %% depends on case of single direction kind
-          Edge = lists:nth(1,RelevantEdges),
           ?assert(length(RelevantEdges)==1),
           %% get edge 
+          Edge = to_map(lists:nth(1,RelevantEdges)),
+          %% depends on case of single direction kind
+          #{to:=ToStateID,edge_data:=#{trans_type:=Kind}} = Edge,  
+        
+          %% TODO :: duration and continuation
+          Duration = [],
+          Continuation = [],
+          
+          {Snippet, StateFuns} = snippet({delay, Duration, Continuation}, {StateID, ScopeID}, {PrevData, StateData}),
+
+          %% TODO :: temporary
+          FinalFunMap = FunMap,
+          FinalRecMap = RecMap1,
+          ok;
+
+
+        standard_state -> 
+          ?assert(length(RelevantEdges)==1),
+          %% get edge 
+          Edge = to_map(lists:nth(1,RelevantEdges)),
+          %% depends on case of single direction kind
           #{to:=ToStateID,edge_data:=#{trans_type:=Kind}} = Edge,
-          %% get continuation
+          %% get next state
           #{ToStateID:=ToState} = States,
-          NextData = state_data(ToStateID,ScopeData),
-          ContinuationSnippet = states(ToState, ToStateID, {Scope, ScopeID}, {StateData, NextStateData}, Edges, States, RecMap, FunMap),
+          %% get continuation
+          ContinuationSnippet = state(ToState, ToStateID, {Scope, ScopeID}, {StateDataIndex, StateDataIndex+1}, Edges, States, RecMap1, FunMap),
           %% unpack 
-           = ContinuationSnippet,
+          {Continuation, NextFunMap, RecMap2} = ContinuationSnippet,
+
+          ?SHOW("(~p :: ~p)\nContinuation:\t~p.",[{ScopeID,Scope},{StateID,State},Continuation]),
+          ?VSHOW("(~p :: ~p)\nNextFunMap:\t~p.",[{ScopeID,Scope},{StateID,State},NextFunMap]),
+          ?VSHOW("(~p :: ~p)\nRecMap2:\t~p.",[{ScopeID,Scope},{StateID,State},RecMap2]),
+
           %% string helpers
           Label = get_msg_label(Edge),
           %% depending on direction
-          case Kind of 
+          {Snippet, StateFuns} = case Kind of 
             send -> 
-              snippet({send_blocking_payload, Label, Continuation}, {Scope, ScopeID}, {PrevData, StateData}, Edges, States, RecMap, FunMap);
+              snippet({send_blocking_payload, Label, Continuation}, {StateID, ScopeID}, {PrevData, StateData});
 
-            recv -> pass
+            recv -> %% branching, but package as map and list
+              snippet({branching, [Label], #{Label=>Continuation}}, {StateID, ScopeID}, {PrevData, StateData});
+
+            _ -> 
+              ?SHOW("(~p :: ~p), unexpected direction, Kind:\t~p.",[{ScopeID,Scope},{StateID,State},Kind]),
+              error(unexpected_direction_kind)
           end,
 
+          %% merge state fun list with state fun map
+          FinalFunMap = map_state_funs(NextFunMap, StateFuns),
+
+          %% repackage for consistency afterwards
+          FinalRecMap = RecMap2;
+
+
         branch_state -> 
-          Labels = maps:get(labels,StrEdges),
-          Continuations = maps:get(continuations,StrEdges),
-          snippet({branching, Labels, Continuations}, {Scope, ScopeID}, {PrevData, StateData}, Edges, States, RecMap, FunMap);
+
+          Labels = [],
+          Continuations = [],
+
+          {Snippet, StateFuns} = snippet({branching, Labels, Continuations}, {StateID, ScopeID}, {PrevData, StateData}),
+
+          %% TODO :: temporary
+          FinalFunMap = FunMap,
+          FinalRecMap = RecMap1,
+          ok;
+
 
         select_state -> 
-          Labels = maps:get(labels,StrEdges),
-          Continuations = maps:get(continuations,StrEdges),
-          snippet({blocking_selection, Labels, Continuations}, {Scope, ScopeID}, {PrevData, StateData}, Edges, States, RecMap, FunMap);
+
+          Labels = [],
+          Continuations = [],
+
+          {Snippet, StateFuns} = snippet({blocking_selection, Labels, Continuations}, {StateID, ScopeID}, {PrevData, StateData}),
+
+          %% TODO :: temporary
+          FinalFunMap = FunMap,
+          FinalRecMap = RecMap1,
+          ok;
+
 
         recv_after_state -> 
-          Labels = maps:get(labels,StrEdges),
-          Continuations = maps:get(continuations,StrEdges),
-          Duration = maps:get(duration,StrEdges),
-          Timeout = maps:get(timeout,StrEdges),
-          snippet({timeout, Labels, Continuations, Duration, Timeout}, {Scope, ScopeID}, {PrevData, StateData}, Edges, States, RecMap, FunMap);
+
+          Labels = [],
+          Continuations = [],
+          Duration = [], %% either timer or integer
+          Timeout = [],
+
+          {Snippet, StateFuns} = snippet({timeout, Labels, Continuations, Duration, Timeout}, {StateID, ScopeID}, {PrevData, StateData}),
+
+          %% TODO :: temporary
+          FinalFunMap = FunMap,
+          FinalRecMap = RecMap1,
+          ok;
+
 
         branch_after_state -> 
-          Labels = maps:get(labels,StrEdges),
-          Continuations = maps:get(continuations,StrEdges),
-          Duration = maps:get(duration,StrEdges),
-          Timeout = maps:get(timeout,StrEdges),
-          snippet({timeout, Labels, Continuations, Duration, Timeout}, {Scope, ScopeID}, {PrevData, StateData}, Edges, States, RecMap, FunMap);
+          
+          Labels = [],
+          Continuations = [],
+          Duration = [], %% either timer or integer
+          Timeout = [],
+
+          {Snippet, StateFuns} = snippet({timeout, Labels, Continuations, Duration, Timeout}, {StateID, ScopeID}, {PrevData, StateData}),
+
+          %% TODO :: temporary
+          FinalFunMap = FunMap,
+          FinalRecMap = RecMap1,
+          ok;
+
 
         send_after_state -> 
-          Labels = maps:get(labels,StrEdges),
-          Continuations = maps:get(continuations,StrEdges),
-          Duration = maps:get(duration,StrEdges),
-          Timeout = maps:get(timeout,StrEdges),
-          snippet({nonblocking_payload, Label, Continuation, Duration, Timeout}, {Scope, ScopeID}, {PrevData, StateData}, Edges, States, RecMap, FunMap);
+
+          Label = [],
+          Continuation = [],
+          Duration = [], %% either timer or integer
+          Timeout = [],
+
+          {Snippet, StateFuns} = snippet({nonblocking_payload, Label, Continuation, Duration, Timeout}, {StateID, ScopeID}, {PrevData, StateData}),
+
+          %% TODO :: temporary
+          FinalFunMap = FunMap,
+          FinalRecMap = RecMap1,
+          ok;
 
         select_after_state -> 
-          Labels = maps:get(labels,StrEdges),
-          Continuations = maps:get(continuations,StrEdges),
-          Duration = maps:get(duration,StrEdges),
-          Timeout = maps:get(timeout,StrEdges),
-          snippet({nonblocking_selection, Labels, Continuations, Duration, Timeout}, {Scope, ScopeID}, {PrevData, StateData}, Edges, States, RecMap, FunMap);
+
+          Labels = [],
+          Continuations = [],
+          Duration = [], %% either timer or integer
+          Timeout = [],
+
+          {Snippet, StateFuns} = snippet({nonblocking_selection, Labels, Continuations, Duration, Timeout}, {StateID, ScopeID}, {PrevData, StateData}),
+
+          %% TODO :: temporary
+          FinalFunMap = FunMap,
+          FinalRecMap = RecMap1,
+          ok;
+
 
         error_state -> 
-          ["error()"];
+          ?assert(length(RelevantEdges)==1),
+          %% get edge 
+          Edge = to_map(lists:nth(1,RelevantEdges)),
+          %% depends on case of single direction kind
+          #{to:=ToStateID,edge_data:=#{error_reason:=ErrorReason}} = Edge,
+
+          %% get call to stopping from funmap 
+          StoppingFunDefs = maps:get(ToStateID,FunMap,stopping_function_undefined),
+          ?assert(StoppingFunDefs=/=stopping_function_undefined),
+          ?assert(length(StoppingFunDefs)>0),
+          %% should all be the same enough
+          {true, StopFunName, _} = lists:nth(1, StoppingFunDefs),
+        
+          %% string helpers
+          StrReason = atom_to_list(ErrorReason),
+          StrStopName = atom_to_list(StopFunName),
+          %% make snippet for error and calling stop
+          Snippet = ["error("++StrReason++"),",
+                      StrStopName++"(CoParty, "++PrevData++", "++StrReason++")"],
+          %% package as necessary
+          FinalFunMap = FunMap,
+          FinalRecMap = RecMap1;
 
         custom_end_state -> 
-          pass;
+          %% is predefined, within funmap
+          StopClauses = maps:get(StateID, FunMap),
+          ?assert(length(StopClauses)==2),
+          %% only one is needed to get fun name
+          {_Exported, Fun, _Clauses} = lists:nth(1,StopClauses),
 
-        end_state -> 
-          pass;
+          %% string helpers
+          StrStopFun = atom_to_list(Fun),
+          %% set snippet to be call to stop function
+          Snippet = [StrStopFun++"(CoParty, "++PrevData++", normal)"],
 
-        init_state -> 
-          pass
+          %% package as necessary
+          FinalFunMap = FunMap,
+          FinalRecMap = RecMap1
 
       end,
 
-      %% unpack snippet
-      {} = Snippet,
+      ?VSHOW("(~p :: ~p), finished state & snippets,\nSnippet:\t~p,\nFinalFunMap:\t~p,\nFinalRecMap:\t~p.",[{ScopeID,Scope},{StateID,State},Snippet,FinalFunMap,FinalRecMap]),
 
+      %% check if this is a new scope
+      case StateID=:=ScopeID of 
 
-    not_recursive_state -> %% proceed 
-    _ -> %% this is an un-explored recursive state
-      %% update to be foumd next time
-      %% !! check this on thw way back up !!
-      % RecMap1 = maps:put(State,{already_unfolded,RecState,})
+        %% exiting scope
+        true -> 
+          case ExitRecState = maps:get(StateID,FinalRecMap,not_recursive_state) of 
 
-  end.
+            not_recursive_state ->
+              ?SHOW("(~p :: ~p), exiting non-recursive scope.",[{ScopeID,Scope},{StateID,State}]),
+              %% must be main 
+              ?assert(State==main),
+              ?assert(StateID==0),
+
+              %% put snippets into relevant scope map
+              ExitSnippet = Snippet,
+              ExitFunMap = FinalFunMap,
+              ExitRecMap = FinalRecMap;
+
+            _ ->
+              ?SHOW("(~p :: ~p), exiting recursive scope.",[{ScopeID,Scope},{StateID,State}]),
+              %% exit snippets should just be a call to this new function, using the data provided
+              %% unpack
+              {already_unfolding, RecState, StrRecFun} = ExitRecState,
+              %% add function call to recursive scope in outer scope snippets
+              ExitSnippet = [StrRecFun++"(CoParty, "++PrevData++")"],
+              %% move all snippets from the states within the scope to the scope fun map
+              FunAtomName = list_to_atom(StrRecFun),
+              %% remember, for each ID there is a list of clause definitions (one for each number of params, each with their own name and list of clauses)
+              ExitFunMap = maps:put(ScopeID,[{false, FunAtomName, [ ?Q(["(CoParty, Data) -> "]++Snippet) ]}],FinalFunMap),
+              %% return updated recmap
+              ExitRecMap = maps:put(StateID,{unfolded,RecState,StrRecFun},FinalRecMap)
+
+          end;
+
+        %% not a recursive state/scope, add as normal
+        _ -> 
+          %% put snippets into relevant scope map
+          ExitSnippet = Snippet,
+          ExitFunMap = FinalFunMap,
+          ExitRecMap = FinalRecMap
+      end
+
+  end,
+
+  ?VSHOW("(~p :: ~p),\nExitSnippet:\t~p.",[{ScopeID,Scope},{StateID,State},ExitSnippet]),
+  ?VSHOW("(~p :: ~p),\nExitFunMap:\t~p.",[{ScopeID,Scope},{StateID,State},ExitFunMap]),
+  ?VSHOW("(~p :: ~p),\nExitRecMap:\t~p.",[{ScopeID,Scope},{StateID,State},ExitRecMap]),
+
+  %% return
+  {ExitSnippet, ExitFunMap, ExitRecMap}.
 %%
 
 %% @doc function snippet/3 (Snippet, State, Data).
@@ -173,20 +474,20 @@ state(State, StateID, {Scope, ScopeID}, {PrevData, StateData}, Edges, States, Re
 snippet({if_then, Timer, True, False}, {StateID, ScopeID}, {InData, OutData}) -> 
   %% string helpers
   StrTimer = string_wrap(Timer),
-  StrTimerVar = tag_state_thing("TID_"++StrDuration++"_",StateID),
+  StrTimerVar = tag_state_thing("TID_"++StrTimer++"_",StateID),
 
   %% build clause
   Clause = ["receive {timeout, "++StrTimerVar++", "++StrTimer++"} -> ",
-            "?VSHOW(\"took branch for timer (~p) completing.\", ["++StrTimer++"], "++InData++"),"
+            "temp_vshow(\"took branch for timer (~p) completing.\", ["++StrTimer++"], "++InData++"),"
             ]++Timer++["after 0 -> ",
-                       "?VSHOW(\"took branch for timer (~p) still running.\", ["++StrTimer++"], "++InData++"),"]++False++[" end"],
+                       "temp_vshow(\"took branch for timer (~p) still running.\", ["++StrTimer++"], "++InData++"),"]++False++[" end"],
 
   %% add comments
   _Commented = erl_syntax:comment(["% ."]),
   %% package as map
   Snippet = Clause,%#{clause=>Clause,comment=>Comment},
-  %% return with comments (since we did not use outdata, return indata)
-  {Snippet, InData, []};
+  %% return with comments and state funs
+  {Snippet, []};
 %%
 
 
@@ -199,7 +500,7 @@ when (is_atom(Duration) or is_integer(Duration)) and is_list(Continuation) ->
   %% build clause
   Clause = case is_integer(Duration) of 
     true -> 
-      ["?VSHOW(\"delay (~p).\", ["++StrDuration++"], "++InData++"),",
+      ["temp_vshow(\"delay (~p).\", ["++StrDuration++"], "++InData++"),",
        "timer:sleep("++StrDuration++"),"];
     _ -> 
       ?assert(is_atom(Duration)), 
@@ -208,15 +509,15 @@ when (is_atom(Duration) or is_integer(Duration)) and is_list(Continuation) ->
       ["receive {timeout, "++StrTimer++", "++StrDuration++"} -> ",
       %% actually, just assert that the timer matches
        "?assert("++StrTimer++"=:=get_timer("++StrDuration++", "++InData++")),",
-       "?VSHOW(\"timer (~p) finished delay.\", ["++StrDuration++"], "++InData++"),"]++Continuation++[" end"]
+       "temp_vshow(\"timer (~p) finished delay.\", ["++StrDuration++"], "++InData++"),"]++Continuation++[" end"]
   end,
   
   %% add comments
   _Commented = erl_syntax:comment(["% ."]),
   %% package as map
   Snippet = Clause,%#{clause=>Clause,comment=>Comment},
-  %% return with comments (since we did not use outdata, return indata)
-  {Snippet, InData, []};
+  %% return with comments and state funs
+  {Snippet, []};
 %%
 
 
@@ -244,8 +545,8 @@ when is_list(Labels) and is_map(Continuations) and is_integer(Duration) and is_l
   _Commented = erl_syntax:comment(["% ."]),
   %% package as map
   Snippet = Clause,%#{clause=>Clause,comment=>Comment},
-  %% return with comments (since we used outdata, return that too)
-  {Snippet, OutData, []};
+  %% return with comments and state funs
+  {Snippet, []};
 %%
 
 
@@ -257,20 +558,20 @@ when is_list(Labels) and is_map(Continuations) ->
   StrPayload = tag_state_thing("Payload",StateID),
   StrLabel = tag_state_thing("Label",StateID),
   %% line by line clause for snippet
-  Clause = ["?SHOW(\"waiting to recv.\", [], "++InData++"),",
+  Clause = ["temp_show(\"waiting to recv.\", [], "++InData++"),",
             "receive "]++lists:foldl(fun(Label, Cases) -> 
               Head = case length(Cases)>0 of true -> ["; "]; _ -> [] end,
               Cases ++ Head ++ ["{CoParty, "++Label++"="++StrLabel++", "++StrPayload++"} -> ",
                                 OutData++" = save_msg(recv, "++Label++", "++StrPayload++", "++InData++"),",
-                                "?SHOW(\"recv ~p: ~p.\"., ["++StrLabel++", "++StrPayload++"], "++OutData++")"] ++ maps:get(Label, Continuations)
+                                "temp_show(\"recv ~p: ~p.\", ["++StrLabel++", "++StrPayload++"], "++OutData++"),"] ++ maps:get(Label, Continuations)
             end, [], Labels)++[" end"],
 
   %% add comments
   _Commented = erl_syntax:comment(["% ."]),
   %% package as map
   Snippet = Clause,%#{clause=>Clause,comment=>Comment},
-  %% return with comments (since we used outdata, return that too)
-  {Snippet, OutData, []};
+  %% return with comments and state funs
+  {Snippet, []};
 %%
 
 
@@ -288,14 +589,14 @@ when is_list(Label) ->
   %% line by line clause for snippet
   Clause = [StrPayload++" = "++StrFun++"("++Label++", "++InData++"),",
             "CoParty ! {self(), "++Label++", "++StrPayload++"},",
-            OutData++" = save_msg(send, "++Label++", "++StrPayload++", "++InData++")",
-            "?SHOW(\"sent "++Label++".\", [], "++OutData++")"],
+            OutData++" = save_msg(send, "++Label++", "++StrPayload++", "++InData++"),",
+            "temp_show(\"sent "++Label++".\", [], "++OutData++"),"]++Continuation,
   %% add comments
   _Commented = erl_syntax:comment(["% ."]),
   %% package as map
   Snippet = Clause,%#{clause=>Clause,comment=>Comment},
-  %% return with comments (since we used outdata, return that too)
-  {Snippet, OutData, [{payload_fun,{StrFun,Label}}]};
+  %% return with comments and state funs
+  {Snippet, [{payload_fun,{StrFun,Label}}]};
 %%
 
 
@@ -312,20 +613,20 @@ when is_list(Label) and (is_atom(Duration) or is_integer(Duration)) and is_list(
   StrPayload = tag_state_thing("Payload",StateID),
   %% line by line clause for snippet
   Clause = ["Await"++StrPayload++" = nonblocking_payload(fun "++StrFun++"/1, {"++Label++", "++InData++"}, self(), "++StrDuration++", "++InData++"),"
-            "?VSHOW(\"waiting for payload to be returned.\", [], "++InData++"),",
+            "temp_vshow(\"waiting for payload to be returned.\", [], "++InData++"),",
             "receive {Await"++StrPayload++", ok, {Label, Payload}} -> ",
-            "?VSHOW(\"payload obtained: (~p: ~p).\",[Label,Payload], "++InData++"),",
+            "temp_vshow(\"payload obtained: (~p: ~p).\",[Label,Payload], "++InData++"),",
             "CoParty ! {self(), "++Label++", "++StrPayload++"},",
             OutData++" = save_msg(send, "++Label++", "++StrPayload++", "++InData++"),"
            ]++Continuation++["; ",
             "{Await"++StrPayload++", ko} -> ",
-            "?VSHOW(\"unsuccessful payload. (probably took too long)\", [], "++InData++"),"]++Timeout++[" end"],
+            "temp_vshow(\"unsuccessful payload. (probably took too long)\", [], "++InData++"),"]++Timeout++[" end"],
   %% add comments
   _Commented = erl_syntax:comment(["% ."]),
   %% package as map
   Snippet = Clause,%#{clause=>Clause,comment=>Comment},
-  %% return with comments (since we used outdata, return that too)
-  {Snippet, OutData, [{payload_fun,{StrFun,Label}}]};
+  %% return with comments and state funs
+  {Snippet, [{payload_fun,{StrFun,Label}}]};
 %%
 
 
@@ -345,9 +646,9 @@ when is_list(Labels) and (is_atom(Duration) or is_integer(Duration)) and is_map(
   %% line by line clause for snippet
   Clause = [StrSelection++" = "++StrLabels++",",
             "Await"++StrSelection++" = nonblocking_selection(fun "++StrFun++"/1, {"++StrSelection++", "++InData++"}, self(), "++StrDuration++", "++InData++"),"
-            "?VSHOW(\"waiting for selection to be made (out of: ~p).\", ["++StrSelection++"], "++InData++"),",
+            "temp_vshow(\"waiting for selection to be made (out of: ~p).\", ["++StrSelection++"], "++InData++"),",
             "receive {Await"++StrSelection++", ok, {Label, Payload}} -> ",
-            "?VSHOW(\"selection made: ~p.\",[Label], "++InData++"),",
+            "temp_vshow(\"selection made: ~p.\",[Label], "++InData++"),",
             "case Label of "] ++ lists:foldl(fun(Label, Cases) ->
               %% check label is as expected
               ?assert(is_list(Label)),
@@ -355,20 +656,20 @@ when is_list(Labels) and (is_atom(Duration) or is_integer(Duration)) and is_map(
               Case = [Label++" -> ",
                       "CoParty ! {self(), "++Label++", "++StrPayload++"},",
                       OutData++" = save_msg(send, "++Label++", "++StrPayload++", "++InData++"),",
-                      "?SHOW(\"sent "++Label++".\", [], "++OutData++")"] ++ maps:get(AtomLabel,Continuations) ++ ["; "],
+                      "temp_show(\"sent "++Label++".\", [], "++OutData++")"] ++ maps:get(Label,Continuations) ++ ["; "],
               %% return new case
               Cases ++ [Case]
             end, [], Labels) ++ [" _Err -> ?SHOW(\"error, unexpected selection: ~p.\", [_Err], "++InData++"),",
             "error(unexpected_label_selected)",
             "end;",
             "{Await"++StrSelection++", ko} -> ",
-            "?VSHOW(\"unsuccessful selection. (probably took too long)\", [], "++InData++"),"]++Timeout++[" end"],
+            "temp_vshow(\"unsuccessful selection. (probably took too long)\", [], "++InData++"),"]++Timeout++[" end"],
   %% add comments
   _Commented = erl_syntax:comment(["% ."]),
   %% package as map
   Snippet = Clause,%#{clause=>Clause,comment=>Comment},
-  %% return with comments (since we used outdata, return that too)
-  {Snippet, OutData, [{selection_fun,{StrFun,Labels}}]};
+  %% return with comments and state funs
+  {Snippet, [{selection_fun,{StrFun,Labels}}]};
 %%
 
 
@@ -388,8 +689,8 @@ when is_atom(Name) ->
   _Commented = erl_syntax:comment(["% ."]),
   %% package as map
   Snippet = Clause,%#{clause=>Clause,comment=>Comment},
-  %% return with comments (since we did not use outdata, return indata)
-  {Snippet, InData, []};
+  %% return with comments and state funs
+  {Snippet, []};
 %%
 
 
@@ -402,20 +703,179 @@ when is_atom(Name) and is_integer(Duration) ->
   StrDuration = integer_to_list(Duration),
   %% line by line clause for snippet
   Clause = [OutData++" = set_timer("++StrName++", "++StrDuration++", "++InData++"),",
-            "?VSHOW(\"set timer "++StrName++" with duration: "++StrDuration++".\", [], "++OutData++")"],
+            "temp_vshow(\"set timer "++StrName++" with duration: "++StrDuration++".\", [], "++OutData++")"],
   %% add comments
   _Commented = erl_syntax:comment(["% ."]),
   %% package as map
   Snippet = Clause,%#{clause=>Clause,comment=>Comment},
-  %% return with comments (since we used outdata, return that too)
-  {Snippet, OutData, []};
+  %% return with comments and state funs
+  {Snippet, []};
 %%
 
 
 
+
+%% @doc stopping snippet
+%% @returns a fully commented (?Q) function definition for stopping function
+snippet({stop_state}, _IDs, _Stuff) -> 
+  Name = stopping,
+  StrName = atom_to_list(Name),
+
+  %%
+  ClauseDefault = merl_commented(pre, [
+      "%% @doc Adds default reason 'normal' for stopping.",
+      "%% @see "++atom_to_list(Name)++"/3."
+  ],?Q([
+      "(CoParty, Data) -> ",
+      "temp_vshow(\"\nData:\t~p.\",[Data],Data),",
+      StrName++"(normal, CoParty, Data)"
+    ])),
+
+  %%
+  ClauseNormal = merl_commented(pre, [
+      "%% @doc Adds default reason 'normal' for stopping.",
+      "%% @param Reason is either atom like 'normal' or tuple like {error, more_details_or_data}."
+  ],?Q([
+    "(normal=_Reason, _CoParty, _Data) -> ",
+      "temp_vshow(\"stopping normally.\",[],_Data),",
+      "exit(normal)"
+    ])),
+
+  %%
+  ClauseError = merl_commented(pre, [
+      "%% @doc stopping with error.",
+      "%% @param Reason is either atom like 'normal' or tuple like {error, Reason, Details}.",
+      "%% @param CoParty is the process ID of the other party in this binary session.",
+      "%% @param Data is a list to store data inside to be used throughout the program."
+  ],?Q([
+    "({error, Reason, Details}, _CoParty, _Data) ",
+      "when is_atom(Reason) -> ",
+      "temp_vshow(\"error, stopping...\nReason:\t~p,\nDetails:\t~p,\nCoParty:\t~p,\nData:\t~p.\",[Reason,Details,_CoParty,_Data],_Data),",
+      "erlang:error(Reason, Details)"
+    ])),
+
+  %%
+  ClausePartialError = merl_commented(pre, [
+      "%% @doc Adds default Details to error."
+  ],?Q([
+    "({error, Reason}, CoParty, Data) ",
+      "when is_atom(Reason) -> ",
+      "temp_vshow(\"error, stopping...\nReason:\t~p,\nCoParty:\t~p,\nData:\t~p.\",[Reason,_CoParty,_Data],_Data),",
+      StrName++"({error, Reason, []}, CoParty, Data)"
+    ])),
+
+  %%
+  ClauseUnknown = merl_commented(pre, [
+      "%% @doc stopping with Unexpected Reason."
+  ],?Q([
+    "(Reason, _CoParty, _Data) ",
+      "when is_atom(Reason) -> ",
+      "temp_vshow(\"unexpected stop...\nReason:\t~p,\nCoParty:\t~p,\nData:\t~p.\",[Reason,_CoParty,_Data],_Data),",
+      "exit(Reason)"
+    ])),
+
+  %% clausedefault uses different multi-despatch
+  Clauses = [ClauseNormal, ClauseError, ClausePartialError, ClauseUnknown],
+
+  % ?VSHOW("stop_state, Clauses:\n\t~p.",Clauses),
+
+  {[], [{stop_fun, [{false, Name, [ClauseDefault]},{?EXPORT_DEFAULT,Name,Clauses}]}]};
+%%
+
+
+%% @doc init snippet
+%% @returns a fully commented (?Q) function definition 
+snippet({init_state}, _IDs, _Stuff) -> 
+  Name = init,
+  StrName = atom_to_list(Name),
+
+  % CommVerbose = merl:var("%% set printout to be verbose."),
+
+  Clause = merl_commented(pre, [
+      "% @doc Called to finish initialising process.",
+      "% @see stub_init/1 in `stub.hrl`.",
+      "% If this process is set to be monitored (i.e., temp_monitored()=:=true) then, in the space indicated below setup options for the monitor may be specified, before the session actually commences.",
+      "% Processes wait for a signal from the session coordinator (SessionID) before beginning."
+    ],?Q([
+      "(Args) -> ",
+      "printout(\"args:\n\t~p.\",[Args],Args),",
+      % "\n",
+      "{ok,Data} = stub_init(Args),",
+      "printout(\"data:\n\t~p.\",[Data],Data),",
+      % "\n",
+      "CoParty = maps:get(coparty_id,Data),",
+      "SessionID = maps:get(session_id,Data),",
+      % "\n",
+      "case (temp_monitored()=:=true) of ",
+      "true -> ",
+      % "%% add calls to specify behaviour of monitor here.",
+      % "\n",
+      % "%% set printout to be verbose.",%"_@CommVerbose",
+      "CoParty ! {self(), setup_options, {printout, #{enabled=>true,verbose=>true,termination=>true}}},",
+      % "\n",  
+      "CoParty ! {self(), ready, finished_setup},",
+      "temp_vshow(\"finished setting options for monitor.\",[],Data);",
+      "_ -> ok",
+      "end,",
+      % "\n",
+      % "%% wait for signal from session",
+      "receive {SessionID, start} -> ",
+      "temp_show(\"received start signal from session.\",[],Data),",
+      "run(CoParty, Data)",
+      "end"
+    ])),
+
+  ?VSHOW("init_state, Clause:\n\t~p.",[Clause]),
+
+  {[], [{init_fun, [{true, Name, [Clause]}]}]};
+%%
+
+
+%% @doc stopping snippet
+%% @returns a fully commented (?Q) function definition 
+snippet({run_state}, _IDs, _Stuff) -> 
+  Name = run,
+  StrName = atom_to_list(Name),
+
+  Main = main,
+  StrMain = atom_to_list(Main),
+
+  Clause1 = merl_commented(pre, [
+      "% @doc Adds default empty list for Data.",
+      "% @see "++StrName++"/2."
+    ],?Q([
+      "(CoParty) -> ",
+      "Data = #{coparty_id=>CoParty,timers=>#{},msgs=>#{},logs=>#{}},",
+      "temp_vshow(\"using default Data.\",[],Data),",
+      StrName++"(CoParty, Data)"
+    ])),
+
+  Clause2 = merl_commented(pre, [
+      "% @doc Called immediately after a successful initialisation.",
+      "% Add any setup functionality here, such as for the contents of Data.",
+      "% @param CoParty is the process ID of the other party in this binary session.",
+      "% @param Data is a map that accumulates data as the program runs, and is used by a lot of functions in `stub.hrl`.",
+      "% @see stub.hrl for helper functions and more."
+    ],?Q([
+      "(CoParty, Data) -> ",
+      "temp_do_show(\"running...\nData:\t~p.\n\",[Data],Data),",
+      StrMain++"(CoParty, Data)"
+    ])),
+
+  % ?VSHOW("run_state, Clause1:\n\t~p.",[Clause1]),
+  % ?VSHOW("run_state, Clause2:\n\t~p.",[Clause2]),
+
+  %% Clause1 is wrapper for only one param, and redurects to Clause2
+  %% Clause2 redirects to main(CoParty,Data)
+  {[], [{run_fun, [{true, Name, [Clause1]},{true, Name, [Clause2]}]}]};
+%%
+
+
+
+
 %% @doc unhandled snippet requested.
-snippet(Unhandled, StateStuff, ScopeStuff) -> 
-  ?SHOW("unhandled:\t~p,\nstate stuff:\t~p,\nscope stuff:\t~p.",[Unhandled,StateStuff,ScopeStuff]),
+snippet(Unhandled, IDs, Stuff) -> 
+  ?SHOW("unhandled:\t~p,\nIDs:\t~p,\nstuff:\t~p.",[Unhandled,IDs,Stuff]),
   timer:sleep(5000),
   error(unhandled_snippet).
 %%
@@ -426,6 +886,41 @@ snippet(Unhandled, StateStuff, ScopeStuff) ->
 %% helper functions
 %%%%%%%%%%%%%%%%%%%%
 
+-spec special_snippet_clauses(atom(), map()) -> list().
+
+%% @doc formats special state funs correctly, for pre-generation.
+special_snippet_clauses(Kind, States) ->
+  State = list_to_atom(atom_to_list(Kind)++"_state"),
+  Fun = list_to_atom(atom_to_list(Kind)++"_fun"),
+
+  {EmptySnippet, FunList} = snippet({State}, {0,0}, {"",""}),
+  ?assert(length(EmptySnippet)==0),
+  ?assert(length(FunList)==1),
+  
+  {Fun1, Clauses} = lists:nth(1,FunList),
+  ?assert(Fun=:=Fun1),
+
+  %% return
+  Clauses.
+%%
+
+%% @doc returns stateID (key) from given state (value) in map of states
+get_state_id(State, States) 
+when is_atom(State) and is_map(States) ->
+  StateIDs = maps:keys(maps:filter(fun(K,V) -> V=:=State end,States)),
+  ?VSHOW("\nStates:\t~p,\nState:\t~p,\nStateIDS:\t~p.",[States, State, StateIDs]),
+  case length(StateIDs)==0 of 
+    true -> %% this is likely a recursive protocol
+      ?SHOW("no (~p) found, this is likely a recursive protocol.",[State]),
+      no_such_state;
+    _ -> 
+      ?assert(length(StateIDs)==1),
+      StateID = lists:nth(1,StateIDs),
+      StateID
+  end.
+%%
+
+
 %% @doc takes a given Thing with a suffix of the given StateID.
 %% @returns a string
 tag_state_thing(Thing, StateID) when is_list(Thing) and is_integer(StateID) -> Thing++integer_to_list(StateID);
@@ -433,27 +928,20 @@ tag_state_thing(Thing, StateID) when is_atom(Thing) and is_integer(StateID) -> a
 
 
 %% @doc wraps as a string
-string_wrap(Thing) when is_list(Thing) and is_integer(StateID) -> Thing;
-string_wrap(Thing) when is_integer(Thing) and is_integer(StateID) -> integer_to_list(Thing);
-string_wrap(Thing) when is_atom(Thing) and is_integer(StateID) -> atom_to_list(Thing).
+string_wrap(Thing) when is_list(Thing) -> Thing;
+string_wrap(Thing) when is_integer(Thing) -> integer_to_list(Thing);
+string_wrap(Thing) when is_atom(Thing) -> atom_to_list(Thing).
 
-
-%% @doc returns the current scope data
-scope_data(StateID, ScopeID) 
-when ScopeID==-1 -> "Data"++integer_to_list(StateID);
-%%
-
-scope_data(StateID, ScopeID, ScopeData) -> "Data"++integer_to_list(StateID)++"_"++integer_to_list(ScopeID).
-%%
 
 
 %% @doc returns next state data incrememnted
-state_data(StateID, ScopeID) 
-when ScopeID==-1 -> "Data"++integer_to_list(StateID);
+state_data(Index) when is_integer(Index) ->
+  case Index of 
+    0 -> "Data";
+    _ -> "Data"++integer_to_list(Index)
+end.
 %%
 
-state_data(StateID, ScopeID, ScopeData) -> "Data"++integer_to_list(StateID)++"_"++integer_to_list(ScopeID).
-%%
 
 
 %% @doc returns timer name
@@ -461,4 +949,24 @@ timer_name(Name) when is_list(Name) -> "timer_"++Name;
 %%
 timer_name(Name) when is_atom(Name) -> "timer_"++atom_to_list(Name).
 %%
+
+
+%% @doc merges state funs returned by snippets with map of state funs returned by state
+map_state_funs(StateFunMap, StateFunList)
+when is_map(StateFunMap) and is_list(StateFunList) ->
+  lists:foldl(fun({FunKind,{Name,Args}}=Fun, Funs) 
+  when is_map(Funs) and is_atom(FunKind) and is_list(Name) -> 
+    AtomName = list_to_atom(Name),
+    case FunKind of 
+      payload_fun ->
+        maps:put(AtomName, [{false, AtomName, [ ?Q(["("++Args++") -> extend_with_functionality_for_obtaining_payload"]) ]}], Funs);
+      selection_fun ->
+        maps:put(AtomName, [{false, AtomName, [ ?Q(["("++Args++") -> extend_with_functionality_for_making_selection"]) ]}], Funs);
+      _ -> 
+        ?VSHOW("unexpected FunKind (~p), named (~p) with args (~p).",[FunKind,Name,Args]),
+        Funs
+    end
+  end, StateFunMap, StateFunList).
+
+
 
