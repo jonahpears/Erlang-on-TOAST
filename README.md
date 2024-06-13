@@ -13,7 +13,9 @@ The remaining todo's are listed further below.
 ## for examples and demo please see [`/sample_project/`](https://github.com/jonahpears/Erlang-on-TOAST-timeout-protocol-reengineering-implementation-/tree/main/sample_project).
 
 ### todo
+- Find a way to include macros in clauses when generating using `?Q([])` from `merl`, currently had to substitute macros in the stubs generated with `temp_` instead of `?`. The `?` itself seemed to be causing issues when using `?Q([])`.
 
+### general todo
 - update readme properly
 - improve `sample_app` directory tutorial/example
 - add sample `configuration presets` for monitors (verify only, enforce light, enforce strong) - (currently, these have to be configured manually over several options. adding presets would essentially bundle sets of options together.)
