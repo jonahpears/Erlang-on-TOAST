@@ -24,6 +24,11 @@ gen(ProtocolModule, ProtocolFun, ProtocolName, FileName) ->
 -spec gen(atom(), atom(), string()) -> none().
 gen(ProtocolName, Protocol, FileName) ->
   ?GAP(),
+  %% make sure output has a folder
+  case filelib:ensure_dir(output_location()) of
+    ok -> ok;
+    _Err -> ?SHOW("Warning, output directory (~p) could not be created.\n\nMaybe try creating it yourself and running the program again.",[output_location()])
+  end,
 
   ModuleName = list_to_atom(atom_to_list(ProtocolName)++"_"++lists:last(lists:droplast(string:tokens(FileName, "/.")))),
   ?SHOW("Module Name: ~p", [ModuleName]),

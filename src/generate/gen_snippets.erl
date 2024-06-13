@@ -18,10 +18,6 @@
 -include("stub_tools.hrl").
 -include("fsm_tools.hrl").
 
-%% specific functionality
--include("edge_snippets.hrl").
--include("get_if_edges.hrl").
-
 %%%%%%%%%%%
 %%% state
 %%%%%%%%%%%
@@ -942,7 +938,6 @@ when is_list(StrName) ->
 snippet({set_timer, StrName, Duration, Continuation}, {StateID, ScopeID}, {InData, OutData})
 when is_list(StrName) and is_integer(Duration) ->
   %% string helpers
-  Name = list_to_atom(StrName),
   StrVar = tag_state_thing("TID_"++StrName++"_",StateID),
   StrDuration = integer_to_list(Duration),
   %% line by line clause for snippet
