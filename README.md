@@ -13,7 +13,7 @@ The remaining todo's are listed further below.
 ## for examples and demo please see [`/sample_project/`](https://github.com/jonahpears/Erlang-on-TOAST-timeout-protocol-reengineering-implementation-/tree/main/sample_project).
 
 ### todo
-- Find a way to include macros in clauses when generating using `?Q([])` from `merl`, currently had to substitute macros in the stubs generated with `temp_` instead of `?`. The `?` itself seemed to be causing issues when using `?Q([])`.
+- Find a way to include macros in clauses when generating using `?Q([])` from `merl_build`, currently had to substitute macros in the stubs generated with `temp_` instead of `?`. The `?` itself seemed to be causing issues when using `?Q([])`. Currently thinking about trying to use parse_transform to fix this, along with adding comments inside bodies of functions (as this is another issue I have encountered when using `merl_build`).
 
 ### general todo
 - update readme properly
