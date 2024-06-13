@@ -24,7 +24,7 @@ In the current example, we have not showcased the enforcement monitoring tested 
 - create an example that uses the enforcement monitoring,
 - offer presets for easire configuration (currently, with the monitors the examples are based upon, you have to specify individual features and their constraints to get enforcement monitors).
 
-### mapping 
+#### mapping function
 This is a stretch goal, to provide a mapping from a subset of TOAST protocols (session types) to the input language used by our tool.
 - currently, there is a mapping function for TOAST with no timing constraints
 - but we need to finish those with simple timing constraints (there are manual examples of simple timing constraints, but this has not been automated yet)
