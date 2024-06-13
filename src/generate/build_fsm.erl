@@ -4,8 +4,8 @@
 -export([to_fsm/1]).
 
 -include("reng.hrl").
--include("snippets/stub_tools.hrl").
--include("snippets/fsm_tools.hrl").
+-include("stub_tools.hrl").
+-include("fsm_tools.hrl").
 error_state() -> error_state.
 timer_start_state() -> timer_start_state.
 delay_state() -> delay_state.

@@ -6,8 +6,8 @@
 -include_lib("stdlib/include/assert.hrl").
 -include("reng.hrl").
 
--include("snippets/stub_tools.hrl").
--include("snippets/fsm_tools.hrl").
+-include("stub_tools.hrl").
+-include("fsm_tools.hrl").
 
 -spec to_monitor_spec({list(), map(), map()}) -> map().
 to_monitor_spec(Fsm) -> 

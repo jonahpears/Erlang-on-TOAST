@@ -1,4 +1,4 @@
--compile({nowarn_unused_function, [ {get_msg_label,1}, {get_if_label,1}, {state_name,2}, {get_outgoing_edges,2}, {to_map,1}, {pop_map,2}, {pop_map,3}, {is_edge_silent,1}, {is_edge_not_silent,1}, {is_state_recursive,2}, {get_recursive_vars,2}, {is_end_state,1} ]}).
+-compile({nowarn_unused_function, [ {separate_edges,1}, {get_msg_label,1}, {get_if_label,1}, {state_name,2}, {get_outgoing_edges,2}, {to_map,1}, {pop_map,2}, {pop_map,3}, {is_edge_silent,1}, {is_edge_not_silent,1}, {is_state_recursive,2}, {get_recursive_vars,2}, {is_end_state,1} ]}).
 
 
 

@@ -6,7 +6,7 @@
 -include_lib("syntax_tools/include/merl.hrl").
 -include_lib("stdlib/include/assert.hrl").
 -include("reng.hrl").
--include("snippets/stub_tools.hrl").
+-include("stub_tools.hrl").
 
 
 prettypr_options() -> [{paper, 160},{ribbon,160}].
