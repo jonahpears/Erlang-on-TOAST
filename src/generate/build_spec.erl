@@ -13,9 +13,9 @@
 to_monitor_spec(Fsm) -> 
   {Edges, States, RecMap} = Fsm,
 
-  ?GAP(),?GAP(),?GAP(),?GAP(),?GAP(),?SHOW("starting to build monitor spec.\n\n\n",[]),?GAP(),
+  ?VSHOW("starting to build monitor spec.",[]),
 
-  ?SHOW("input fsm...\nEdges:\n\t~p,\nStates:\n\t~p,\nRecMap:\n\t~p.",[to_map(Edges),States,RecMap]),
+  ?VSHOW("input fsm...\nEdges:\n\t~p,\nStates:\n\t~p,\nRecMap:\n\t~p.",[to_map(Edges),States,RecMap]),
 
   InitState = state_name(maps:get(0,States),0),
   InitSpec = #{ init => InitState,
@@ -25,7 +25,7 @@ to_monitor_spec(Fsm) ->
 
   Spec = to_spec(InitState,0,Edges,States, RecMap, InitSpec),
 
-  ?GAP(),?GAP(),?GAP(),?GAP(),?GAP(),?SHOW("input fsm...\nEdges:\n\t~p,\nStates:\n\t~p,\nRecMap:\n\t~p,\nfinished spec:\n\t~p.",[to_map(Edges),States,RecMap,Spec]),
+  ?VSHOW("input fsm...\nEdges:\n\t~p,\nStates:\n\t~p,\nRecMap:\n\t~p,\nfinished spec:\n\t~p.",[to_map(Edges),States,RecMap,Spec]),
 
   % timer:sleep(5000),
 
@@ -41,7 +41,7 @@ to_monitor_spec(Fsm) ->
 to_spec(State, StateID, Edges, States, _RecMap, Spec) ->
   %% get relevant edges (and convert to map)
   RelevantEdges = to_map(get_outgoing_edges(StateID,Edges)),
-  ?GAP(),?SHOW("entering...\t(~p:~p)\nRelevantEdges:\n\t~p.",[StateID,State,RelevantEdges]),
+  ?VSHOW("entering...\t(~p:~p)\nRelevantEdges:\n\t~p.",[StateID,State,RelevantEdges]),
 
   %% check if init_state is not ready
   case (State=/=init_state) and ((maps:get(init,Spec)=:=init_state) and is_state_initialisable(State)) of
@@ -73,7 +73,6 @@ to_spec(State, StateID, Edges, States, _RecMap, Spec) ->
   OutSpec = lists:foldl(fun(Edge, InSpec) -> 
     %% add current state/edges to inspec
     EdgeSpec = edge_spec(Edge, State, StateID, Edges, States, RecMap, InSpec),
-    % ?SHOW("\n(~p:~p)\nEdgeSpec:\n\t~p.\n",[StateID,State,EdgeSpec]),
     %% get spec from edges and further
     ToStateID = maps:get(to, Edge),
     ToState = maps:get(ToStateID, States),
@@ -96,7 +95,7 @@ to_spec(State, StateID, Edges, States, _RecMap, Spec) ->
             true -> %% do not explore recursive state more than once
               case maps:get(ToStateID,RecMap,false) of
                 true -> %% already explored
-                  ?SHOW("\n(~p:~p) -> (~p,~p) recursion already explored (is true).",[StateID,State,ToStateID,ToState]),
+                  ?VSHOW("\n(~p:~p) -> (~p,~p) recursion already explored (is true).",[StateID,State,ToStateID,ToState]),
                   NoFutureResolveSpec;
                 _ -> %% not been visited before
                   to_spec(ToState, ToStateID, Edges, States, RecMap, NoFutureResolveSpec)
@@ -237,7 +236,7 @@ edge_spec(#{to:=To,is_silent:=true,is_delay:=true,edge_data:=#{delay:=#{ref:=Del
 
 %% @doc for unhandled edges
 edge_spec(Edge, _State, _StateID, _Edges, _States, _RecMap, Spec) ->
-  ?GAP(),?SHOW("\n(~p:~p)\nunhandled edge:\nSpec:\n\t~p,\nEdge:\n\t~p,\nStates:\n\t~p.\n",[_StateID,_State,Spec,Edge,_States]),
+  ?SHOW("\n(~p:~p)\nunhandled edge:\nSpec:\n\t~p,\nEdge:\n\t~p,\nStates:\n\t~p.\n",[_StateID,_State,Spec,Edge,_States]),
   Spec.
 %%
 
@@ -249,7 +248,6 @@ when is_atom(Label) ->
   %% get map for this state
   OldMap = maps:get(map, Spec),
   OldStateMap = maps:get(StateName,OldMap,#{}),
-  % ?SHOW("\nOldStateMap:\n\t~p.\n",[OldStateMap]),
   %% check it is mixed-safe
   OldStateKeys = maps:keys(OldStateMap),
   ?assert(length(OldStateKeys)<2),
@@ -280,7 +278,7 @@ when (is_atom(Ref) or is_integer(Ref)) ->
   %% get timeouts 
   OldTimeouts = maps:get(timeouts, Spec),
   %% make sure does not already have timeout
-  ?SHOW("\nStateName: ~p,\nToState: ~p,\nOldTimeouts:\n\t~p.\n",[StateName,ToState,OldTimeouts]),
+  ?VSHOW("\nStateName: ~p,\nToState: ~p,\nOldTimeouts:\n\t~p.\n",[StateName,ToState,OldTimeouts]),
   ?assert(not is_map_key(StateName,OldTimeouts)),
   %% add timeout
   NewTimeouts = maps:put(StateName, {Ref, ToState}, OldTimeouts),
@@ -308,7 +306,7 @@ when is_atom(Timer) ->
   NewResets = maps:put(unresolved, NewResetMap, OldResets),
   %% return updated map
   NewSpec = maps:put(resets, NewResets, Spec),
-  ?GAP(),?SHOW("\nOldResetMap:\n\t~p,\nSpec:\n\t~p,\nNewSpec:\n\t~p.\n",[OldResetMap,Spec,NewSpec]),
+  ?VSHOW("\nOldResetMap:\n\t~p,\nSpec:\n\t~p,\nNewSpec:\n\t~p.\n",[OldResetMap,Spec,NewSpec]),
   NewSpec;
 %%
 

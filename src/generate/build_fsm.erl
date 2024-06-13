@@ -70,7 +70,7 @@ to_fsm(P) ->
         % )
     ),
 
-    io:format("fsm, edges:\n\t~p,\n\nfsm, nodes:\n\t~p,\n\nfsm, recmap:\n\t~p.\n",[to_map(Edges),Nodes,RecMap]),
+    ?VSHOW("fsm, edges:\n\t~p,\n\nfsm, nodes:\n\t~p,\n\nfsm, recmap:\n\t~p.\n",[to_map(Edges),Nodes,RecMap]),
 
     {Edges, Nodes, RecMap}.
 
@@ -83,7 +83,7 @@ args(Param) ->
     Recv = string:find(Str, "r_"),
     Send = string:find(Str, "s_"),
 
-    io:format("\n\n\nparam: ~p\nstr: ~p\nrecv: ~p\nsend: ~p\n\n\n", [Param, Str, Recv, Send]),
+    ?VSHOW("\n\n\nparam: ~p\nstr: ~p\nrecv: ~p\nsend: ~p\n\n\n", [Param, Str, Recv, Send]),
 
     if
         Recv =:= Str ->
@@ -108,7 +108,7 @@ args(Param) ->
 %% calls args.
 -spec data(atom()) -> {atom(), string(), atom()}.
 data(Param) ->
-    io:format("param: ~p.", [Param]),
+    ?VSHOW("param: ~p.", [Param]),
     {Act, Var, Event, TransType} = args(Param),
     #edge_data{event = {Act, list_to_atom(Var)}, event_type = Event, trans_type = TransType}.
 
@@ -116,7 +116,7 @@ data(Param) ->
 %% calls args.
 -spec data(atom(), interleave:time_constraint()) -> {atom(), string(), atom()}.
 data(Param, Constraint) ->
-    io:format("time constraint, param: ~p; constraint: ~p.", [Param, Constraint]),
+    ?VSHOW("time constraint, param: ~p; constraint: ~p.", [Param, Constraint]),
     {Act, Var, Event, TransType} = args(Param),
     #edge_data{
         event = {Act, list_to_atom(Var)},
@@ -192,21 +192,21 @@ to_fsm({aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Cl
     Edges1 = Edges ++ [Edge],
     %% TODO figure out why we do the below:
     % Nodes1 = maps:put(PrevVis, after_state(), Nodes),
-    io:format(
+    ?VSHOW(
         "\n[{aft, Timeout, Q}]:...\nEdges:\n\t~p\tNodes:\n\t~p\n\tIndex: ~p\n\tPrevIndex: ~p\n\tPrevVis: ~p\n\tEndIndex: ~p\n\tQ:\n\t~p.\n",
         [Edges, Nodes, Index, PrevIndex, PrevVis, EndIndex,Q]
     ),
     Nodes1 = Nodes,% maps:put(Index, after_state(), Nodes),
-    io:format("\n\n[{aft, Timeout, Q}], Nodes1:\n\t~p.\n", [Nodes1]),
-    io:format("\n\n[{aft, Timeout, Q}], Edges1:\n\t~p.\n", [Edges1]),
+    ?VSHOW("\n\n[{aft, Timeout, Q}], Nodes1:\n\t~p.\n", [Nodes1]),
+    ?VSHOW("\n\n[{aft, Timeout, Q}], Edges1:\n\t~p.\n", [Edges1]),
     {Edges2, Nodes2, RecMap2, Index2, PrevVis2, EndIndex2, Clocks2} = to_fsm(
         Q, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks
     ),
-    % io:format("\n\n[{aft, Timeout, Q}], QResult: (~p)\n\t~p.\n", [size(QResult),QResult]),
+    % ?VSHOW("\n\n[{aft, Timeout, Q}], QResult: (~p)\n\t~p.\n", [size(QResult),QResult]),
     %  = QResult,
-    io:format("\n\n[{aft, Timeout, Q}], Q:\n\t ~p.\n", [Q]),
-    io:format("\n\n[{aft, Timeout, Q}], Nodes2:\n\t~p.\n", [Nodes2]),
-    io:format("\n\n[{aft, Timeout, Q}], Edges2:\n\t~p.\n", [Edges2]),
+    ?VSHOW("\n\n[{aft, Timeout, Q}], Q:\n\t ~p.\n", [Q]),
+    ?VSHOW("\n\n[{aft, Timeout, Q}], Nodes2:\n\t~p.\n", [Nodes2]),
+    ?VSHOW("\n\n[{aft, Timeout, Q}], Edges2:\n\t~p.\n", [Edges2]),
 
     % timer:sleep(2000),
     {Edges2, Nodes2, RecMap2, Index2, PrevVis2, EndIndex2, Clocks2};
@@ -232,7 +232,7 @@ to_fsm({act, Act, P, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis,
       {Edges2, Nodes2, RecMap2, PrevIndex2, _PrevVis2, EndIndex2, Clocks2} = to_fsm(
           P, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks
       ),
-      io:format(
+      ?VSHOW(
           "\n[recv {act, Act, P, aft, Timeout, Q}]:...\n\tEdges2: ~p;\n\tNodes2: ~p;\n\tPrevIndex2: ~p;\n\tPrevVis2: ~p;\n\tEndIndex2: ~p.\n",
           [Edges2, Nodes2, PrevIndex2, _PrevVis2, EndIndex2]
       ),
@@ -247,7 +247,7 @@ to_fsm({act, Act, P, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis,
           EndIndex2,
           Clocks2
       ),
-      io:format(
+      ?VSHOW(
           "\n[recv {act, Act, P, aft, Timeout, Q}]:...\n\tEdges3: ~p;\n\tNodes3: ~p;\n\tPrevIndex3: ~p;\n\tPrevVis3: ~p;\n\tEndIndex3: ~p.\n",
           [Edges3, Nodes3, PrevIndex3, PrevVis3, EndIndex3]
       ),
@@ -268,7 +268,7 @@ to_fsm({act, Act, P, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis,
       {Edges2, Nodes2, RecMap2, PrevIndex2, _PrevVis2, EndIndex2, Clocks2} = to_fsm(
           P, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks
       ),
-      % io:format("\n[2send {act, Act, P, aft, Timeout, Q}]:...\n\tEdges: ~p;\n\tNodes: ~p;\n\tPrevIndex: ~p;\n\tPrevVis: ~p;\n\tEndIndex: ~p.\n", [Edges2, Nodes2, PrevIndex2, PrevVis2, EndIndex2]),
+      % ?VSHOW("\n[2send {act, Act, P, aft, Timeout, Q}]:...\n\tEdges: ~p;\n\tNodes: ~p;\n\tPrevIndex: ~p;\n\tPrevVis: ~p;\n\tEndIndex: ~p.\n", [Edges2, Nodes2, PrevIndex2, PrevVis2, EndIndex2]),
       %% still pass on the current nodes index in PrevVis to after, to point back to this
       %% TODO why PrevIndex2+1?
       {Edges3, Nodes3, RecMap3, PrevIndex3, PrevVis3, EndIndex3, Clocks3} = to_fsm(
@@ -281,13 +281,13 @@ to_fsm({act, Act, P, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis,
           EndIndex2,
           Clocks2
       ),
-      io:format(
+      ?VSHOW(
           "\n[send {act, Act, P, aft, Timeout, Q}]:...\n\tEdges: ~p;\n\tNodes: ~p;\n\tPrevIndex: ~p;\n\tPrevVis: ~p;\n\tEndIndex: ~p.\n",
           [Edges3, Nodes3, PrevIndex3, PrevVis3, EndIndex3]
       ),
       {Edges3, Nodes3, RecMap3, PrevIndex3, PrevVis3, EndIndex3, Clocks3};
     _Else ->
-      io:format("\n[unhandled trans_type] act aft: ~p.", [[{act, Act, P}, {aft, Timeout, Q}]]),
+      ?SHOW("\n[unhandled trans_type] act aft: ~p.", [[{act, Act, P}, {aft, Timeout, Q}]]),
       %% TEMP: act as normal
       Edge = #edge{
           from = PrevVis,
@@ -314,7 +314,7 @@ to_fsm({branch, Branches}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, C
         fun({Label, P1}, {E, N, R, I, _, EI, CI}=F) ->
             I1 = I + 1,
             EdgeData = data(Label),
-            io:format("\n\nbranch, (I1=>~p) EI: ~p, BranchFSM:\n\tbefore: ~p.\n",[I1, EI,F]),
+            ?VSHOW("\n\nbranch, (I1=>~p) EI: ~p, BranchFSM:\n\tbefore: ~p.\n",[I1, EI,F]),
             Edge = #edge{
                 from = PrevVis,
                 to = I1,
@@ -330,13 +330,13 @@ to_fsm({branch, Branches}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, C
             % case LatedEndState==-1 of
             %   true -> ok;
             %   _ -> 
-            io:format("branch, (I1=>~p) EI: ~p, BranchFSM:\n\tafter: ~p.\n",[I1, EI,BranchFSM]),
+            ?VSHOW("branch, (I1=>~p) EI: ~p, BranchFSM:\n\tafter: ~p.\n",[I1, EI,BranchFSM]),
             BranchFSM
         end,
         {Edges, Nodes1, RecMap, PrevIndex, PrevIndex, EndIndex, Clocks},
         Branches
     ),
-    io:format("branching fsm:\n\t~p.\n",[BranchingFSM]),
+    ?VSHOW("branching fsm:\n\t~p.\n",[BranchingFSM]),
     BranchingFSM;
 
 %% @doc branching receive with timeout
@@ -368,7 +368,7 @@ to_fsm({branch, Branches, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, Pre
     {Edges3, Nodes3, RecMap3, PrevIndex3, PrevVis3, EndIndex3, Clocks3} = to_fsm(
         {aft, Timeout, Q}, Edges2, Nodes2, RecMap2, PrevIndex2, PrevVis, EndIndex2, Clocks2
     ),
-    io:format(
+    ?VSHOW(
         "\n[{branch, Branches, aft, Timeout, Q}]:...\n\tEdges: ~p;\n\tNodes: ~p;\n\tPrevIndex: ~p;\n\tPrevVis: ~p;\n\tEndIndex: ~p.\n",
         [Edges3, Nodes3, PrevIndex3, PrevVis3, EndIndex3]
     ),
@@ -428,7 +428,7 @@ to_fsm({select, Branches, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, Pre
     {Edges3, Nodes3, RecMap3, PrevIndex3, PrevVis3, EndIndex3, Clocks3} = to_fsm(
         {aft, Timeout, Q}, Edges2, Nodes2, RecMap2, PrevIndex2, PrevVis, EndIndex2, Clocks2
     ),
-    io:format(
+    ?VSHOW(
         "\n[{select, Branches, aft, Timeout, Q}]:...\n\tEdges: ~p;\n\tNodes: ~p;\n\tPrevIndex: ~p;\n\tPrevVis: ~p;\n\tEndIndex: ~p.\n",
         [Edges3, Nodes3, PrevIndex3, PrevVis3, EndIndex3]
     ),
@@ -708,7 +708,7 @@ to_fsm({if_not_timer, Name, P, else, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVi
 
 %% @doc unhandled protocol
 to_fsm(S, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
-  io:format("~p, unhandled protocol: ~p.", [?FUNCTION_NAME, S]),
+  ?SHOW("~p, unhandled protocol: ~p.", [?FUNCTION_NAME, S]),
   case S of 
     {_, _, P} -> to_fsm(P, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks);
     {_, _, _, _, _, P} -> to_fsm(P, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks)

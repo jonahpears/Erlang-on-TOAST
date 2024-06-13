@@ -98,7 +98,7 @@ build_module_forms(Protocol, Fsm, ModuleName,MonitorSpec) ->
 
   MainForms = Forms8,
 
-  ?SHOW("\nForms:\t~p.",[MainForms]),
+  ?VSHOW("\nForms:\t~p.",[MainForms]),
 
   %% fsm is composed of list of edges and map of states to edges.
   %% mixed-states have both sending and receiving actions/edges.
@@ -121,7 +121,7 @@ build_module_forms(Protocol, Fsm, ModuleName,MonitorSpec) ->
 
   ModuleForm = merl_build:module_forms(lists:foldl(AddFuns, MainForms, Funs)),
 
-  ?SHOW("\nModuleForm:\t~p.", [ModuleForm]),
+  ?VSHOW("\nModuleForm:\t~p.", [ModuleForm]),
   
   ModuleForm.
 %%
@@ -141,11 +141,11 @@ build_funs(Edges, States, RecMap, ModuleName) ->
   StateID = 0,
   State = maps:get(StateID, States),
 
-  ?SHOW("\n\nEdges:\t~p,\nStates:\t~p,RecMap:\t~p,\n\ngenerating for \"~p\".\n\n",[Edges,States,RecMap,ModuleName]),
+  ?VSHOW("\n\nEdges:\t~p,\nStates:\t~p,RecMap:\t~p,\n\ngenerating for \"~p\".\n\n",[Edges,States,RecMap,ModuleName]),
 
   FunMap = gen_snippets:state(State, StateID, Edges, States, RecMap, #{}),
 
-  ?SHOW("\nFunMap:\t~p.\n",[FunMap]),
+  ?VSHOW("\nFunMap:\t~p.\n",[FunMap]),
 
   %% convert to list
 
@@ -153,7 +153,7 @@ build_funs(Edges, States, RecMap, ModuleName) ->
     Funs ++ V
   end, [], FunMap),
 
-  ?SHOW("\nStateFuns:\t~p.\n",[StateFuns]),
+  ?VSHOW("\nStateFuns:\t~p.\n",[StateFuns]),
 
   StateFuns.
 

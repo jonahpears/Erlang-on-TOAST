@@ -33,7 +33,7 @@
 %% @doc for first pass, sets up initial/stopping states 
 state(init_state=State, 0=StateID, Edges, States, RecMap, FunMap) ->
   
-  ?SHOW("starting new fsm.\nedges:\t~p,\nstates:\t~p,\nrecmap:\t~p,\nfunmap:\t~p.",[Edges,States,RecMap,FunMap]),
+  ?VSHOW("starting new fsm.\nedges:\t~p,\nstates:\t~p,\nrecmap:\t~p,\nfunmap:\t~p.",[Edges,States,RecMap,FunMap]),
 
   Scope = State,
   ScopeID = StateID,
@@ -91,7 +91,7 @@ state(init_state=State, 0=StateID, Edges, States, RecMap, FunMap) ->
   %% unpack 
   {Continuation, NextFunMap, RecMap1} = ContinuationSnippet,
 
-  ?SHOW("(~p :: ~p)\nContinuation:\t~p.",[{ScopeID,Scope},{StateID,State},Continuation]),
+  ?VSHOW("(~p :: ~p)\nContinuation:\t~p.",[{ScopeID,Scope},{StateID,State},Continuation]),
   ?VSHOW("(~p :: ~p)\nNextFunMap:\t~p.",[{ScopeID,Scope},{StateID,State},NextFunMap]),
   ?VSHOW("(~p :: ~p)\nRecMap1:\t~p.",[{ScopeID,Scope},{StateID,State},RecMap1]),
 
@@ -118,7 +118,10 @@ state(init_state=State, 0=StateID, Edges, States, RecMap, FunMap) ->
       {unfolded, RecState, _} -> Unfolding and true;
       _ -> Unfolding and false
   end end, true, RecMap1),
-  ?assert(true=:=FinishedUnfolding),
+  %% warn if not all were unfolded
+  case FinishedUnfolding of true -> ok; 
+    _ -> ?SHOW("Warning, it looks like one (or more) of the recursive variables did not finish unfolding, perhaps there is a mistake in the protocol?\nRecMap:\t~p.",[RecMap1])
+  end,
   %% pack as final recmap
   ExitRecMap = RecMap1,
 
@@ -142,7 +145,7 @@ state(State, StateID, {InScope, InScopeID}, {PrevDataIndex, StateDataIndex}, Edg
   PrevData = state_data(PrevDataIndex),
   StateData = state_data(StateDataIndex),
 
-  ?SHOW("building new state.\nstate:\t~p => ~p,\nscope:\t~p => ~p,\ndata:\t~p => ~p.",[StateID,State,InScopeID,InScope,PrevData,StateData]),
+  ?VSHOW("building new state.\nstate:\t~p => ~p,\nscope:\t~p => ~p,\ndata:\t~p => ~p.",[StateID,State,InScopeID,InScope,PrevData,StateData]),
   
   % ?VSHOW("\nedges:\t~p,\nstates:\t~p,\nrecmap:\t~p,\nfunmap:\t~p.",[Edges,States,RecMap,FunMap]),
 
@@ -188,7 +191,7 @@ state(State, StateID, {InScope, InScopeID}, {PrevDataIndex, StateDataIndex}, Edg
 
       end,
 
-      ?SHOW("(~p :: ~p), entering main build phase.",[{ScopeID,Scope},{StateID,State}]),
+      ?VSHOW("(~p :: ~p), entering main build phase.",[{ScopeID,Scope},{StateID,State}]),
 
       %% get edges relevant to current state
       RelevantEdges = get_outgoing_edges(StateID,Edges),
@@ -199,17 +202,65 @@ state(State, StateID, {InScope, InScopeID}, {PrevDataIndex, StateDataIndex}, Edg
         if_then_else_state -> 
           ?assert(length(RelevantEdges)==2),
 
-          Condition = [],
-          True = [],
-          False = [],
+          %% need to sort them by which needs the timer to complete or not
+          %% inspect top, see if it is negated or not
+          A = to_map(lists:nth(1,RelevantEdges)),
+          B = to_map(lists:nth(2,RelevantEdges)),
 
-          {Snippet, StateFuns} = snippet({if_then, Condition, True, False}, {StateID, ScopeID}, {PrevData, StateData}),
+          %% for both A and B, most of the following is shared, with the only differing info being is_if and is_else
+          #{is_if:=AIsIf,is_else:=AIsElse,edge_data:=#{if_stmt:=#{is_timer:=IsTimer,ref:=Ref,is_not:=IsNot}}} = A,
+          ?assert(not(AIsIf=:=AIsElse)),
 
+          %% determine which is top and bot
+          case IsNot of 
+            true -> %% put else in top
+              case AIsIf of 
+                true -> 
+                  Top = B,
+                  Bot = A;
+                _ -> 
+                  Top = A,
+                  Bot = B
+              end;
+            _ -> %% put if in top
+              case AIsIf of 
+                true -> 
+                  Top = B,
+                  Bot = A;
+                _ -> 
+                  Top = A,
+                  Bot = B
+              end
+          end,
 
-          %% TODO :: temporary
-          FinalFunMap = FunMap,
-          FinalRecMap = RecMap1,
-          ok;
+          %% get top state info
+          #{to:=TopToStateID} = Top,
+          TopToState = maps:get(TopToStateID, States),
+
+          %% get continuation of top
+          {TopContinuation, TopNextFunMap, TopRecMap} = state(TopToState, TopToStateID, {Scope, ScopeID}, {StateDataIndex, StateDataIndex+1}, Edges, States, RecMap1, FunMap),
+
+          %% get bot state info
+          #{to:=BotToStateID} = Bot,
+          BotToState = maps:get(BotToStateID, States),
+
+          %% get continuation of bot
+          {BotContinuation, NextFunMap, BotRecMap} = state(BotToState, BotToStateID, {Scope, ScopeID}, {StateDataIndex, StateDataIndex+1}, Edges, States, RecMap1, TopNextFunMap),
+
+          %% generate
+          case IsTimer of 
+            true -> ok;
+            _ -> 
+              error(only_timers_are_supported_with_if_statements) %% unsupported
+          end,
+
+          {Snippet, StateFuns} = snippet({if_then, Ref, TopContinuation, BotContinuation}, {StateID, ScopeID}, {PrevData, StateData}),
+
+          %% merge state fun list with state fun map
+          FinalFunMap = map_state_funs(NextFunMap, StateFuns),
+
+          %% repackage for consistency afterwards, merge all recmaps
+          FinalRecMap = merge_recmaps([TopRecMap,BotRecMap]);
 
 
         delay_state -> 
@@ -297,89 +348,173 @@ state(State, StateID, {InScope, InScopeID}, {PrevDataIndex, StateDataIndex}, Edg
           ?assert(length(RelevantEdges)>0),
 
           %% map the continuation of each edge to the label
-          {ContinuationMap, NextFunMap, Labels} = explore_states(RelevantEdges, StateDataIndex, Scope, ScopeID, Edges, States, RecMap1, FunMap),
+          {ContinuationMap, NextFunMap, Labels, RecMaps} = explore_states(RelevantEdges, StateDataIndex, Scope, ScopeID, Edges, States, RecMap1, FunMap),
 
           {Snippet, StateFuns} = snippet({branching, Labels, ContinuationMap}, {StateID, ScopeID}, {PrevData, StateData}),
 
           %% merge state fun list with state fun map
           FinalFunMap = map_state_funs(NextFunMap, StateFuns),
 
-          %% repackage for consistency afterwards
-          FinalRecMap = RecMap1;
+          %% repackage for consistency afterwards, merge all recmaps
+          FinalRecMap = merge_recmaps(RecMaps);
 
 
         select_state -> 
           ?assert(length(RelevantEdges)>0),
 
           %% map the continuation of each edge to the label
-          {ContinuationMap, NextFunMap, Labels} = explore_states(RelevantEdges, StateDataIndex, Scope, ScopeID, Edges, States, RecMap1, FunMap),
+          {ContinuationMap, NextFunMap, Labels, RecMaps} = explore_states(RelevantEdges, StateDataIndex, Scope, ScopeID, Edges, States, RecMap1, FunMap),
 
           {Snippet, StateFuns} = snippet({blocking_selection, Labels, ContinuationMap}, {StateID, ScopeID}, {PrevData, StateData}),
 
           %% merge state fun list with state fun map
           FinalFunMap = map_state_funs(NextFunMap, StateFuns),
 
-          %% repackage for consistency afterwards
-          FinalRecMap = RecMap1;
+          %% repackage for consistency afterwards, merge all recmaps
+          FinalRecMap = merge_recmaps(RecMaps);
 
 
         recv_after_state -> 
-
-          Labels = [],
-          Continuations = [],
-          Duration = [], %% either timer or integer
-          Timeout = [],
-
-          {Snippet, StateFuns} = snippet({timeout, Labels, Continuations, Duration, Timeout}, {StateID, ScopeID}, {PrevData, StateData}),
-
-          %% TODO :: temporary
-          FinalFunMap = FunMap,
-          FinalRecMap = RecMap1,
-          ok;
-
-
-        branch_after_state -> 
+          {Actions, Silents} = separate_edges(RelevantEdges),
+          ?assert(length(Actions)==1),
+          ?assert(length(Silents)==1),
           
-          Labels = [],
-          Continuations = [],
-          Duration = [], %% either timer or integer
-          Timeout = [],
+          %% map the continuation of each edge to the label
+          {ContinuationMap, NextFunMap, Labels, RecMaps} = explore_states(Actions, StateDataIndex, Scope, ScopeID, Edges, States, RecMap1, FunMap),
 
-          {Snippet, StateFuns} = snippet({timeout, Labels, Continuations, Duration, Timeout}, {StateID, ScopeID}, {PrevData, StateData}),
+          %% only one silent transition
+          Silent = to_map(lists:nth(1,Silents)),
+          #{to:=TimeoutStateID,edge_data:=#{timeout:=#{ref:=Duration}}} = Silent,
+          %% get timeout
+          TimeoutState = maps:get(TimeoutStateID, States),
+          TimeoutSnippet = state(TimeoutState, TimeoutStateID, {Scope, ScopeID}, {StateDataIndex, StateDataIndex+1}, Edges, States, RecMap1, NextFunMap),
+          %% unpack (ignoring recmap)
+          {TimeoutContinuation, TimeoutFunMap, TimeoutRecMap2} = TimeoutSnippet,
 
-          %% TODO :: temporary
-          FinalFunMap = FunMap,
-          FinalRecMap = RecMap1,
-          ok;
+          %% depending on timeout ref
+          case is_integer(Duration) of
+
+            true -> 
+              {Snippet, StateFuns} = snippet({timeout, Labels, ContinuationMap, Duration, TimeoutContinuation}, {StateID, ScopeID}, {PrevData, StateData});
+            
+            _ -> %% add timeout as branch
+              TimeoutMap = maps:put(Duration,{is_timeout,Duration,["{timeout, "++tag_state_thing("TID_"++Duration++"_",StateID)++", "++Duration++"} -> "],TimeoutContinuation},ContinuationMap),
+              %% add timer to labels
+              TimeoutLabels = Labels++[list_to_atom(Duration)],
+              %% get snippet
+              {Snippet, StateFuns} = snippet({branching, TimeoutLabels, TimeoutMap}, {StateID, ScopeID}, {PrevData, StateData})
+
+          end,
+
+          %% merge state fun list with state fun map
+          FinalFunMap = map_state_funs(TimeoutFunMap, StateFuns),
+
+          %% repackage for consistency afterwards, merge all recmaps
+          FinalRecMap = merge_recmaps(RecMaps++[TimeoutRecMap2]);
+
+
+        branch_after_state -> %% ? similar to recv_after_state
+          {Actions, Silents} = separate_edges(RelevantEdges),
+          ?assert(length(Actions)>0),
+          ?assert(length(Silents)==1),
+          
+          %% map the continuation of each edge to the label
+          {ContinuationMap, NextFunMap, Labels, RecMaps} = explore_states(Actions, StateDataIndex, Scope, ScopeID, Edges, States, RecMap1, FunMap),
+
+          %% only one silent transition
+          Silent = to_map(lists:nth(1,Silents)),
+          #{to:=TimeoutStateID,edge_data:=#{timeout:=#{ref:=Duration}}} = Silent,
+          %% get timeout
+          TimeoutState = maps:get(TimeoutStateID, States),
+          TimeoutSnippet = state(TimeoutState, TimeoutStateID, {Scope, ScopeID}, {StateDataIndex, StateDataIndex+1}, Edges, States, RecMap1, NextFunMap),
+          %% unpack (ignoring recmap)
+          {TimeoutContinuation, TimeoutFunMap, TimeoutRecMap2} = TimeoutSnippet,
+
+          %% depending on timeout ref
+          case is_integer(Duration) of
+
+            true -> 
+              {Snippet, StateFuns} = snippet({timeout, Labels, ContinuationMap, Duration, TimeoutContinuation}, {StateID, ScopeID}, {PrevData, StateData});
+            
+            _ -> %% add timeout as branch
+              TimeoutMap = maps:put(Duration,{is_timeout,Duration,["{timeout, "++tag_state_thing("TID_"++Duration++"_",StateID)++", "++Duration++"} -> "],TimeoutContinuation},ContinuationMap),
+              %% add timer to labels
+              TimeoutLabels = Labels++[list_to_atom(Duration)],
+              %% get snippet
+              {Snippet, StateFuns} = snippet({branching, TimeoutLabels, TimeoutMap}, {StateID, ScopeID}, {PrevData, StateData})
+
+          end,
+
+          %% merge state fun list with state fun map
+          FinalFunMap = map_state_funs(TimeoutFunMap, StateFuns),
+
+          %% repackage for consistency afterwards, merge all recmaps
+          FinalRecMap = merge_recmaps(RecMaps++[TimeoutRecMap2]);
 
 
         send_after_state -> 
+          {Actions, Silents} = separate_edges(RelevantEdges),
+          ?assert(length(Actions)==1),
+          ?assert(length(Silents)==1),
+          
+          %% only one silent transition
+          Silent = to_map(lists:nth(1,Silents)),
+          #{to:=TimeoutStateID,edge_data:=#{timeout:=#{ref:=Duration}}} = Silent,
+          %% get timeout
+          TimeoutState = maps:get(TimeoutStateID, States),
+          TimeoutSnippet = state(TimeoutState, TimeoutStateID, {Scope, ScopeID}, {StateDataIndex, StateDataIndex+1}, Edges, States, RecMap1, FunMap),
+          %% unpack (ignoring recmap)
+          {TimeoutContinuation, TimeoutFunMap, TimeoutRecMap2} = TimeoutSnippet,
 
-          Label = [],
-          Continuation = [],
-          Duration = [], %% either timer or integer
-          Timeout = [],
 
-          {Snippet, StateFuns} = snippet({nonblocking_payload, Label, Continuation, Duration, Timeout}, {StateID, ScopeID}, {PrevData, StateData}),
+          %% get edge 
+          Edge = to_map(lists:nth(1,Actions)),
+          %% depends on case of single direction kind
+          #{to:=ToStateID,edge_data:=#{trans_type:=Kind}} = Edge,
+          %% get next state
+          #{ToStateID:=ToState} = States,
+          %% get continuation
+          ContinuationSnippet = state(ToState, ToStateID, {Scope, ScopeID}, {StateDataIndex, StateDataIndex+1}, Edges, States, RecMap1, TimeoutFunMap),
+          %% unpack 
+          {Continuation, NextFunMap, RecMap2} = ContinuationSnippet,
 
-          %% TODO :: temporary
-          FinalFunMap = FunMap,
-          FinalRecMap = RecMap1,
-          ok;
+          %% string helpers
+          Label = get_msg_label(Edge),
 
-        select_after_state -> 
+          {Snippet, StateFuns} = snippet({nonblocking_payload, Label, Continuation, Duration, TimeoutContinuation}, {StateID, ScopeID}, {PrevData, StateData}),
 
-          Labels = [],
-          Continuations = [],
-          Duration = [], %% either timer or integer
-          Timeout = [],
+          %% merge state fun list with state fun map
+          FinalFunMap = map_state_funs(NextFunMap, StateFuns),
 
-          {Snippet, StateFuns} = snippet({nonblocking_selection, Labels, Continuations, Duration, Timeout}, {StateID, ScopeID}, {PrevData, StateData}),
+          %% repackage for consistency afterwards, merge all recmaps
+          FinalRecMap = merge_recmaps([RecMap2,TimeoutRecMap2]);
 
-          %% TODO :: temporary
-          FinalFunMap = FunMap,
-          FinalRecMap = RecMap1,
-          ok;
+
+        select_after_state -> %% ? similar to send_after_state
+          {Actions, Silents} = separate_edges(RelevantEdges),
+          ?assert(length(Actions)>0),
+          ?assert(length(Silents)==1),
+          
+          %% map the continuation of each edge to the label
+          {ContinuationMap, NextFunMap, Labels, RecMaps} = explore_states(Actions, StateDataIndex, Scope, ScopeID, Edges, States, RecMap1, FunMap),
+
+          %% only one silent transition
+          Silent = to_map(lists:nth(1,Silents)),
+          #{to:=TimeoutStateID,edge_data:=#{timeout:=#{ref:=Duration}}} = Silent,
+          %% get timeout
+          TimeoutState = maps:get(TimeoutStateID, States),
+          TimeoutSnippet = state(TimeoutState, TimeoutStateID, {Scope, ScopeID}, {StateDataIndex, StateDataIndex+1}, Edges, States, RecMap1, NextFunMap),
+          %% unpack (ignoring recmap)
+          {TimeoutContinuation, TimeoutFunMap, TimeoutRecMap2} = TimeoutSnippet,
+
+          %% get snippet
+          {Snippet, StateFuns} = snippet({nonblocking_selection, Labels, ContinuationMap, Duration, TimeoutContinuation}, {StateID, ScopeID}, {PrevData, StateData}),
+
+          %% merge state fun list with state fun map
+          FinalFunMap = map_state_funs(TimeoutFunMap, StateFuns),
+
+          %% repackage for consistency afterwards, merge all recmaps
+          FinalRecMap = merge_recmaps(RecMaps++[TimeoutRecMap2]);
 
 
         error_state -> 
@@ -394,7 +529,7 @@ state(State, StateID, {InScope, InScopeID}, {PrevDataIndex, StateDataIndex}, Edg
           ?assert(StoppingFunDefs=/=stopping_function_undefined),
           ?assert(length(StoppingFunDefs)>0),
           %% should all be the same enough
-          {true, StopFunName, _} = lists:nth(1, StoppingFunDefs),
+          {_Exported, StopFunName, _} = lists:nth(1, StoppingFunDefs),
         
           %% string helpers
           StrReason = atom_to_list(ErrorReason),
@@ -420,15 +555,24 @@ state(State, StateID, {InScope, InScopeID}, {PrevDataIndex, StateDataIndex}, Edg
 
           %% package as necessary
           FinalFunMap = FunMap,
+          FinalRecMap = RecMap1;
+
+        _ -> 
+          ?SHOW("(~p :: ~p), unexpected state.",[{ScopeID,Scope},{StateID,State}]),
+          timer:sleep(5000),
+          error(unexpected_state),
+          %% just to compile
+          Snippet = [],
+          FinalFunMap = FunMap,
           FinalRecMap = RecMap1
 
       end,
 
       ?VSHOW("(~p :: ~p), finished state & snippets.",[{ScopeID,Scope},{StateID,State}]),
 
-      ?SHOW("(~p :: ~p)\nSnippet:\t~p.",[{ScopeID,Scope},{StateID,State},Snippet]),
-      ?VSHOW("(~p :: ~p)\nFinalFunMap:\t~p.",[{ScopeID,Scope},{StateID,State},FinalFunMap]),
-      ?VSHOW("(~p :: ~p)\nFinalRecMap:\t~p.",[{ScopeID,Scope},{StateID,State},FinalRecMap]),
+      ?VSHOW("(~p :: ~p)\nSnippet:\t~p.",[{ScopeID,Scope},{StateID,State},Snippet]),
+      % ?VSHOW("(~p :: ~p)\nFinalFunMap:\t~p.",[{ScopeID,Scope},{StateID,State},FinalFunMap]),
+      % ?VSHOW("(~p :: ~p)\nFinalRecMap:\t~p.",[{ScopeID,Scope},{StateID,State},FinalRecMap]),
 
 
       %% check if this is a new scope
@@ -439,7 +583,7 @@ state(State, StateID, {InScope, InScopeID}, {PrevDataIndex, StateDataIndex}, Edg
           case ExitRecState = maps:get(StateID,FinalRecMap,not_recursive_state) of 
 
             not_recursive_state ->
-              ?SHOW("(~p :: ~p), exiting non-recursive scope.",[{ScopeID,Scope},{StateID,State}]),
+              ?VSHOW("(~p :: ~p), exiting non-recursive scope.",[{ScopeID,Scope},{StateID,State}]),
               %% must be main 
               ?assert(State==main),
               ?assert(StateID==0),
@@ -450,7 +594,7 @@ state(State, StateID, {InScope, InScopeID}, {PrevDataIndex, StateDataIndex}, Edg
               ExitRecMap = FinalRecMap;
 
             _ ->
-              ?SHOW("(~p :: ~p), exiting recursive scope.",[{ScopeID,Scope},{StateID,State}]),
+              ?VSHOW("(~p :: ~p), exiting recursive scope.",[{ScopeID,Scope},{StateID,State}]),
               %% exit snippets should just be a call to this new function, using the data provided
               %% unpack
               {already_unfolding, RecState, StrRecFun} = ExitRecState,
@@ -511,15 +655,18 @@ snippet({if_then, Timer, True, False}, {StateID, ScopeID}, {InData, OutData}) ->
   %% build clause
   Clause = ["receive {timeout, "++StrTimerVar++", "++StrTimer++"} -> ",
             "temp_vshow(\"took branch for timer (~p) completing.\", ["++StrTimer++"], "++InData++"),"
-            ]++Timer++["after 0 -> ",
+            ]++True++["after 0 -> ",
                        "temp_vshow(\"took branch for timer (~p) still running.\", ["++StrTimer++"], "++InData++"),"]++False++[" end"],
 
   %% add comments
   _Commented = erl_syntax:comment(["% ."]),
-  %% package as map
-  Snippet = Clause,%#{clause=>Clause,comment=>Comment},
+
+
+  %% wrap in get_timer
+  {Snippet, StateFuns} = snippet({get_timer, Timer, Clause}, {StateID, ScopeID}, {InData, OutData}),
+
   %% return with comments and state funs
-  {Snippet, []};
+  {Snippet, StateFuns};
 %%
 
 
@@ -565,19 +712,24 @@ when is_list(Labels) and is_map(Continuations) and is_integer(Duration) and is_l
   Tail = ["after "++StrDuration++" -> "]++Timeout++[" end"],
 
   %% get the branching for the rest of the branches
-  Branches = snippet({branching, Labels, Continuations}, {StateID, ScopeID}, {InData, OutData}),
+  {Branches, BranchFunMap} = snippet({branching, Labels, Continuations}, {StateID, ScopeID}, {InData, OutData}),
   %% then, insert before the last occurance of "end" in Branches
   ?assert(lists:last(Branches)==" end"),
-  Head = lists:droplast(Branches),
+  %% if integer, then we will use after, which requires no ';' on previous term
+  BHead = lists:droplast(Branches),
+  case lists:last(BHead)=="; " of
+    true -> Head = lists:droplast(BHead);
+    _ -> Head = BHead
+  end,
   
   %% build total clause
-  Clause = Head ++ ["; "] ++ Tail,
+  Clause = Head++Tail,
   %% add comments
   _Commented = erl_syntax:comment(["% ."]),
   %% package as map
   Snippet = Clause,%#{clause=>Clause,comment=>Comment},
   %% return with comments and state funs
-  {Snippet, []};
+  {Snippet, BranchFunMap};
 %%
 
 
@@ -592,18 +744,43 @@ when is_list(Labels) and is_map(Continuations) ->
   Clause = ["temp_show(\"waiting to recv.\", [], "++InData++"),",
             "receive "]++lists:foldl(fun(Label, Cases) -> 
               StrLabel = atom_to_list(Label),
-              Head = case length(Cases)>0 of true -> ["; "]; _ -> [] end,
-              Cases ++ Head ++ ["{CoParty, "++StrLabel++"="++StrLabelVar++", "++StrPayload++"} -> ",
-                                OutData++" = save_msg(recv, "++StrLabel++", "++StrPayload++", "++InData++"),",
-                                "temp_show(\"recv ~p: ~p.\", ["++StrLabelVar++", "++StrPayload++"], "++OutData++"),"] ++ maps:get(StrLabel, Continuations)
+              %% connecter is previous cases, with ';' if needed
+              Conn = case length(Cases)>0 of true -> Cases++["; "]; _ -> Cases end,
+              %% get special head (if timer timeout)
+              Special = maps:get(StrLabel, Continuations),
+              case Special of 
+                {is_timeout, _Timer, Head, Tail} -> %% is a timeout
+                  ?VSHOW("\n\n_Timer:\t~p,\nHead:\t~p,\nTail:\t~p.",[_Timer,Head,Tail]),
+                  ok;
+
+                _ -> %% not timeout
+                  Head = ["{CoParty, "++StrLabel++"="++StrLabelVar++", "++StrPayload++"} -> "],
+                  Tail = Special
+              end,
+              %% join all together
+              Conn++Head++[OutData++" = save_msg(recv, "++StrLabel++", "++StrPayload++", "++InData++"),",
+                           "temp_show(\"recv ~p: ~p.\", ["++StrLabelVar++", "++StrPayload++"], "++OutData++"),"] ++ Tail
             end, [], Labels)++[" end"],
 
   %% add comments
   _Commented = erl_syntax:comment(["% ."]),
-  %% package as map
-  Snippet = Clause,%#{clause=>Clause,comment=>Comment},
+
+  %% double check if there was a timer (if so, wrap all in get_timer)
+  PossibleTimeout = maps:to_list(maps:filter(fun(K,V) -> case V of {is_timeout, Timer, Head, Tail} -> true; _ -> false end end, Continuations)),
+
+  case length(PossibleTimeout)>0 of 
+    true -> %% must add "get timer" to beginning
+      ?assert(length(PossibleTimeout)==1),
+      {_K, {is_timeout, Timer, _Head, _Tail}} = lists:nth(1,PossibleTimeout),
+      {Snippet, StateFuns} = snippet({get_timer, Timer, Clause}, {StateID, ScopeID}, {InData, OutData});
+    
+    _ -> %% not timer
+      Snippet = Clause,%#{clause=>Clause,comment=>Comment},
+      StateFuns = []
+  end,
+
   %% return with comments and state funs
-  {Snippet, []};
+  {Snippet, StateFuns};
 %%
 
 
@@ -669,12 +846,12 @@ when is_list(Labels) and is_map(Continuations) ->
 %% @doc snippet for obtaining non-blocking payloads.
 %% Label is an string.
 %% Continuation is the continuation of the Label.
-%% Duration is either an integer or atom (referencing a timer) for the selection to complete within.
+%% Duration is either an integer or string (referencing a timer) for the selection to complete within.
 %% Timeout is the continuation for if the payload takes too long to return.
-snippet({send_nonblocking_payload, Label, Continuation, Duration, Timeout}, {StateID, ScopeID}, {InData, OutData})
-when is_list(Label) and (is_atom(Duration) or is_integer(Duration)) and is_list(Continuation) and is_list(Timeout) -> 
+snippet({nonblocking_payload, Label, Continuation, Duration, Timeout}, {StateID, ScopeID}, {InData, OutData})
+when is_list(Label) and (is_list(Duration) or is_integer(Duration)) and is_list(Continuation) and is_list(Timeout) -> 
   %% make string helpers
-  StrDuration = case is_integer(Duration) of true -> integer_to_list(Duration); _ -> ?assert(is_atom(Duration)), atom_to_list(Duration) end,
+  StrDuration = case is_integer(Duration) of true -> integer_to_list(Duration); _ -> Duration end,
   StrFun = tag_state_thing("get_payload",StateID),
   StrLabelVar = tag_state_thing("Label",StateID),
   StrPayload = tag_state_thing("Payload",StateID),
@@ -700,13 +877,13 @@ when is_list(Label) and (is_atom(Duration) or is_integer(Duration)) and is_list(
 %% @doc snippet for non-blocking selection.
 %% Labels is a list of string labels, corresponding to the options in the selection.
 %% Continuations is a map between atom labels and their continuation snippets.
-%% Duration is either an integer or atom (referencing a timer) for the selection to complete within.
+%% Duration is either an integer or string (referencing a timer) for the selection to complete within.
 %% Timeout is the continuation of if the selection cannot be made.
 snippet({nonblocking_selection, Labels, Continuations, Duration, Timeout}, {StateID, ScopeID}, {InData, OutData})
-when is_list(Labels) and (is_atom(Duration) or is_integer(Duration)) and is_map(Continuations) and is_list(Timeout) -> 
+when is_list(Labels) and (is_list(Duration) or is_integer(Duration)) and is_map(Continuations) and is_list(Timeout) -> 
   %% make string helpers
   StrLabels = "["++atom_list_to_list(Labels)++"]",
-  StrDuration = case is_integer(Duration) of true -> integer_to_list(Duration); _ -> ?assert(is_atom(Duration)), atom_to_list(Duration) end,
+  StrDuration = case is_integer(Duration) of true -> integer_to_list(Duration); _ -> Duration end,
   StrSelection = tag_state_thing("Selection",StateID),
   StrFun = tag_state_thing("make_selection",StateID),
   StrLabelVar = tag_state_thing("Label",StateID),
@@ -748,10 +925,10 @@ when is_list(Labels) and (is_atom(Duration) or is_integer(Duration)) and is_map(
 snippet({get_timer, StrName, Continuation}, {StateID, ScopeID}, {InData, _OutData})
 when is_list(StrName) ->
   %% string helpers
-  Name = list_to_atom(StrName),
-  StrVar = tag_state_thing("TID_"++StrName,StateID),
+  % Name = list_to_atom(StrName),
+  StrVar = tag_state_thing("TID_"++StrName++"_",StateID),
   %% line by line clause for snippet
-  Clause = [StrVar++" = get_timer("++Name++", "++InData++"),"]++Continuation,
+  Clause = [StrVar++" = get_timer("++StrName++", "++InData++"),"]++Continuation,
   %% add comments
   _Commented = erl_syntax:comment(["% ."]),
   %% package as map
@@ -766,7 +943,7 @@ snippet({set_timer, StrName, Duration, Continuation}, {StateID, ScopeID}, {InDat
 when is_list(StrName) and is_integer(Duration) ->
   %% string helpers
   Name = list_to_atom(StrName),
-  StrVar = tag_state_thing("TID_"++StrName,StateID),
+  StrVar = tag_state_thing("TID_"++StrName++"_",StateID),
   StrDuration = integer_to_list(Duration),
   %% line by line clause for snippet
   Clause = [OutData++" = set_timer("++StrName++", "++StrDuration++", "++InData++"),",
@@ -778,8 +955,6 @@ when is_list(StrName) and is_integer(Duration) ->
   %% return with comments and state funs
   {Snippet, []};
 %%
-
-
 
 
 %% @doc stopping snippet
@@ -978,7 +1153,7 @@ when is_atom(State) and is_map(States) ->
   ?VSHOW("\nStates:\t~p,\nState:\t~p,\nStateIDS:\t~p.",[States, State, StateIDs]),
   case length(StateIDs)==0 of 
     true -> %% this is likely a recursive protocol
-      ?SHOW("no (~p) found, this is likely a recursive protocol.",[State]),
+      ?VSHOW("no (~p) found, this is likely a recursive protocol.",[State]),
       no_such_state;
     _ -> 
       ?assert(length(StateIDs)==1),
@@ -1046,7 +1221,7 @@ atom_list_to_list(List) when is_list(List) -> lists:foldl(fun(A,L) -> Head = cas
 
 %% @doc explores the edges from a given state
 explore_states(RelevantEdges, StateDataIndex, Scope, ScopeID, Edges, States, RecMap, FunMap) -> 
-  lists:foldl(fun(_Edge, {Cont,FMap, Ls}) ->
+  lists:foldl(fun(_Edge, {Cont,FMap, Ls, RecMaps}) ->
     %% get map edge
     Edge = to_map(_Edge),
     %% get next state
@@ -1056,7 +1231,7 @@ explore_states(RelevantEdges, StateDataIndex, Scope, ScopeID, Edges, States, Rec
     ContinuationSnippet = state(ToState, ToStateID, {Scope, ScopeID}, {StateDataIndex, StateDataIndex+1}, Edges, States, RecMap, FunMap),
     %% unpack 
     %% ! (decicing to not both collecting and remerging the recmap?)
-    {Continuation, NextFunMap2, _RecMap2} = ContinuationSnippet,
+    {Continuation, NextFunMap2, RecMap} = ContinuationSnippet,
 
     %% string helpers
     Label = get_msg_label(Edge),
@@ -1065,7 +1240,29 @@ explore_states(RelevantEdges, StateDataIndex, Scope, ScopeID, Edges, States, Rec
     %% merge fun maps
     FMap1 = maps:from_list(maps:to_list(NextFunMap2)++maps:to_list(FMap)),
     %% return
-    {ContMap, FMap1, Ls++[list_to_atom(Label)]}
-  end, {#{},#{},[]}, RelevantEdges).
+    {ContMap, FMap1, Ls++[list_to_atom(Label)], RecMaps++[RecMap]}
+  end, {#{},#{},[], []}, RelevantEdges).
 %%
+
+%% @docs takes a list of recmaps, and merges them, allowing those with higher priority status to overwrite others.
+%% unfolded > already_unfolding > _Else
+merge_recmaps([H]) -> H;
+merge_recmaps([H|T]) ->
+  %% do tail first
+  Tail = merge_recmaps(T),
+  %% should have the same keys
+  ?assert(maps:keys(Tail)==maps:keys(H)),
+  %% for each key in head, compare the values of both
+  maps:fold(fun(K,Val,Acc) ->
+    case Val of 
+      {unfolded, _, _} -> maps:put(K,Val,Acc);
+      _ -> %% does not automatically win priotity
+        case maps:get(K,Acc) of
+          {unfolded, _, _} -> Acc;
+          {already_unfolding, _, _} -> Acc;
+          _ -> maps:put(K,Val,Acc)
+        end
+    end
+  end, Tail, H).
+  
 
