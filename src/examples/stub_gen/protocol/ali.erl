@@ -148,13 +148,17 @@ gentest(tests) ->
   gen_stub:gen(ali,spec,basic_send_recv_loop,"test.erl"),
   gen_stub:gen(ali,spec,basic_recv_send_loop,"test.erl"),
 
-  % %% basic timers
-  % gen_stub:gen(ali,spec,basic_timer_before,"test.erl"),
-  % gen_stub:gen(ali,spec,basic_timer_after,"test.erl"),
+  %% basic timers
+  gen_stub:gen(ali,spec,basic_timer_before,"test.erl"),
+  gen_stub:gen(ali,spec,basic_timer_after,"test.erl"),
 
-  % %% basic delays
-  % gen_stub:gen(ali,spec,basic_delay,"test.erl"),
-  % gen_stub:gen(ali,spec,basic_timer_delay,"test.erl"),
+  %% basic delays
+  gen_stub:gen(ali,spec,basic_delay,"test.erl"),
+  gen_stub:gen(ali,spec,basic_timer_delay,"test.erl"),
+
+  %% basic choices
+  gen_stub:gen(ali,spec,basic_branch,"test.erl"),
+  gen_stub:gen(ali,spec,basic_select,"test.erl"),
 
   % %% basic timeouts
   % gen_stub:gen(ali,spec,basic_recv_after_send,"test.erl"),
@@ -167,10 +171,6 @@ gentest(tests) ->
   % gen_stub:gen(ali,spec,basic_send_after_recv,"test.erl"),
   % gen_stub:gen(ali,spec,basic_send_after_timer_send,"test.erl"),
   % gen_stub:gen(ali,spec,basic_send_after_timer_recv,"test.erl"),
-
-  % %% basic choices
-  % gen_stub:gen(ali,spec,basic_branch,"test.erl"),
-  % gen_stub:gen(ali,spec,basic_select,"test.erl"),
 
   % %% advanced timeouts
   % gen_stub:gen(ali,spec,basic_branch_after_send,"test.erl"),

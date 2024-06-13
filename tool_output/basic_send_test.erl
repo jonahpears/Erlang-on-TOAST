@@ -102,4 +102,4 @@ stopping(Reason, _CoParty, _Data) when is_atom(Reason) ->
     temp_vshow("unexpected stop...\nReason:\t~p,\nCoParty:\t~p,\nData:\t~p.", [Reason, _CoParty, _Data], _Data),
     exit(Reason).
 
-get_payload1(msgA) -> extend_with_functionality_for_obtaining_payload.
+get_payload1(_Args) -> extend_with_functionality_for_obtaining_payload.

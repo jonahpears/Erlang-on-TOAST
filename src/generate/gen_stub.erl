@@ -49,8 +49,8 @@ gen(ProtocolName, Protocol, FileName) ->
   
   ?GAP(),
   ?SHOW("Finished. Output path: ~p.",[OutputPath]),
-  % timer:sleep(500),
   io:format("\n\n - - - - - - - - - - \n\n"),
+  % timer:sleep(250),
   ok.
 
 %% @doc Wrapper for build_fsm:to_fsm(Protocol)
