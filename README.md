@@ -37,13 +37,6 @@ protocol specification, and extracting protocols from existing code.
 The protocol type is defined within interleave.erl. This file also contains a few
 examples together with the algorithm for protocol composition.
 
-### Prerequisites
-
-The following software needs to be installed:
-
-- Erlang: Erlang/OTP 24 Erts 12.2.1
-- rebar3: rebar 3.17.0
-
 ### Building
 
 The tool can be built using rebar3:
