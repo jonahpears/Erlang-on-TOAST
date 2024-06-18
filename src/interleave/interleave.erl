@@ -3,8 +3,8 @@
 -compile(export_all).
 -compile(nowarn_export_all).
 
--type time () :: number() | timeout() | string().
-% -type condition () :: boolean() | string().
+-type time () :: timeout() | string().
+-type upper_bound () :: time() | '?EQ_LIMIT_MS'.
 
 %% @doc Protocol format
 %% Notes:
@@ -13,10 +13,10 @@
 %%   - Control branches are represented as a list of atom/protocol pairs
 %%   - The atom endP is used to end a protocol because "end" is a reserved keyword.
 -type protocol () :: {'act', atom(), protocol()}
-                   | {'act', atom(), protocol(), 'aft', time(), protocol()}
+                   | {'act', atom(), protocol(), 'aft', upper_bound(), protocol()}
                    | {'branch', [ {atom(), protocol()} ]}
-                   | {'branch', [ {atom(), protocol()} ], 'aft', time(), protocol()}
-                   | {'aft', time(), protocol()}
+                   | {'branch', [ {atom(), protocol()} ], 'aft', upper_bound(), protocol()}
+                   | {'aft', upper_bound(), protocol()}
                    | {'timer', string(), number(), protocol()}
                    | {'delay', time(), protocol()}
                   %  | {'roles', [ atom() ], protocol()}
