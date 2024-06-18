@@ -297,8 +297,13 @@ when (is_atom(Ref) or is_integer(Ref)) ->
   %% make sure does not already have timeout
   ?VSHOW("\nStateName: ~p,\nToState: ~p,\nOldTimeouts:\n\t~p.\n",[StateName,ToState,OldTimeouts]),
   ?assert(not is_map_key(StateName,OldTimeouts)),
+  %% check if timeout is '?EQ_LIMIT_MS'
+  case Ref of
+    '?EQ_LIMIT_MS' -> Ref1 = "temp_EQ_LIMIT_MS";
+    _ -> Ref1 = Ref
+  end,
   %% add timeout
-  NewTimeouts = maps:put(StateName, {Ref, ToState}, OldTimeouts),
+  NewTimeouts = maps:put(StateName, {Ref1, ToState}, OldTimeouts),
   %% return updated map
   maps:put(timeouts, NewTimeouts, Spec);
 %%

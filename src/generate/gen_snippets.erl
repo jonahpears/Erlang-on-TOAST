@@ -4,6 +4,7 @@
 -export([state/6,state/8]).
 
 -define(EXPORT_DEFAULT, false).
+-define(EQ_LIMIT_MS, 10).
 
 %% disable parse transforms
 % -define(MERL_NO_TRANSFORM, true).
@@ -380,7 +381,8 @@ state(State, StateID, {InScope, InScopeID}, {PrevDataIndex, StateDataIndex}, Edg
 
           %% only one silent transition
           Silent = to_map(lists:nth(1,Silents)),
-          #{to:=TimeoutStateID,edge_data:=#{timeout:=#{ref:=Duration}}} = Silent,
+          #{to:=TimeoutStateID,edge_data:=#{timeout:=#{ref:=InitDuration}}} = Silent,
+          Duration = case InitDuration of "?EQ_LIMIT_MS" -> "temp_EQ_LIMIT_MS"; _ -> InitDuration end,
           %% get timeout
           TimeoutState = maps:get(TimeoutStateID, States),
           TimeoutSnippet = state(TimeoutState, TimeoutStateID, {Scope, ScopeID}, {StateDataIndex, StateDataIndex+1}, Edges, States, RecMap1, NextFunMap),
@@ -419,7 +421,8 @@ state(State, StateID, {InScope, InScopeID}, {PrevDataIndex, StateDataIndex}, Edg
 
           %% only one silent transition
           Silent = to_map(lists:nth(1,Silents)),
-          #{to:=TimeoutStateID,edge_data:=#{timeout:=#{ref:=Duration}}} = Silent,
+          #{to:=TimeoutStateID,edge_data:=#{timeout:=#{ref:=InitDuration}}} = Silent,
+          Duration = case InitDuration of "?EQ_LIMIT_MS" -> "temp_EQ_LIMIT_MS"; _ -> InitDuration end,
           %% get timeout
           TimeoutState = maps:get(TimeoutStateID, States),
           TimeoutSnippet = state(TimeoutState, TimeoutStateID, {Scope, ScopeID}, {StateDataIndex, StateDataIndex+1}, Edges, States, RecMap1, NextFunMap),
@@ -455,7 +458,8 @@ state(State, StateID, {InScope, InScopeID}, {PrevDataIndex, StateDataIndex}, Edg
           
           %% only one silent transition
           Silent = to_map(lists:nth(1,Silents)),
-          #{to:=TimeoutStateID,edge_data:=#{timeout:=#{ref:=Duration}}} = Silent,
+          #{to:=TimeoutStateID,edge_data:=#{timeout:=#{ref:=InitDuration}}} = Silent,
+          Duration = case InitDuration of "?EQ_LIMIT_MS" -> "temp_EQ_LIMIT_MS"; _ -> InitDuration end,
           %% get timeout
           TimeoutState = maps:get(TimeoutStateID, States),
           TimeoutSnippet = state(TimeoutState, TimeoutStateID, {Scope, ScopeID}, {StateDataIndex, StateDataIndex+1}, Edges, States, RecMap1, FunMap),
@@ -496,7 +500,8 @@ state(State, StateID, {InScope, InScopeID}, {PrevDataIndex, StateDataIndex}, Edg
 
           %% only one silent transition
           Silent = to_map(lists:nth(1,Silents)),
-          #{to:=TimeoutStateID,edge_data:=#{timeout:=#{ref:=Duration}}} = Silent,
+          #{to:=TimeoutStateID,edge_data:=#{timeout:=#{ref:=InitDuration}}} = Silent,
+          Duration = case InitDuration of "?EQ_LIMIT_MS" -> "temp_EQ_LIMIT_MS"; _ -> InitDuration end,
           %% get timeout
           TimeoutState = maps:get(TimeoutStateID, States),
           TimeoutSnippet = state(TimeoutState, TimeoutStateID, {Scope, ScopeID}, {StateDataIndex, StateDataIndex+1}, Edges, States, RecMap1, NextFunMap),
@@ -847,7 +852,7 @@ when is_list(Labels) and is_map(Continuations) ->
 snippet({nonblocking_payload, Label, Continuation, Duration, Timeout}, {StateID, ScopeID}, {InData, OutData})
 when is_list(Label) and (is_list(Duration) or is_integer(Duration)) and is_list(Continuation) and is_list(Timeout) -> 
   %% make string helpers
-  StrDuration = case is_integer(Duration) of true -> integer_to_list(Duration); _ -> Duration end,
+  StrDuration = case is_integer(Duration) of true -> integer_to_list(Duration); "?EQ_LIMIT_MS" -> "temp_EQ_LIMIT_MS"; _ -> Duration end,
   StrFun = tag_state_thing("get_payload",StateID),
   StrLabelVar = tag_state_thing("Label",StateID),
   StrPayload = tag_state_thing("Payload",StateID),
@@ -879,7 +884,7 @@ snippet({nonblocking_selection, Labels, Continuations, Duration, Timeout}, {Stat
 when is_list(Labels) and (is_list(Duration) or is_integer(Duration)) and is_map(Continuations) and is_list(Timeout) -> 
   %% make string helpers
   StrLabels = "["++atom_list_to_list(Labels)++"]",
-  StrDuration = case is_integer(Duration) of true -> integer_to_list(Duration); _ -> Duration end,
+  StrDuration = case is_integer(Duration) of true -> integer_to_list(Duration); "?EQ_LIMIT_MS" -> "temp_EQ_LIMIT_MS"; _ -> Duration end,
   StrSelection = tag_state_thing("Selection",StateID),
   StrFun = tag_state_thing("make_selection",StateID),
   StrLabelVar = tag_state_thing("Label",StateID),

@@ -179,11 +179,16 @@ to_fsm({act, Act, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks
 to_fsm({aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
     % +1,
     Index = PrevIndex+1,
+    %% check if timeout is '?EQ_LIMIT_MS'
+    case Timeout of
+      '?EQ_LIMIT_MS' -> Timeout1 = atom_to_list(Timeout);
+      _ -> Timeout1 = Timeout
+    end,
     %% PrevVis contains index of node to transition from
     Edge = #edge{
         from = PrevVis,
         to = Index,
-        edge_data = #edge_data{timeout=#{ref=>Timeout}},
+        edge_data = #edge_data{timeout=#{ref=>Timeout1}},
         is_silent = true,
         is_timeout = true,
         is_delay = false,
