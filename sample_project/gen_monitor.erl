@@ -140,12 +140,16 @@ terminate(Reason, _State, #{data:=#{options:=#{printout:=#{termination:=Dump}}}=
 %% (keeps the auto-printing state up-to-date.)
 handle_event(enter, _OldState, State, #{state:=DataState,enter_flags:=_Flags}=Data)
 when State=/=DataState -> 
+  %% sanity check
+  % ?assert(OldState=:=DataState),
   %% update to new state
   Data1 = maps:put(state,State,Data),
+  % %% update prev state
+  % Data2 = maps:put(prev_state,OldState,Data1),
   %% reset enter flags
-  Data2 = maps:put(enter_flags,#{},Data1),
-  ?SHOW("(->).",[],Data2),
-  {repeat_state, Data2};
+  Data3 = maps:put(enter_flags,#{},Data1),
+  ?SHOW("(->).",[],Data3),
+  {repeat_state, Data3};
 %%
 
 
@@ -235,6 +239,24 @@ when is_map(Data) ->
   {repeat_state, StopData};
 %%
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% monitor error state reached
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% @doc reaching an error state is similar to stop_state, except there is a non-normal reason for termination
+handle_event(enter, OldState, error_state=_State, #{fsm:=#{errors:=Errors}}=Data)
+when is_map(Data) ->
+  %% get error reason from old state
+  ErrorReason = maps:get(OldState,Errors,error_not_specified),
+  StopData = stop_data([{reason, ErrorReason}, {data, Data}]),
+  {keep_state, StopData, [{state_timeout, 0, goto_stop}]};
+%%
+
+%% @see stop_state state_timeout above
+handle_event(state_timeout, goto_stop, emergency_signal=_State, StopData) ->
+  {next_state, stop_state, StopData};
+%%
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% monitor emergency-stop 
@@ -247,11 +269,6 @@ handle_event(enter, _OldState, emergency_signal=_State, Data)
 when is_map(Data) ->
   StopData = stop_data([{reason, sus_issued_signal}, {data, Data}]),
   {keep_state, StopData, [{state_timeout, 0, goto_stop}]};
-%%
-
-%% @see stop_state state_timeout above
-handle_event(state_timeout, goto_stop, emergency_signal=_State, Data) ->
-  {next_state, stop_state, Data};
 %%
 
 

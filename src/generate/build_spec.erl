@@ -21,11 +21,12 @@ to_monitor_spec(Fsm) ->
   InitSpec = #{ init => InitState,
                 timeouts => #{},
                 resets => #{},
+                errors => #{},
                 map => #{} },
 
   Spec = to_spec(InitState,0,Edges,States, RecMap, InitSpec),
 
-  ?VSHOW("input fsm...\nEdges:\n\t~p,\nStates:\n\t~p,\nRecMap:\n\t~p,\nfinished spec:\n\t~p.",[to_map(Edges),States,RecMap,Spec]),
+  ?SHOW("input fsm...\nEdges:\n\t~p,\nStates:\n\t~p,\nRecMap:\n\t~p,\nfinished spec:\n\t~p.",[to_map(Edges),States,RecMap,Spec]),
 
   % timer:sleep(5000),
 
@@ -43,10 +44,12 @@ to_spec(State, StateID, Edges, States, _RecMap, Spec) ->
   RelevantEdges = to_map(get_outgoing_edges(StateID,Edges)),
   ?VSHOW("entering...\t(~p:~p)\nRelevantEdges:\n\t~p.",[StateID,State,RelevantEdges]),
 
+  StateName = state_name(State,StateID),
+
   %% check if init_state is not ready
   case (State=/=init_state) and ((maps:get(init,Spec)=:=init_state) and is_state_initialisable(State)) of
     true -> %% change init_state to current state
-      InitSpec = maps:put(init,state_name(State,StateID),Spec);
+      InitSpec = maps:put(init,StateName,Spec);
       %% change occurence everywhere
     _ -> InitSpec = Spec
   end,
@@ -85,24 +88,38 @@ to_spec(State, StateID, Edges, States, _RecMap, Spec) ->
         NoFutureResolveSpec;
       _ -> %% do not want to explore error state
         case is_error_state(ToState) of
-        true -> 
-          NoFutureResolveSpec;
-        _ -> %% check if recursive
-          RecursiveVars = get_recursive_vars(ToStateID, RecMap),
-          %% there can only be zero or one
-          ?assert(length(RecursiveVars)<2),
-          case length(RecursiveVars)>0 of
-            true -> %% do not explore recursive state more than once
-              case maps:get(ToStateID,RecMap,false) of
-                true -> %% already explored
-                  ?VSHOW("\n(~p:~p) -> (~p,~p) recursion already explored (is true).",[StateID,State,ToStateID,ToState]),
-                  NoFutureResolveSpec;
-                _ -> %% not been visited before
-                  to_spec(ToState, ToStateID, Edges, States, RecMap, NoFutureResolveSpec)
-              end;
-            _ -> %% is not a recursive state
-              to_spec(ToState, ToStateID, Edges, States, RecMap, NoFutureResolveSpec)
-          end
+          true -> %% but there is only one edge from the error state, which contains the error reason
+            %% get error edge
+            ErrorEdges = get_outgoing_edges(ToStateID,Edges),
+            ?assert(length(ErrorEdges)==1),
+            ErrorEdge = to_map(lists:nth(1,ErrorEdges)),
+            %% get reason
+            #{edge_data:=#{error_reason:=ErrorReason}} = ErrorEdge,
+            ?SHOW("\n(~p:~p) -> (~p,~p) error reason:\t~p.",[StateID,State,ToStateID,ToState,ErrorReason]),
+            %% make sure this state doesnt go to an error state already
+            #{errors:=ErrorSpec} = NoFutureResolveSpec,
+            ?SHOW("\n(~p:~p) -> (~p,~p) errors:\t~p.",[StateID,State,ToStateID,ToState,ErrorSpec]),
+            ?assert(not is_map_key(StateName,ErrorSpec)),
+            %% add to error spec, 
+            ErrorSpec1 = maps:put(StateName,ErrorReason,ErrorSpec),
+            %% return updated spec
+            maps:put(errors, ErrorSpec1, NoFutureResolveSpec);
+          _ -> %% check if recursive
+            RecursiveVars = get_recursive_vars(ToStateID, RecMap),
+            %% there can only be zero or one
+            ?assert(length(RecursiveVars)<2),
+            case length(RecursiveVars)>0 of
+              true -> %% do not explore recursive state more than once
+                case maps:get(ToStateID,RecMap,false) of
+                  true -> %% already explored
+                    ?VSHOW("\n(~p:~p) -> (~p,~p) recursion already explored (is true).",[StateID,State,ToStateID,ToState]),
+                    NoFutureResolveSpec;
+                  _ -> %% not been visited before
+                    to_spec(ToState, ToStateID, Edges, States, RecMap, NoFutureResolveSpec)
+                end;
+              _ -> %% is not a recursive state
+                to_spec(ToState, ToStateID, Edges, States, RecMap, NoFutureResolveSpec)
+            end
         end
     end,
     %% add unresolved back
@@ -127,7 +144,7 @@ to_spec(State, StateID, Edges, States, _RecMap, Spec) ->
                     case maps:size(V)>0 of
                       true ->
                         case is_state_resolvable(State) of
-                          true -> Resolved = maps:put(state_name(State,StateID),V,Resets),
+                          true -> Resolved = maps:put(StateName,V,Resets),
                             maps:remove(unresolved,Resolved);
                           _ -> maps:put(K,V,Resets)
                         end;

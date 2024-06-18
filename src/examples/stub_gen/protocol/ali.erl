@@ -208,7 +208,11 @@ gentest(tests) ->
   gen_stub:gen(ali,spec,advanced_mixed_choice_select_first_loop,"test.erl"),
   gen_stub:gen(ali,spec,advanced_mixed_choice_branch_first_loop,"test.erl"),
 
-
+  %% errors
+  gen_stub:gen(ali,spec,basic_error_send,"_ali_test.erl"),
+  gen_stub:gen(ali,spec,basic_error_recv,"_ali_test.erl"),
+  gen_stub:gen(ali,spec,basic_error_select,"_ali_test.erl"),
+  gen_stub:gen(ali,spec,basic_error_branch,"_ali_test.erl"),
 
 
 

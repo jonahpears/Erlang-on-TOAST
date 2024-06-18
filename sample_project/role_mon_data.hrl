@@ -32,6 +32,7 @@ default_data() ->
      sus_id => undefined,
      role => undefined,
      state => undefined,
+     prev_state => undefined,
      enter_flags => #{},
     %  name => undefined, 
      coparty_id => undefined, 
@@ -40,6 +41,7 @@ default_data() ->
                timeouts => #{}, %% outgoing silent edges from states
               %  timers => #{}, %% timers and maps to states they can trigger in and then lead to
                resets => #{}, %% states to reset certain timers in to what value
+               errors => #{}, %% the corresponding reasons for error from each state
                enter_flags => #{}, %% signify which things have been done on enter current state, reset each new state
                map => #{} }, %% outgoing edges from states
      trace => [], %% list of state-names reached

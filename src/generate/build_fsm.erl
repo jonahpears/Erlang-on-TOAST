@@ -70,7 +70,7 @@ to_fsm(P) ->
         % )
     ),
 
-    ?VSHOW("fsm, edges:\n\t~p,\n\nfsm, nodes:\n\t~p,\n\nfsm, recmap:\n\t~p.\n",[to_map(Edges),Nodes,RecMap]),
+    ?SHOW("fsm, edges:\n\t~p,\n\nfsm, nodes:\n\t~p,\n\nfsm, recmap:\n\t~p.\n",[to_map(Edges),Nodes,RecMap]),
 
     {Edges, Nodes, RecMap}.
 
