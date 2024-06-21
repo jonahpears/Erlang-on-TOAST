@@ -150,7 +150,7 @@ when is_map(Map) and is_list(Timer) ->
   Map1 = maps:update_with(timers_to_set, fun(V) -> lists:uniq(V++[Timer]) end, [Timer], Map),
   %% continue mapping
   {Protocol, Map2} = to_protocol(P, Map1),
-  io:format("\nmap2:\t~p.\n",[Map2]),
+  % io:format("\nmap2:\t~p.\n",[Map2]),
   %% remove current timer from timers_to_set
   Map3 = maps:update_with(timers_to_set, fun(V) -> lists:delete(Timer,V) end, [], Map2),
   %% check if Map3 contains any requirements for Timer
@@ -161,7 +161,7 @@ when is_map(Map) and is_list(Timer) ->
 to_protocol({'delay', {t, DBC, Const}=Delay, P}, Map) 
 when is_map(Map) and is_atom(DBC) and is_integer(Const) -> 
   %% unsure of value to pick, choose const
-  io:format("\nfound non-deterministic delay:\t~p,\nuncertain how to proceed, using constant (~p) for delay value.\n",[Delay,Const]),
+  io:format("\nFound non-deterministic delay:\t~p,\nuncertain how to proceed, using constant (~p) for delay value.\n",[Delay,Const]),
   Value = Const,
   %% resolve to value and continue
   to_protocol({'delay', Value, P}, Map);
@@ -204,7 +204,7 @@ when is_map(Map) and is_atom(From) and is_atom(Label) ->
     _ -> 
       {_DBC, Duration} = UpperBound,
       ?assert(is_integer(Duration)),
-      io:format("\nwarning, non-infinite upper bound specified (~p), but no timeout present.\nsuch behaviour may get stuck in cases where communication is not reliable.\nin order to enforce such behaviour, the protocol specifies an error state has been reached if the upper bound is exceeded.\n",[Duration]),
+      io:format("\nWarning, non-infinite upper bound specified (~p), but no timeout present.\nSuch behaviour may get stuck in cases where communication is not reliable.\nIn order to enforce such behaviour, the protocol specifies an error state has been reached if the upper bound is exceeded.\n",[Duration]),
       %% add error process to timeout
       Protocol2 = {'act', ActLabel, Protocol1, 'aft', Duration, error}
   end,
@@ -244,7 +244,7 @@ when is_map(Map) and is_atom(From) and is_atom(_Label) and is_list(Branches) ->
     _ -> 
       {_DBC, Duration} = UpperBound,
       ?assert(is_integer(Duration)),
-      io:format("\nwarning, non-infinite upper bound specified (~p), but no timeout present.\nsuch behaviour may get stuck in cases where communication is not reliable.\nin order to enforce such behaviour, the protocol specifies an error state has been reached if the upper bound is exceeded.\n",[Duration]),
+      io:format("\nWarning, non-infinite upper bound specified (~p), but no timeout present.\nSuch behaviour may get stuck in cases where communication is not reliable.\nIn order to enforce such behaviour, the protocol specifies an error state has been reached if the upper bound is exceeded.\n",[Duration]),
       %% add error process to timeout
       Protocol = {'branch', Branches1, 'aft', Duration, error}
   end,  
@@ -266,7 +266,7 @@ when is_map(Map) and is_atom(From) ->
   %% warn about having infinite timeout
   case UpperBound of 
     infinity -> 
-      io:format("\nwarning, infinite upper bound specified for timeout.\nsince the timeout branch will never be reached, and erlang timers cannot be set to infinity, the timeout branch has been removed.\n"),
+      io:format("\nWarning, infinite upper bound specified for timeout.\nSince the timeout branch will never be reached, and erlang timers cannot be set to infinity, the timeout branch has been removed.\n"),
       %% set protocol and map
       Protocol2 = Protocol,
       Map2 = Map1;
@@ -301,7 +301,7 @@ when is_map(Map) and is_atom(From) and is_list(Branches) ->
   %% warn about having infinite timeout
   case UpperBound of 
     infinity -> 
-      io:format("\nwarning, infinite upper bound specified for timeout.\nsince the timeout branch will never be reached, and erlang timers cannot be set to infinity, the timeout branch has been removed.\n"),
+      io:format("\nWarning, infinite upper bound specified for timeout.\nSince the timeout branch will never be reached, and erlang timers cannot be set to infinity, the timeout branch has been removed.\n"),
       %% set protocol and map
       Protocol2 = Protocol,
       Map2 = Map1;
@@ -324,7 +324,7 @@ when is_map(Map) and is_atom(From) and is_list(Branches) ->
 to_protocol({'if', {Name, DBC, Const}=_Constraint, 'then', P, 'else', Q}, #{timers_to_set:=Timers,pending_timers:=Pending}=Map)
 when is_map(Map) and is_list(Name) and is_integer(Const) -> 
   %% check if timer has been defined previously, warn if not and arrange for it to be set at the beginning of the protocol
-  case lists:member(Name,Timers) of true -> ok; _ -> io:format("\nwarning, an 'if' conditional uses timer (~p) which has not yet been set.\nthis is not a valid process.\nthe process has been corrected by specifying to set the timer at the very beginning of the protocol.\n",[Name]) end,
+  case lists:member(Name,Timers) of true -> ok; _ -> io:format("\nWarning, an 'if' conditional uses timer (~p) which has not yet been set.\nThis is not a valid process and has been corrected by specifying to set the timer at the very beginning of the protocol.\n",[Name]) end,
   %% continue mapping P
   {ProtocolP, MapP} = to_protocol(P, Map),
   %% continue mapping Q
@@ -338,7 +338,7 @@ when is_map(Map) and is_list(Name) and is_integer(Const) ->
     les -> Head = 'if_not_timer';
     eq -> Head = 'if_timer',
       %% TODO :: figure out how to implement this consistently, in the monitors and stubs
-      io:format("\nwarning, constraint uses (eq) which is currently not fully supported.\nthis is due to difficulties in ensuring a timer has finished recently enough to be considered to adhere to `equal to' constraints.\n")
+      io:format("\nWarning, constraint uses (eq) which is currently not fully supported.\nThis is due to difficulties in ensuring a timer has finished recently enough to be considered to adhere to `equal to' constraints.\n")
   end,
 
   Protocol = {Head, Name, ProtocolP, 'else', ProtocolQ},
@@ -363,14 +363,14 @@ when is_map(Map) and is_list(Name) and is_integer(Const) ->
 %% @doc forgot to add upperbound to timeout process
 to_protocol({From, '->', Branches}, Map)
 when is_map(Map) and is_atom(From) and is_list(Branches) ->
-  io:format("\nwarning, it looks like you forgot to set an upper-bound for a timeout process.\nby default, an upper-bound of `infinity` has been set.\n"),
+  io:format("\nWarning, it looks like you forgot to set an upper-bound for a timeout process.\nBy default, an upper-bound of `infinity` has been set.\n"),
   to_protocol({From, '->', infinity, Branches}, Map);
 %%
 
 %% @doc forgot to add upperbound to recv-after process
 to_protocol({From, '->', Branch, P}, Map)
 when is_map(Map) and is_atom(From) ->
-  io:format("\nwarning, it looks like you forgot to set an upper-bound for a receive-after process.\nby default, an upper-bound of `infinity` has been set.\n"),
+  io:format("\nWarning, it looks like you forgot to set an upper-bound for a receive-after process.\nBy default, an upper-bound of `infinity` has been set.\n"),
   to_protocol({From, '->', infinity, Branch, P}, Map);
 %%
 
@@ -427,8 +427,10 @@ resolve_pending_timers(Timer,Protocol,Map) ->
         Name = Timer++integer_to_list(Pend),
         {'timer', Name, Pend, InSet}
       end, Protocol, PendingValues),
+      %% remove from pending timers
+      Map1 = maps:put(pending_timers, maps:remove(Timer,PendingTimers), Map),
       %% return protocol
-      {Protocol1, Map};
+      {Protocol1, Map1};
     _ -> %% return as is
       {Protocol, Map}
   end.
