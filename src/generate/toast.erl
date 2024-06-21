@@ -434,8 +434,37 @@ resolve_pending_timers(Timer,Protocol,Map) ->
     _ -> %% return as is
       {Protocol, Map}
   end.
+%%
 
 output_location() -> "tool_output/mappings/".
+
+
+%% @doc automatically generates protocol from input,
+process_to_stub(Name)
+when is_atom(Name) ->
+  %% get protocol
+  {ok, _Process, Protocol} = map_process_to_protocol(Name),
+  %% pass to generator
+  gen_stub:gen(Name,Protocol,"_process_to_stub.erl"),
+  ok.
+%%
+
+%% @doc given a name corresponding to some maptest process, writes and returns the corresponding protocol the process maps to.
+map_process_to_protocol(Name) ->
+  %% get process
+  Process = maptest(Name),
+  io:format("\n+ + + + + + + + + + +\n\nbeginning new mapping of process to protocol...\n\nname:\t\t~p,\n\nprocess:\t~p.\n\n- - - - - - - - - - -\n",[Name,Process]),
+  %% get protocol via mapping function
+  Protocol = to_protocol({Name,Process}),
+  io:format("\nname:\t\t~p,\n\nprocess:\t~p,\n\nprotocol:\t~p.\n",[Name,Process,Protocol]),
+  %% save to file
+  case file:write_file(output_location()++atom_to_list(Name)++".erl", io_lib:fwrite("process_~p() -> ~p.\nprotocol_~p() -> ~p.\n",[Name,Process,Name,Protocol])) of
+    ok -> ok;
+    Else -> io:format("\n> > file:write_file failed: ~p.\n", [Else])
+  end,
+  {ok, Process, Protocol}.
+%%
+
 
 all() -> run_all_tests().
 
@@ -470,19 +499,7 @@ run_all_tests() ->
   io:format("\nfinished all tests.\n"),
   ok.
 
-run_test(Name) ->
-  %% get process
-  Process = maptest(Name),
-  io:format("\n+ + + + + + + + + + +\n\nbeginning new mapping of process to protocol...\n\nname:\t\t~p,\n\nprocess:\t~p.\n\n- - - - - - - - - - -\n",[Name,Process]),
-  %% get protocol via mapping function
-  Protocol = to_protocol({Name,Process}),
-  io:format("\nname:\t\t~p,\n\nprocess:\t~p,\n\nprotocol:\t~p.\n",[Name,Process,Protocol]),
-  %% save to file
-  case file:write_file(output_location()++atom_to_list(Name)++".erl", io_lib:fwrite("process_~p() -> ~p.\nprotocol_~p() -> ~p.\n",[Name,Process,Name,Protocol])) of
-    ok -> ok;
-    Else -> io:format("\n> > file:write_file failed: ~p.\n", [Else])
-  end,
-  ok.
+run_test(Name) -> {ok, _, _} = map_process_to_protocol(Name), ok.
 
 run_tests(header, Name) ->
   io:format("\n= = = = = = = = = = = = = = = =\n\nrunning tests:\t~p.\n",[Name]),
