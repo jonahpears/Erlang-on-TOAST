@@ -20,3 +20,4 @@ erlang_ls.config
 tool_output/*
 
 tool_output.zip
+src/toast/__pycache__/z3_interface.cpython-312.pyc

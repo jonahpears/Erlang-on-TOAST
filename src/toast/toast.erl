@@ -1,8 +1,10 @@
 -module(toast).
 -compile(export_all).
 -compile(nowarn_export_all).
+-compile(nowarn_unused_type).
 
-
+-type process () :: toast_process:toast_process().
+-type type () :: toast_type:toast_type().
 
 
 

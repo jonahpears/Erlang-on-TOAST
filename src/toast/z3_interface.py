@@ -1,31 +1,31 @@
 from z3 import *
 
 
-x = Int('x')
-y = Int('y')
-print (simplify(x + y + 2*x + 3))
-print (simplify(x < y + x + 2))
-print (simplify(And(x + 1 >= 3, x**2 + x**2 + y**2 + 2 >= 5)))
+# x = Int('x')
+# y = Int('y')
+# print (simplify(x + y + 2*x + 3))
+# print (simplify(x < y + x + 2))
+# print (simplify(And(x + 1 >= 3, x**2 + x**2 + y**2 + 2 >= 5)))
 
 # print(solve(x == 4,x<3))
 
-s = Solver()
-print (f"s: {s}.")
+# s = Solver()
+# print (f"s: {s}.")
 
-s.add(x > 10, y == x + 2)
-print (f"\nSolving constraints in the solver s:\n\t{s}.")
-print (s.check())
+# s.add(x > 10, y == x + 2)
+# print (f"\nSolving constraints in the solver s:\n\t{s}.")
+# print (s.check())
 
-print ("\nCreate a new scope...")
-s.push()
-s.add(y < 11)
-print (f"Solving updated set of constraints in s:\n\t{s}.")
-print (s.check())
+# print ("\nCreate a new scope...")
+# s.push()
+# s.add(y < 11)
+# print (f"Solving updated set of constraints in s:\n\t{s}.")
+# print (s.check())
 
-print ("\nRestoring state...")
-s.pop()
-print (f"Solving restored set of constraints in s:\n\t{s}.")
-print (s.check())
+# print ("\nRestoring state...")
+# s.pop()
+# print (f"Solving restored set of constraints in s:\n\t{s}.")
+# print (s.check())
 
 
 CONST_DECIMAL_PRECISION = 8
@@ -108,4 +108,19 @@ def time_step(Delta:dict,Step:float):
 ## for interfacing with erlang
 def test(Constraints):
   print(f"python received: {Constraints}.")
+  
+  return "from python"
+
+
+def not_t_reading(Tuple:tuple):
+  ## unpack
+  (Clocks,T) = Tuple
+  print(f"\nclocks:\t{Clocks},\nt:\t {T}.")
+  
+  # C1 = Clocks.pop(),
+  
+  # print(f"\nC1:\t{C1}.")
+  
+  
+  
 
