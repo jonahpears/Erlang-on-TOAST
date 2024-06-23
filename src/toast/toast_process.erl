@@ -27,7 +27,7 @@
 
 -type queue_contents () :: empty | {msg(), queue_contents()}.
 
--type rec_var () :: {string(), [msg()], [timer()]}.
+-type rec_var () :: {string(), [msg()]}.
 
 %% toast processes (unsupported, outside scope of tool)
 out_of_scope_processes() -> [queue_process, parl_process, session_process].
@@ -111,32 +111,31 @@ to_protocol(term, Map) -> {'endP', Map};
 to_protocol(error, Map) -> {'error', Map};
 
 %% @doc recursive call process
-to_protocol({'call', {Name, Msgs, Timers}}, #{rec_vars:=RecVars}=Map)
-when is_list(Msgs) and is_list(Timers) -> 
+to_protocol({'call', {Name, Msgs}}, #{rec_vars:=RecVars}=Map)
+when is_list(Msgs) -> 
   %% make sure is defined
   ?assert(is_map_key(Name,RecVars)),
   %% make sure each msg/timer required to callback is defined
-  #{Name:={RecMsgs, RecTimers}} = RecVars,
+  #{Name:=RecMsgs} = RecVars,
   ?assert(lists:foldl(fun(Msg,MsgIn) -> MsgIn and lists:member(Msg,Msgs) end, true, RecMsgs)),
-  ?assert(lists:foldl(fun(Timer,TimerIn) -> TimerIn and lists:member(Timer,Timers) end, true, RecTimers)),
   %% return call
   {{'rvar', Name}, Map};
 %%
 
 %% @doc recursive definition process
-to_protocol({'def', P, 'as', {Name, Msgs, Timers}}, #{rec_vars:=RecVars}=Map)
-when is_map(Map) and is_list(Msgs) and is_list(Timers) -> 
+to_protocol({'def', P, 'as', {Name, Msgs}}, #{rec_vars:=RecVars}=Map)
+when is_map(Map) and is_list(Msgs) -> 
   %% make sure not already defined
   ?assert(not is_map_key(Name,RecVars)),
   %% add new def to map
-  Map1 = maps:put(rec_vars,maps:put(Name,{Msgs,Timers},RecVars),Map),
+  Map1 = maps:put(rec_vars,maps:put(Name,Msgs,RecVars),Map),
   %% begin unfolding
-  to_protocol({'def', P, 'as', {Name, Msgs, Timers}, 'in', P}, Map1);
+  to_protocol({'def', P, 'as', {Name, Msgs}, 'in', P}, Map1);
 %%
 
 %% @doc recursive definition process unfolding
-to_protocol({'def', _P, 'as', {Name, Msgs, Timers}, 'in', Q}, #{rec_vars:=RecVars}=Map)
-when is_map(Map) and is_map_key(Name,RecVars) and is_list(Msgs) and is_list(Timers) -> 
+to_protocol({'def', _P, 'as', {Name, Msgs}, 'in', Q}, #{rec_vars:=RecVars}=Map)
+when is_map(Map) and is_map_key(Name,RecVars) and is_list(Msgs) -> 
   %% continue unfolding
   {Protocol, Map1} = to_protocol(Q, Map),
   %% return protocol
