@@ -6,5 +6,6 @@
     },
     "editor.detectIndentation": false,
     "editor.tabSize": 2,
-    "editor.indentSize": "tabSize"
+    "editor.indentSize": "tabSize",
+    "python.analysis.typeCheckingMode": "basic"
 }

@@ -1,4 +1,4 @@
--module(toast).
+-module(toast_process).
 -compile(export_all).
 -compile(nowarn_export_all).
 -compile(nowarn_unused_type).

@@ -1,1 +1,4 @@
-[].
+[{<<"erlport">>,
+  {git,"https://github.com/erlport/erlport",
+       {ref,"d01e1dcd4bd4332aedf5821f5ca875848031fe94"}},
+  0}].
