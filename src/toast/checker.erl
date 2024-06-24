@@ -2,49 +2,125 @@
 -compile(export_all).
 -compile(nowarn_export_all).
 
+-define(DECIMAL_PRECISION,8).
+
 -include_lib("stdlib/include/assert.hrl").
-
-
-%% @doc python interface for z3
-z3() ->
-
-  Z3FileName = filename:absname("")++"/src/toast/",
-  io:format("\nZ3FileName:\t~p.\n",[Z3FileName]),
-
-  {ok, P} = python:start([{python_path, [Z3FileName]},{python, "python3"}]),
-
-
-  R2 = python:call(P, z3_interface, test, [test(constraints)]),
-  io:format("\nR2:\t~p.\n",[R2]),
-
-
-  python:stop(P),
-
-  ok.
-%%
-
-%% @doc python interface for calling specific functions that use z3
-ask_z3(Name, Args) ->
-  %% get filename for path to python file (same dir)
-  Z3FileName = filename:absname("")++"/src/toast/",
-  %% start python instance
-  {ok, P} = python:start([{python_path, [Z3FileName]},{python, "python3"}]),
-  %% call function
-  Response = python:call(P, z3_interface, Name, [Args]),
-  io:format("\nResponse:\t~p.\n",[Response]),
-  %% close python instance
-  python:stop(P).
-%%
-
 
 
 
 
 test(not_t_reading) -> checker:ask_z3(not_t_reading,{#{"global"=>0,"x"=>4},5}).
 
+%% @doc wrapper function for calling the default function in the python program.
+-spec z3(list()) -> any().
+z3(Args) -> z3(ask_z3, Args).
+
+%% @doc python interface for calling specific functions that use z3
+-spec z3(atom(), list()) -> any().
+z3(Name, Args) ->
+  %% get filepath to python file (same dir)
+  Z3FilePath = filename:absname("")++"/src/toast/",
+  %% start python instance
+  {ok, P} = python:start([{python_path, [Z3FilePath]},{python, "python3"}]),
+  %% call function
+  Response = python:call(P, z3_interface, Name, Args),
+  io:format("\nResponse:\t~p.\n",[Response]),
+  %% close python instance
+  python:stop(P),
+  %% return response
+  Response.
+%%
+
+%% @doc helper functions to ask z3 via python in a more sensible (but convoluted way)
+%% this is necessary since some of the datatypes do not transfer well
+-spec ask_z3(atom(), map()|list()) -> {atom(), boolean()|list()}.
+
+%% @doc for each Clock valuation, asks z3 to check if 
+ask_z3(t_reading, #{clocks:=Clocks,type:=Type,t:=T}) ->
+  %% get as list of interactions
+  Interactions = toast:interactions(Type),
+  %% get only constraints of receptions
+  ReceptionConstraints = lists:foldl(fun({Direction,_Msg,Constraints,_Resets,_S}=_I, In) ->
+    case Direction of 
+      send -> In; %% do nothing, skip this interaction
+      recv -> In++[Constraints] %% add constraints to list
+    end
+  end, [], Interactions),
+  %% for each reception, ask z3 if there exists t'<t such that constraints are satisfied
+  AskZ3 = fun(Constraint, {IsOk, InSat}) ->
+    %% ask z3
+    Response = z3(t_reading, to_python_exec_string(t_reading, #{clocks=>Clocks,delta=>Constraint,t=>T})),
+    %% check if ok
+    case IsOk of
+      ok -> 
+        %% check response
+        case is_boolean(Response) of
+
+          %% if bool, preserve previous IsOk, and conj with current Sat
+          true -> {IsOk, (Response and InSat)};
+
+          %% if not bool something has gone wrong, and is not okay
+          false -> {error, [InSat,Response]}
+
+        end;
+
+      %% not ok, just add to list of InSat
+      _Else -> 
+        {IsOk, InSat++[Response]}
+      end
+  end,
+
+  %% check respond from z3
+  case lists:foldl(AskZ3, {ok, true}, ReceptionConstraints) of
+
+    {ok, IsSatisfied} -> {ok, IsSatisfied};
+
+    Err -> 
+      io:format("\nError, t_reading did not return as expected...\nResult:\t~p.\n",[Err]),
+      Err
+
+  end;
+%%
+
+%% @doc inverse of t_reading
+%% @see ask_z3(t_reading, {Clocks,T})
+ask_z3(not_t_reading, #{clocks:=_Clocks,interactions:=_Interactions,t:=_T}=Map) ->
+  %% inverse t_reading
+  case ask_z3(t_reading, Map) of 
+    {ok, Result} -> {not Result};
+    Err -> 
+      io:format("\nError, not_t_reading did not return as expected...\nResult:\t~p.\n",[Err]),
+      Err
+  end; 
+%%
+
+
+%% @doc catch for unrecognised (invalid) questions for z3
+ask_z3(Unknown, Args) ->
+  io:format("\n\nWarning, ~p, unrecognised question: ~p,\n\twith args: ~p.\n",[?FUNCTION_NAME,Unknown,Args]),
+  {unknown,false}.
+%%
 
 
 
+%% @doc helper function for converting constraints to string to be used by python
+-spec to_python_exec_string(atom(), map()) -> {atom(), string()}.
+
+%% @doc for each clock in Clocks, call z3 to see if there exists t'<T such that delta holds 
+%% ! make sure to initialise the variables of clocks always, including those within the delta -- later on be more clever about this and only test for clocks present in the delta
+to_python_exec_string(t_reading, #{clocks:=Clocks,delta:=Delta,t:=_T}=_Args) ->
+  %% round T down to accepted precision
+  T = precision_rounding(_T),
+  %% TODO make python code for calling z3, for each clock against delta exec 
+
+  ok;
+%%
+
+%% @doc catch unhandled kinds
+to_python_exec_string(Unknown, Args) ->
+  io:format("\n\nWarning, ~p, unrecognised mode: ~p,\n\twith args: ~p.\n",[?FUNCTION_NAME,Unknown,Args]),
+  ok.
+%%
 
 
 
@@ -267,4 +343,11 @@ when is_map(Clocks) ->
   end, #{}, Clocks),
   %% return
   Clocks1.
+%%
+
+%% @doc rounds to DECIMAL_PRECISION decimal places
+precision_rounding(Float) 
+when is_float(Float) -> 
+  Offset = math:pow(10.0,?DECIMAL_PRECISION),
+  round(Float*Offset)/Offset.
 %%

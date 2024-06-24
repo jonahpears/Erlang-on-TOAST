@@ -52,7 +52,6 @@
 
 -type maybe_toast () :: toast_type() | atom().
 
-
 %% @doc string to type
 -spec parse_toast(atom(), string()) -> toast_type() | error.
 parse_toast(wrapper, String) 

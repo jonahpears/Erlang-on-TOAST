@@ -112,15 +112,21 @@ def test(Constraints):
   return "from python"
 
 
-def not_t_reading(Tuple:tuple):
-  ## unpack
-  (Clocks,T) = Tuple
-  print(f"\nclocks:\t{Clocks},\nt:\t {T}.")
+# def not_t_reading(Tuple:tuple):
+#   ## unpack
+#   (Clocks,T) = Tuple
+#   print(f"\nclocks:\t{Clocks},\nt:\t {T}.")
   
-  # C1 = Clocks.pop(),
+#   # C1 = Clocks.pop(),
   
-  # print(f"\nC1:\t{C1}.")
+#   # print(f"\nC1:\t{C1}.")
   
-  
-  
+## for receiving code to execute that will ask z3
+def ask_z3(Code::str):
+  print(f"ask_z3, executing:\n\t{Code}.")
+  Result = "initially nothing"
+  exec(Code)
+  assert Result != "initially nothing"
+  print(f"ask_z3, finished: {Result}.")
+  return Result
 
