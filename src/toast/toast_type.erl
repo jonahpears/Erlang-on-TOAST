@@ -60,11 +60,11 @@ when is_list(String) ->
   %% remove white spaces before proceeding
   [NoSpaces] = string:replace(String," ",""),
 
-  io:format("\n\n= = = = = = = = =\n\nParsing: ~p.\n\n",[NoSpaces]),
+  % io:format("\n\n= = = = = = = = =\n\nParsing: ~p.\n\n",[NoSpaces]),
 
   %% parse into toast_type
   {Result, _Remainder} = parse_toast(NoSpaces),
-  io:format("\n\nResult: ~p.\n\n= = = = = = = = =\n",[Result]),
+  % io:format("\n\nResult: ~p.\n\n= = = = = = = = =\n",[Result]),
   ?assert(length(_Remainder)==0),
 
   %% return

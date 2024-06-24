@@ -1,16 +1,24 @@
 from z3 import *
 
-
 # x = Int('x')
-# y = Int('y')
-# print (simplify(x + y + 2*x + 3))
-# print (simplify(x < y + x + 2))
-# print (simplify(And(x + 1 >= 3, x**2 + x**2 + y**2 + 2 >= 5)))
+# print(f"simplify: {simplify(And(x==4,x>3))}")
+# # print(f"solve: {solve(x==4,x>3)}")
 
-# print(solve(x == 4,x<3))
+
+# # x = Int('x')
+# # y = Int('y')
+# # print (simplify(x + y + 2*x + 3))
+# # print (simplify(x < y + x + 2))
+# # print (simplify(And(x + 1 >= 3, x**2 + x**2 + y**2 + 2 >= 5)))
+
+# # print(solve(x == 4,x<3))
 
 # s = Solver()
 # print (f"s: {s}.")
+
+# s.add(x==2,x>3)
+# print (f"\nSolving constraints in the solver s:\n\t{s}.")
+# print (s.check())
 
 # s.add(x > 10, y == x + 2)
 # print (f"\nSolving constraints in the solver s:\n\t{s}.")
@@ -122,11 +130,13 @@ def test(Constraints):
 #   # print(f"\nC1:\t{C1}.")
   
 ## for receiving code to execute that will ask z3
-def ask_z3(Code::str):
-  print(f"ask_z3, executing:\n\t{Code}.")
-  Result = "initially nothing"
-  exec(Code)
-  assert Result != "initially nothing"
-  print(f"ask_z3, finished: {Result}.")
-  return Result
+def ask_z3(codeBinary:str):
+  # print(f"ask_z3, binary code: {codeBinary}.")
+  codeString = codeBinary.decode("utf-8")
+  # print(f"ask_z3, executing: {codeString}.")
+  local = {}
+  exec(codeString, globals(), local)
+  result = local['result']==sat
+  # print(f"ask_z3, finished: {result}.")
+  return result
 

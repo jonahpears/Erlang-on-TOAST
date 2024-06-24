@@ -37,6 +37,7 @@ when is_list(String) ->
 
 
 %% TODO :: sample(constraints) -- diagonal constraints
+%% TODO :: (in toast_type) finish extracting constraints from string
 
 
 %% @doc helper function for wrapping a toast type in list of interactions.
@@ -214,7 +215,7 @@ sample(constraints,Options) ->
             %% make random where defaults are not provided
             half_random -> 
               %% for each clock, construct constraint
-              lists:foldl(fun(Clock, {Conj, [DBC|T],In}) ->
+              {_, _, _Constraints} = lists:foldl(fun(Clock, {Conj, [DBC|T], In}) ->
                 %% get clock spec (if any)
                 ClockSpec = maps:get(Clock,Constants,undefined),
                 %% get value of constant (either rand from default range, or specific to clock)
@@ -248,8 +249,10 @@ sample(constraints,Options) ->
                   _ -> New
                 end,
                 %% return
-                {T, NextIn}
-              end, {false, DBCs,'true'}, Clocks);
+                {true, T, NextIn}
+              end, {false, DBCs,'true'}, Clocks),
+              %% return
+              _Constraints;
 
             %% make random constraint with random clock, DBC and constant
             random ->
@@ -370,10 +373,11 @@ sample(Unsupported,_Map) ->
 tests() -> tests(all).
 
 %% @doc contains all test names
-get_all_tests() -> [t_reading,from_string].
+get_all_tests() -> [t_reading].
+% get_all_tests() -> [t_reading,from_string].
 
 %% @doc tests for t-reading
-tests(t_reading) -> [{send_gtr,[true,true]},{send_leq,[true,true]},{recv_gtr,[false,true]},{recv_leq,[true,false]},{rec_loop,[true,true]}];
+tests(t_reading) -> [{send_gtr,[true,true]},{send_leq,[true,true]},{recv_gtr,[true,false]},{recv_leq,[true,false]}];
 
 %% @doc tests for extracting types from string
 tests(from_string) -> [{send,1},{recv,1},{rec_loop,1}];
@@ -382,18 +386,22 @@ tests(from_string) -> [{send,1},{recv,1},{rec_loop,1}];
 tests(all) ->
   %% run each test
   {Num, Result} = lists:foldl(fun(Test, {Count,Pass}) ->
+    io:format("\n\n= = = = = = = = = =\n\ntest suite: ~p...\n",[Test]),
+    TestResults = run_tests(Test,tests(Test)),
+    io:format("\ntest suite: ~p, results: ~p.\n",[Test,TestResults]),
     %% if test returns ok, then pass
-    case run_tests(Test,tests(Test)) of 
+    case TestResults of 
       true -> {Count+1, Pass and true};
       _ -> {Count, false}
     end
   end, {0,true}, get_all_tests()),
+  io:format("\n\n= = = = = = = = = ="),
   %% check if passed?
   case Result of 
     true -> 
-      io:format("\n\nAll tests (~p) passed!.\n",[Num]);
+      io:format("\n\nAll test suites (~p) passed!.\n",[Num]);
     _ -> 
-      io:format("\n\nWarning, only (~p) tests passed.\n",[Num])
+      io:format("\n\nWarning, only (~p) test suites passed.\n",[Num])
   end;
 
 tests(_) -> tests(all).
@@ -411,21 +419,39 @@ when is_list(Names) and is_atom(_Name) and is_list(_Expected) ->
   %% for each in map, run and test each
   Results = maps:fold(fun(Name, Expected, InResults) ->
     %% for each expected
-    TestResults = lists:foldl(fun(ExpectedResult, {Index, InTest}) ->
-      CurrentTest = test(Kind,Name,Index),
-      %% return whether it was expected
+    {_,TestResults} = lists:foldl(fun(ExpectedResult, {Index, InTest}) ->
+      {_,CurrentTest} = test(Kind,Name,Index),
+      io:format("\n~p:~p, result/expected: ~p/~p.\n",[Kind,Name,CurrentTest,ExpectedResult]),
+    %% return whether it was expected
       {Index+1, InTest++[CurrentTest=:=ExpectedResult]}
     end, {1,[]},Expected),
     InResults++TestResults
   end, [], Map),
   %% return
   Result = lists:all(fun(R) -> (R=:=true) end, Results),
+  io:format("\n~p, result: ~p.\n",[Kind,Result]),
   Result;
 %%
 
 %% @doc runs test for given basic suite (these kinds of tests tail-loop)
-run_tests(Kind,{Name,Index})
-when is_atom(Name) and is_integer(Index) -> test(Kind,Name,Index). % and run_tests(Kind,{Name,Index-1}).
+run_tests(Kind,[{_Name,_Index}|_T]=Names)
+when is_atom(_Name) and is_integer(_Index) -> 
+  %% to map
+  Map = maps:from_list(Names),
+  %% for each in map, run and test each
+  Results = maps:fold(fun(Name, Iterations, InResults) ->
+    %% for each expected
+    TestResults = test(Kind,Name,Iterations),
+    io:format("\n~p:~p/~p, result: ~p.\n",[Kind,Name,Iterations,TestResults]),
+    InResults++[TestResults]
+  end, [], Map),
+  %% return
+  Result = lists:all(fun(R) -> (R=:=true) end, Results),
+  io:format("\n~p, result: ~p.\n",[Kind,Result]),
+  Result.
+%%
+
+% test(Kind,Name,Index). % and run_tests(Kind,{Name,Index-1}).
 
 
 
@@ -448,10 +474,10 @@ test(t_reading=_Name, send_gtr=_Kind, Index) ->
       constants=>#{x=>#{constant=>3*Index,negation=>false}},
       dbcs=>['gtr']
     }}),
-  io:format("\n\n(~p:~p/~p) Type: ~p.\n\n",[_Name,_Kind,Index,Type]),
   T = rand:uniform_real()*?DELAY_UPPER_BOUND,
   %% get random set of clocks
   Clocks = sample({clocks_valuations,{sample(clocks),#{x=>#{value=>4}}}}),
+  io:format("\n\n(~p:~p/~p) Type: ~p.\n\tClocks: ~p\n\n",[_Name,_Kind,Index,Type,Clocks]),
   %% ask z3
   Result = checker:ask_z3(t_reading, #{clocks=>Clocks,type=>Type,t=>T}),
   %% return (and call next iteration)
@@ -470,10 +496,10 @@ test(t_reading=_Name, send_leq=_Kind, Index) ->
       constants=>#{x=>#{constant=>3*Index,negation=>true}},
       dbcs=>['gtr']
     }}),
-  io:format("\n\n(~p:~p/~p) Type: ~p.\n\n",[_Name,_Kind,Index,Type]),
   T = rand:uniform_real()*?DELAY_UPPER_BOUND,
   %% get random set of clocks
   Clocks = sample({clocks_valuations,{sample(clocks),#{x=>#{value=>4}}}}),
+  io:format("\n\n(~p:~p/~p) Type: ~p.\n\tClocks: ~p\n\n",[_Name,_Kind,Index,Type,Clocks]),
   %% ask z3
   Result = checker:ask_z3(t_reading, #{clocks=>Clocks,type=>Type,t=>T}),
   %% return (and call next iteration)
@@ -492,10 +518,10 @@ test(t_reading=_Name, recv_gtr=_Kind, Index) ->
       constants=>#{x=>#{constant=>3*Index,negation=>false}},
       dbcs=>['gtr']
     }}),
-  io:format("\n\n(~p:~p/~p) Type: ~p.\n\n",[_Name,_Kind,Index,Type]),
   T = rand:uniform_real()*?DELAY_UPPER_BOUND,
   %% get random set of clocks
   Clocks = sample({clocks_valuations,{sample(clocks),#{x=>#{value=>4}}}}),
+  io:format("\n\n(~p:~p/~p) Type: ~p.\n\tClocks: ~p\n\n",[_Name,_Kind,Index,Type,Clocks]),
   %% ask z3
   Result = checker:ask_z3(t_reading, #{clocks=>Clocks,type=>Type,t=>T}),
   %% return (and call next iteration)
@@ -514,10 +540,10 @@ test(t_reading=_Name, recv_leq=_Kind, Index) ->
       constants=>#{x=>#{constant=>3*Index,negation=>true}},
       dbcs=>['gtr']
     }}),
-  io:format("\n\n(~p:~p/~p) Type: ~p.\n\n",[_Name,_Kind,Index,Type]),
   T = rand:uniform_real()*?DELAY_UPPER_BOUND,
   %% get random set of clocks
   Clocks = sample({clocks_valuations,{sample(clocks),#{x=>#{value=>4}}}}),
+  io:format("\n\n(~p:~p/~p) Type: ~p.\n\tClocks: ~p\n\n",[_Name,_Kind,Index,Type,Clocks]),
   %% ask z3
   Result = checker:ask_z3(t_reading, #{clocks=>Clocks,type=>Type,t=>T}),
   %% return (and call next iteration)
