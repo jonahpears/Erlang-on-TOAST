@@ -36,9 +36,12 @@ z3(Name, Args) ->
 -spec ask_z3(atom(), map()|list()) -> {atom(), boolean()|list()}.
 
 %% @doc for each Clock valuation, asks z3 to check if 
-ask_z3(t_reading, #{clocks:=Clocks,type:=Type,t:=T}) ->
+ask_z3(t_reading, #{clocks:=Clocks,type:=Type,t:=_T}) ->
+  %% round T down to accepted precision
+  T = precision_rounding(_T),
   %% get as list of interactions
   Interactions = toast:interactions(Type),
+
   %% get only constraints of receptions
   ReceptionConstraints = lists:foldl(fun({Direction,_Msg,Constraints,_Resets,_S}=_I, In) ->
     case Direction of 
@@ -46,32 +49,67 @@ ask_z3(t_reading, #{clocks:=Clocks,type:=Type,t:=T}) ->
       recv -> In++[Constraints] %% add constraints to list
     end
   end, [], Interactions),
-  %% for each reception, ask z3 if there exists t'<t such that constraints are satisfied
-  AskZ3 = fun(Constraint, {IsOk, InSat}) ->
-    %% ask z3
-    Response = z3(t_reading, to_python_exec_string(t_reading, #{clocks=>Clocks,delta=>Constraint,t=>T})),
-    %% check if ok
+
+  %% for each reception, go through each clock and ask z3 if there exists t'<t such that constraints are satisfied
+  AskZ3 = lists:foldl(fun(Constraint, {IsOk, InSat}) ->
+    %% first, check constraint for each clock
+    Results = lists:foldl(fun(Clock, InResponses) ->
+      %% check if clock is constrained 
+      case toast:is_clock_constrained(Clock,Constraint) of
+        %% if constrained, evaluate and add to responses
+        true -> 
+          ExecString = to_python_exec_string(t_reading, #{clock=>Clock,delta=>Constraint,t=>T}),
+          Z3Response = z3(t_reading,ExecString),
+          InResponses++[Z3Response];
+
+        %% if not constrained, skip
+        _ -> InResponses
+
+      end
+      %%
+    end, [], Clocks),
+    %% next, check result of all clocks
+    Result = lists:foldl(fun(R, {InnerIsOk, InResults}) -> 
+      %% check if ok 
+      case InnerIsOk of
+        ok -> 
+          %% check response
+          case is_boolean(R) of
+
+            %% if bool, preserve previous IsOk, and conj with current Sat
+            true -> {InnerIsOk, (R and InResults)};
+
+            %% if not bool something has gone wrong, and is not okay
+            false -> {error, [InResults,R]}
+
+          end;
+        %% not ok, just add to list of InSat
+        _Else -> 
+          {InnerIsOk, InResults++[R]}
+      end
+    end, {ok, true}, Results),
+    %% check if ok 
     case IsOk of
       ok -> 
         %% check response
-        case is_boolean(Response) of
+        case is_boolean(Result) of
 
           %% if bool, preserve previous IsOk, and conj with current Sat
-          true -> {IsOk, (Response and InSat)};
+          true -> {IsOk, (Result and InSat)};
 
           %% if not bool something has gone wrong, and is not okay
-          false -> {error, [InSat,Response]}
+          false -> {error, [InSat,Result]}
 
         end;
 
       %% not ok, just add to list of InSat
       _Else -> 
-        {IsOk, InSat++[Response]}
-      end
-  end,
+        {IsOk, InSat++[Result]}
+    end
+  end, {ok,true}, ReceptionConstraints),
 
-  %% check respond from z3
-  case lists:foldl(AskZ3, {ok, true}, ReceptionConstraints) of
+  %% check response from z3
+  case AskZ3 of %lists:foldl(AskZ3, {ok, true}, ReceptionConstraints)
 
     {ok, IsSatisfied} -> {ok, IsSatisfied};
 
@@ -108,12 +146,13 @@ ask_z3(Unknown, Args) ->
 
 %% @doc for each clock in Clocks, call z3 to see if there exists t'<T such that delta holds 
 %% ! make sure to initialise the variables of clocks always, including those within the delta -- later on be more clever about this and only test for clocks present in the delta
-to_python_exec_string(t_reading, #{clocks:=Clocks,delta:=Delta,t:=_T}=_Args) ->
-  %% round T down to accepted precision
-  T = precision_rounding(_T),
+to_python_exec_string(t_reading, #{clock:=Clock,delta:=Delta,t:=_T}=_Args) ->
   %% TODO make python code for calling z3, for each clock against delta exec 
 
-  ok;
+  %% ! from here
+  String = "x = Int('x')\r\n# y = Int('y')",
+  %% return string
+  String;
 %%
 
 %% @doc catch unhandled kinds

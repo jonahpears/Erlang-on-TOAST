@@ -583,3 +583,13 @@ rand_float_from_range(Lower,Upper) ->
   %% return
   Result.
 %%
+
+%% @doc returns true if the constraint features the given Clock
+is_clock_constrained(Clock,{'not',Constraints}) -> is_clock_constrained(Clock,Constraints);
+is_clock_constrained(Clock,{Constraints1,'and',Constraints2}) -> is_clock_constrained(Clock,Constraints1) or is_clock_constrained(Clock,Constraints2);
+is_clock_constrained(Clock1,{Clock2,_DBC,_Constant}) when Clock1=:=Clock2 -> true;
+is_clock_constrained(Clock1,{Clock2,'-',Clock3,_DBC,_Constant}) when ((Clock1=:=Clock2) or (Clock1=:=Clock3)) -> true;
+is_clock_constrained(_Clock,_Constraints) -> false.
+
+
+
