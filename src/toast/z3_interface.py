@@ -4,8 +4,27 @@ from z3 import *
 # print(f"simplify: {simplify(And(x==4,x>3))}")
 # # print(f"solve: {solve(x==4,x>3)}")
 
+# x, n = Ints('x n')
+# t, t_ = Reals('t t_')
+# s = Solver()
+# s.add(x==4, t==0.30259726, n==3)
+# s.add(Exists(t_,And(0<=t_,t_<t, (x+t_) > n)))
+# result = s.check()
 
-# # x = Int('x')
+# print(f"solver: {s}.")
+# print(f"result: {result}.")
+
+# x, n = Ints('x n')
+# t, t_ = Reals('t t_')
+# s = Solver()
+# s.add(x==2,n==8,t==5.0)
+# s.add(Exists(t_,And(t_<t, (x+t_)>n)))
+# print(f"model: {s.model()}.")
+# print(f"solver: {s}.\n")
+# print(f"proof: {s,proof()}.")
+# print(f"solve: {s,solve()}.")
+# print(f"check: {s.check()}.")
+
 # # y = Int('y')
 # # print (simplify(x + y + 2*x + 3))
 # # print (simplify(x < y + x + 2))

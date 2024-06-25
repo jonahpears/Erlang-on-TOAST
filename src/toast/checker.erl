@@ -2,7 +2,9 @@
 -compile(export_all).
 -compile(nowarn_export_all).
 
+%% how fine grained to check decimals
 -define(DECIMAL_PRECISION,8).
+
 
 -include_lib("stdlib/include/assert.hrl").
 
@@ -51,90 +53,97 @@ when is_list(Clocks) and is_float(_T) ->
     end
   end, [], Interactions),
 
-  %% for each reception, go through each clock and ask z3 if there exists t'<t such that constraints are satisfied
-  AskZ3 = lists:foldl(fun(Constraint, {IsOk, InSat}) ->
-    %% first, check constraint for each clock
-    Results = lists:foldl(fun({Clock,Valuation}, InResponses) ->
-      %% check if clock is constrained 
-      case toast:is_clock_constrained(Clock,Constraint) of
-        %% if constrained, evaluate and add to responses
-        true -> 
-          % io:format("\nclock (~p) is constrained by: ~p.\n",[Clock,Constraint]),
-          %% get python string to execute using z3
-          ExecString = to_python_exec_string(t_reading, #{clock=>{Clock,Valuation},delta=>Constraint,t=>T}),
-          % io:format("\nexec string:\n~s.\n",[ExecString]),
-          % timer:sleep(5000),
-          %% send to python program and get response
-          Z3Response = z3(ask_z3,[list_to_binary(ExecString)]),
-          % io:format("\nZ3Response: ~p.\n",[Z3Response]),
-          %% collect response
-          InResponses++[Z3Response];
+  %% if no receptions, then t_reading false
+  case length(ReceptionConstraints)==0 of 
+    true -> {ok, false};
 
-        %% if not constrained, skip
-        _ -> InResponses
-        % _ -> io:format("\nskipping, clock (~p) not constrained by: ~p.\n",[Clock,Constraint]), InResponses
+    %% otherise, receptions
+    _ ->
+      %% for each reception, go through each clock and ask z3 if there exists t'<t such that constraints are satisfied
+      AskZ3 = lists:foldl(fun(Constraint, {IsOk, InSat}) ->
+        %% first, check constraint for each clock
+        Results = lists:foldl(fun({Clock,Valuation}, InResponses) ->
+          %% check if clock is constrained 
+          case toast:is_clock_constrained(Clock,Constraint) of
+            %% if constrained, evaluate and add to responses
+            true -> 
+              % io:format("\nclock (~p) is constrained by: ~p.\n",[Clock,Constraint]),
+              %% get python string to execute using z3
+              ExecString = to_python_exec_string(t_reading, #{clock=>{Clock,Valuation},delta=>Constraint,t=>T}),
+              % io:format("\nexec string:\n~s.\n",[ExecString]),
+              % timer:sleep(5000),
+              %% send to python program and get response
+              Z3Response = z3(ask_z3,[list_to_binary(ExecString)]),
+              % io:format("\nZ3Response: ~p. (exists t'<~p: [~p:~p+t'] |= ~p.)\n",[Z3Response,T,Clock,Valuation,Constraint]),
+              %% collect response
+              InResponses++[Z3Response];
 
-      end
-      %%
-    end, [], Clocks),
-    %% next, check result of all clocks
-    % io:format("\nResults: ~p.\n",[Results]),
-    Result = lists:foldl(fun(R, {InnerIsOk, InResults}) -> 
-      %% check if ok 
-      case InnerIsOk of
-        ok -> 
-          %% check response
-          case is_boolean(R) of
+            %% if not constrained, skip
+            _ -> InResponses
+            % _ -> io:format("\nskipping, clock (~p) not constrained by: ~p.\n",[Clock,Constraint]), InResponses
 
-            %% if bool, preserve previous IsOk, and conj with current Sat
-            true -> {InnerIsOk, (R and InResults)};
+          end
+          %%
+        end, [], Clocks),
+        %% next, check result of all clocks
+        % io:format("\nResults: ~p.\n",[Results]),
+        Result = lists:foldl(fun(R, {InnerIsOk, InResults}) -> 
+          %% check if ok 
+          case InnerIsOk of
+            ok -> 
+              %% check response
+              case is_boolean(R) of
 
-            %% if not bool something has gone wrong, and is not okay
-            false -> {error, [InResults]++[R]}
+                %% if bool, preserve previous IsOk, and conj with current Sat
+                true -> {InnerIsOk, (R and InResults)};
 
-          end;
-        %% not ok, just add to list of InSat
-        _Else -> 
-          {InnerIsOk, InResults++[R]}
-      end
-    end, {ok, true}, Results),
-    % io:format("\nResult: ~p.\n",[Result]),
-    %% check if ok 
-    case IsOk of
-      ok -> 
-        %% check response
-        case Result of 
-          %% z3 worked successfully
-          {ok, SatResult} -> 
-            case is_boolean(SatResult) of
+                %% if not bool something has gone wrong, and is not okay
+                false -> {error, [InResults]++[R]}
 
-              %% if bool, preserve previous IsOk, and conj with current Sat
-              true -> {IsOk, (SatResult and InSat)};
+              end;
+            %% not ok, just add to list of InSat
+            _Else -> 
+              {InnerIsOk, InResults++[R]}
+          end
+        end, {ok, true}, Results),
+        % io:format("\nResult: ~p.\n",[Result]),
+        %% check if ok 
+        case IsOk of
+          ok -> 
+            %% check response
+            case Result of 
+              %% z3 worked successfully
+              {ok, SatResult} -> 
+                case is_boolean(SatResult) of
 
-              %% if not bool something has gone wrong, and is not okay
-              false -> {error, [InSat,SatResult]}
+                  %% if bool, preserve previous IsOk, and conj with current Sat
+                  true -> {IsOk, (SatResult and InSat)};
+
+                  %% if not bool something has gone wrong, and is not okay
+                  false -> {error, [InSat,SatResult]}
+
+                end;
+              %% some error occured
+              _ -> Result
 
             end;
-          %% some error occured
-          _ -> Result
 
-        end;
+          %% not ok, just add to list of InSat
+          _Else -> 
+            {IsOk, InSat++[Result]}
+        end
+      end, {ok,true}, ReceptionConstraints),
 
-      %% not ok, just add to list of InSat
-      _Else -> 
-        {IsOk, InSat++[Result]}
-    end
-  end, {ok,true}, ReceptionConstraints),
+      %% check response from z3
+      case AskZ3 of %lists:foldl(AskZ3, {ok, true}, ReceptionConstraints)
 
-  %% check response from z3
-  case AskZ3 of %lists:foldl(AskZ3, {ok, true}, ReceptionConstraints)
+        {ok, IsSatisfied} -> {ok, IsSatisfied};
 
-    {ok, IsSatisfied} -> {ok, IsSatisfied};
+        Err -> 
+          io:format("\nError, t_reading did not return as expected...\nResult:\t~p.\n",[Err]),
+          Err
 
-    Err -> 
-      io:format("\nError, t_reading did not return as expected...\nResult:\t~p.\n",[Err]),
-      Err
-
+      end
   end;
 %%
 
@@ -160,7 +169,7 @@ ask_z3(Unknown, Args) ->
 
 
 %% @doc helper function for converting constraints to string to be used by python
--spec to_python_exec_string(atom(), map()) -> string().
+-spec to_python_exec_string(atom(), map()) -> string()|{list(),string()}.
 
 %% @doc for each clock in Clocks, call z3 to see if there exists t'<T such that delta holds 
 %% this is only for simple constraints (no diagonal)
@@ -168,33 +177,78 @@ ask_z3(Unknown, Args) ->
 to_python_exec_string(t_reading, #{clock:={Clock,Valuation},delta:=Delta,t:=T}=_Args)
 when is_atom(Clock) and is_float(T) ->
   %% stringify Delta
-  DeltaString = to_python_exec_string(constraints, #{delta=>Delta}),
+  {VarList, DeltaString} = to_python_exec_string(constraints, #{delta=>Delta,t_reading=>true}),
   %% build code
-  ExecString = io_lib:format("~w = Int('~w')\ns = Solver()\ns.add(~w==~w, ~s)\nresult = s.check()",[Clock,Clock,Clock,Valuation,DeltaString]),
+  {ConstantNames, ConstantDeclarations} = lists:foldl(fun({VarName,VarValue}, {InNames,InDecls}) -> 
+    % io:format("\nInNames: ~s.\n",[InNames]),
+    % io:format("\nInDecls: ~s.\n",[InDecls]),
+    %% this will appear inside the "Ints(...)" call in the python with z3
+    NewNames = InNames++" "++VarName,
+    %% this will be added to the "s.add(...)" to initialise the values of the constants
+    DeclConnector = case length(InDecls)==0 of true -> ""; _ -> ", " end,
+    NewDecls = io_lib:format("~s~s~s==~w",[InDecls,DeclConnector,VarName,VarValue]),
+    %% return strings as tuple
+    % io:format("\nNewNames: ~s.\n",[NewNames]),
+    % io:format("\nNewDecls: ~s.\n",[NewDecls]),
+    {NewNames,NewDecls}
+  end, {"", ""}, VarList),
+  % io:format("\nVarList: ~p.\n",[VarList]),
+  % io:format("\nDeltaString: ~s.\n",[DeltaString]),
+  % io:format("\nConstantNames: ~s.\n",[ConstantNames]),
+  % io:format("\nConstantDeclarations: ~s.\n",[ConstantDeclarations]),
+  % ExecString = io_lib:format("~w = Int('~w')\ns = Solver()\ns.add(~w==~w, ~s)\nresult = s.check()",[Clock,Clock,Clock,Valuation,DeltaString]),
+  ExecString = io_lib:format("~w, n = Ints('~w~s')\nt, t_ = Reals('t t_')\ns = Solver()\ns.add(~w==~w, t==~w, ~s)\ns.add(Exists(t_,And(0<=t_,t_<t, ~s)))\nresult = s.check()",[Clock,Clock,ConstantNames,Clock,Valuation,T,ConstantDeclarations,DeltaString]),
+  % io:format("\nExecString: ~s.\n",[ExecString]),
   %% return string
   ExecString;
 %%
 
 %% @doc catch constraints (negation)
-to_python_exec_string(constraints, #{delta:={'not',Constraints}}=_Args) -> 
-  io_lib:format("Not(~s)",[to_python_exec_string(constraints, #{delta=>Constraints})]);
+to_python_exec_string(constraints, #{delta:={'not',Constraints}}=Args) -> 
+  Offset = maps:get(constant_offset,Args,""),
+  TReading = maps:get(t_reading,Args,false),
+  {VarList, ConstraintString} = to_python_exec_string(constraints, #{delta=>Constraints,offset=>Offset,t_reading=>TReading}),
+  {VarList, io_lib:format("Not(~s)",[ConstraintString])};
 %%
 
 %% @doc catch constraints (conjunction)
-to_python_exec_string(constraints, #{delta:={Constraints1,'and',Constraints2}}=_Args) -> 
-  io_lib:format("And(~s, ~s)",[to_python_exec_string(constraints, #{delta=>Constraints1}),to_python_exec_string(constraints, #{delta=>Constraints2})]);
+to_python_exec_string(constraints, #{delta:={Constraints1,'and',Constraints2}}=Args) -> 
+  Offset = maps:get(constant_offset,Args,""),
+  TReading = maps:get(t_reading,Args,false),
+  {VarList1, ConstraintString1} = to_python_exec_string(constraints, #{delta=>Constraints1,offset=>Offset++"1",t_reading=>TReading}),
+  {VarList2, ConstraintString2} = to_python_exec_string(constraints, #{delta=>Constraints2,offset=>Offset++"2",t_reading=>TReading}),
+  %% if t_reading, no need to wrap in And
+  DeltaString = case TReading of 
+      true -> io_lib:format("~s, ~s",[ConstraintString1,ConstraintString2]);
+      _ -> io_lib:format("And(~s, ~s)",[ConstraintString1,ConstraintString2])
+  end,
+  {VarList1++VarList2, DeltaString};
 %%
 
 %% @doc catch constraints (simple)
-to_python_exec_string(constraints, #{delta:={Clock,DBC,Constant}}=_Args)
+to_python_exec_string(constraints, #{delta:={Clock,DBC,Constant}}=Args)
 when is_atom(Clock) and is_atom(DBC) and is_integer(Constant) -> 
-  io_lib:format("~w ~s ~w",[Clock,to_python_exec_string(constraints, #{dbc=>DBC}),Constant]);
+  Offset = maps:get(constant_offset,Args,""),
+  TReading = maps:get(t_reading,Args,false),
+  ConstantString = "n"++Offset,
+  DeltaString = case TReading of 
+      true -> io_lib:format("(~w+t_) ~s ~s",[Clock,to_python_exec_string(constraints, #{dbc=>DBC}),ConstantString]);
+      _ -> io_lib:format("~w ~s ~s",[Clock,to_python_exec_string(constraints, #{dbc=>DBC}),ConstantString])
+  end,
+  {[{ConstantString,Constant}],DeltaString};
 %%
 
 %% @doc catch constraints (diagonal)
-to_python_exec_string(constraints, #{delta:={Clock1,'-',Clock2,DBC,Constant}}=_Args)
+to_python_exec_string(constraints, #{delta:={Clock1,'-',Clock2,DBC,Constant}}=Args)
 when is_atom(Clock1) and is_atom(Clock2) and is_atom(DBC) and is_integer(Constant) -> 
-  io_lib:format("~w - ~w ~s ~w",[Clock1,Clock2,to_python_exec_string(constraints, #{dbc=>DBC}),Constant]);
+  Offset = maps:get(constant_offset,Args,""),
+  TReading = maps:get(t_reading,Args,false),
+  ConstantString = "n"++Offset,
+  DeltaString = case TReading of 
+      true -> io_lib:format("(~w+t_) - (~w+t_) ~s ~s",[Clock1,Clock2,to_python_exec_string(constraints, #{dbc=>DBC}),ConstantString]);
+      _ -> io_lib:format("~w - ~w ~s ~s",[Clock1,Clock2,to_python_exec_string(constraints, #{dbc=>DBC}),ConstantString])
+  end,
+  {[{ConstantString,Constant}],DeltaString};
 %%
 
 %% @doc catch constraints (true)
@@ -222,57 +276,67 @@ to_python_exec_string(Unknown, Args) ->
 %% @returns tuple of bool denoting if the result of the evaluation, and a list detailing the traces of rules visited.
 -spec rule(map(), map(), toast:process(), map()) -> {boolean(), [[atom()]]} | {boolean(), [atom()]}.
 
+%% @doc helper function to make sure /timersclocks are map not list of tuples
+rule(Gamma, Theta, Process, Delta) 
+when is_list(Theta) -> rule(Gamma, maps:from_list(Theta), Process, Delta);
+rule(Gamma, Theta, Process, {Clocks,Type}) 
+when is_list(Clocks) -> rule(Gamma, Theta, Process, {maps:from_list(Clocks),Type});
 
+
+% %% @doc rule [Recv]
+% %% type-checking single reception
+% rule(_Gamma, _Theta, _Process, {_Clocks,_Type}=_Delta)
+% ->
+%   ok;
+% %%
+
+
+%% @doc helper function to wrap any lone interact type in list (now that we are past rule [Recv])
+rule(Gamma, Theta, Process, {Clocks,Type}=_Delta)
+when is_tuple(Type) -> rule(Gamma, Theta, Process, {Clocks,toast:interactions(Type)});
+%%
 
 
 %% @doc rule [Send]
 %% type-checking one send from type
-rule(_Gamma, _Theta, _Process, {_Clocks,_Type}=_Delta)
-->
+rule(_Gamma, _Theta, {_Role,'<-',{Label,Payload},P}=_Process, {_Clocks,Type}=_Delta)
+when is_list(Type) ->
   ok;
 %%
 
 
-%% @doc rule [Recv]
-%% type-checking single reception
-rule(_Gamma, _Theta, _Process, {_Clocks,_Type}=_Delta)
-->
-  ok;
-%%
+% %% @doc rule [Branch]
+% %% type-checking each reception in branch 
+% %% @see rule [Recv]
+% rule(_Gamma, _Theta, _Process, {_Clocks,_Type}=_Delta)
+% ->
+%   ok;
+% %%
 
 
-%% @doc rule [Branch]
-%% type-checking each reception in branch 
-%% @see rule [Recv]
-rule(_Gamma, _Theta, _Process, {_Clocks,_Type}=_Delta)
-->
-  ok;
-%%
+% %% @doc rule [Timeout]
+% %% type-checking branches with timeouts 
+% %% @see rule [Branch]
+% rule(_Gamma, _Theta, _Process, {_Clocks,_Type}=_Delta)
+% ->
+%   ok;
+% %%
 
 
-%% @doc rule [Timeout]
-%% type-checking branches with timeouts 
-%% @see rule [Branch]
-rule(_Gamma, _Theta, _Process, {_Clocks,_Type}=_Delta)
-->
-  ok;
-%%
+% %% @doc rule [IfTrue]
+% %% type-checking if-true
+% rule(_Gamma, _Theta, _Process, {_Clocks,_Type}=_Delta)
+% ->
+%   ok;
+% %%
 
 
-%% @doc rule [IfTrue]
-%% type-checking if-true
-rule(_Gamma, _Theta, _Process, {_Clocks,_Type}=_Delta)
-->
-  ok;
-%%
-
-
-%% @doc rule [IfFalse]
-%% type-checking if-false
-rule(_Gamma, _Theta, _Process, {_Clocks,_Type}=_Delta)
-->
-  ok;
-%%
+% %% @doc rule [IfFalse]
+% %% type-checking if-false
+% rule(_Gamma, _Theta, _Process, {_Clocks,_Type}=_Delta)
+% ->
+%   ok;
+% %%
 
 
 %% @doc rule [Timer]
@@ -306,7 +370,7 @@ rule(Gamma, Theta, {'set', Timer, P}=_Process, {_Clocks,_Type}=Delta)
 
 %% @doc rule [Del-t]
 %% type-checking determined delays
-rule(Gamma, Theta, {'delay',T,P}=_Process, {Clocks,Type}=Delta)
+rule(Gamma, Theta, {'delay',T,P}=_Process, {Clocks,Type}=_Delta)
 ->
   %% increment timers and clocks y T
   Theta1 = increment_timers(Theta,T),
@@ -319,7 +383,9 @@ rule(Gamma, Theta, {'delay',T,P}=_Process, {Clocks,Type}=Delta)
   Trace1 = add_to_trace(Trace,'Del-t'),
 
   %% ask z3 if Delta is not T-reading
-  NotTReading = ask_z3(not_t_reading,{Clocks,T}),
+  {Signal, NotTReading} = ask_z3(not_t_reading,#{clocks=>Clocks,type=>Type,t=>T}),
+  ?assert(Signal=:=ok),
+  ?assert(is_boolean(NotTReading)),
 
   %% construct premise and return
   Premise = NotTReading and Continuation,
