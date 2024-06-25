@@ -37,7 +37,11 @@ z3(Name, Args) ->
 %% this is necessary since some of the datatypes do not transfer well
 -spec ask_z3(atom(), map()|list()) -> {atom(), boolean()|list()}.
 
-%% @doc for each Clock valuation, asks z3 to check if 
+%% @doc for each Clock valuation, check 
+%% TODO; FROM HERE
+
+
+%% @doc for each Clock valuation, asks z3 to check if they are t_reading
 ask_z3(t_reading, #{clocks:=Clocks,type:=Type,t:=_T})
 when is_list(Clocks) and is_float(_T) ->
   %% round T down to accepted precision
@@ -149,7 +153,7 @@ when is_list(Clocks) and is_float(_T) ->
 
 %% @doc inverse of t_reading
 %% @see ask_z3(t_reading, {Clocks,T})
-ask_z3(not_t_reading, #{clocks:=_Clocks,interactions:=_Interactions,t:=_T}=Map) ->
+ask_z3(not_t_reading, #{clocks:=_Clocks,type:=_Type,t:=_T}=Map) ->
   %% inverse t_reading
   case ask_z3(t_reading, Map) of 
     {ok, Result} -> {not Result};
@@ -299,9 +303,48 @@ when is_tuple(Type) -> rule(Gamma, Theta, Process, {Clocks,toast:interactions(Ty
 
 %% @doc rule [Send]
 %% type-checking one send from type
-rule(_Gamma, _Theta, {_Role,'<-',{Label,Payload},P}=_Process, {_Clocks,Type}=_Delta)
+rule(Gamma, Theta, {_Role,'<-',{Label,_Payload},P}=_Process, {Clocks,Type}=_Delta)
 when is_list(Type) ->
-  ok;
+
+  %% for each interaction in type, for those that are sending, check their labels match, and add to exists -- there should only be one
+  MatchingSends = lists:foldl(fun({Direction_i,{Label_i,_Payload_i},_Constraints_i,_Resets_i,_S_i}=I, Ins) -> 
+    case Direction_i of 
+      %% check send
+      send -> 
+        case Label=:=Label_i of 
+          %% check labels match
+          true -> Ins++[I];
+          _ -> Ins %% skip if not corresponding label
+        end;
+      _ -> Ins %% skip if not send
+    end
+  end, [], Type),
+  %% there should only be one
+  ?assert(length(MatchingSends)==1),
+  Send = lists:nth(1,MatchingSends),
+  
+  %% unpack
+  {send, {_,_}, Constraints, Resets, S} = Send,
+
+  %% reset clocks
+  Clocks1 = lists:foldl(fun(Clock, NewClocks) -> 
+    maps:put(Clock,0,NewClocks)
+  end, Clocks, Resets),
+
+  %% continue type-checking (yields premise)
+  {Continuation, Trace} = rule(Gamma, Theta, P, {Clocks1,S}),
+  
+  %% update Trace
+  Trace1 = add_to_trace(Trace,'Timer'),
+
+  %% ask z3 if Delta is not T-reading
+  {Signal, SatisfiedConstraints} = ask_z3(satisfied_constraints,#{clocks=>Clocks,constraints=>Constraints}),
+  ?assert(Signal=:=ok),
+  ?assert(is_boolean(SatisfiedConstraints)),
+
+  %% construct premise and return
+  Premise = SatisfiedConstraints and Continuation,
+  {Premise, Trace1};
 %%
 
 
