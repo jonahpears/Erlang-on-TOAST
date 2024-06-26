@@ -19,11 +19,16 @@
 
 -type upper_bound () :: {leq, integer()} | {les, integer()} | 'infinity'.
 
--type dbc() :: eq | geq | leq | gtr | les.
+-type equalities() :: eq | neq.
+-type greaters() :: geq | gtr.
+-type lessers() :: leq | les.
+-type dbc() :: equalities() | greaters() | lessers().
 
 -type simple_range() :: {string(), dbc(), integer()}.
 
--type nondet_delay () :: integer() | {t, dbc(), integer()}.
+-type nondet_delay () :: integer() | {t, dbc(), integer()} 
+                      %  | {integer(), greaters(), t, lessers(), integer()} %% ! <- this is experimental, not in theory!
+                       .
 
 -type queue_contents () :: empty | {msg(), queue_contents()}.
 

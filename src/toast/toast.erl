@@ -61,7 +61,7 @@ interactions(_Type) -> error.
 
 
 %% @doc helper functions to provide sample labels, clocks, dbc, types
--spec sample(atom()|{atom(),list()}|{atom(),{list(),any()}}) -> list().
+-spec sample(atom()|{atom(),list()}|{atom(),{list(),any()}}) -> list()|map().
 
 sample(labels) -> [a,b,c,d,e,f,g];
 sample(clocks) -> [u,v,w,x,y,z];
@@ -103,8 +103,8 @@ when is_map(Bounds) ->
     %% add to list
     In++[{Clock,Value}]
   end, [], Clocks) ++ [{global,Global}],
-  %% return
-  Result;
+  %% return as map
+  maps:from_list(Result);
 %%
 
 %% @doc sample select random from list
@@ -370,6 +370,10 @@ sample(Unsupported,_Map) ->
 
 
 
+%% @doc current hot-test
+hot_test() -> type_checking.
+test() -> run_tests(hot_test(),tests(hot_test())).
+
 %% @doc suite of tests
 tests() -> tests(all).
 
@@ -378,7 +382,14 @@ get_all_tests() -> [t_reading,not_t_reading]. %  from_string
 % get_all_tests() -> [type_checking].%[t_reading,not_t_reading]. % from_string
 
 %% @doc tests for type-checking
-tests(type_checking) -> [{del_t,[true]}];
+tests(type_checking) -> [
+                         {del_t_pass_send,[true]},
+                         {del_t_fail_send,[false]},
+                         {del_t_recv,[false,true,false]},
+                         {del_t_branch,[false,true,false]},
+                         {del_t_branch_cascade,[true]}
+                        %  {del_delta_send,[true]}
+                         ];
 
 %% @doc tests for t-reading
 tests(t_reading) -> [{send_gtr,[false,false]},
@@ -462,8 +473,6 @@ when is_atom(_Name) and is_integer(_Index) ->
   Result.
 %%
 
-% test(Kind,Name,Index). % and run_tests(Kind,{Name,Index-1}).
-
 
 
 %% @doc individual tests
@@ -472,8 +481,77 @@ when is_atom(_Name) and is_integer(_Index) ->
 %% @doc catch for returning once index has reached 0
 test(_Kind,_Name,0) -> true;
 
-%% @doc test for type-checking, rule [Del-t]
-test(type_checking=_Name, del_t=_Kind, Index) ->
+%% @doc test for type-checking, rule [Del-delta] 
+test(type_checking=_Name, del_delta_send=_Kind, Index) ->
+  %% sending 
+  %% get process, type and clocks
+  Process = {delay, {t,'leq',5}, {'p','<-',{a,undefined}, 'term'}},
+  Type = {send,{a,none},{x,'les',9},[],'end'},
+  Clocks = [{x,3}],
+  %% type check
+  Gamma = #{},
+  Theta = #{},
+  Result = checker:rule(Gamma, Theta, Process, {Clocks,Type}),
+  io:format("\n~p:~p/~p,\n\nGamma: ~p, Theta: ~p,\nPrc:\t~p,\nType:\t~p,\nClocks: ~p.\n\nResult: ~p.",[_Name,_Kind,Index,Gamma,Theta,Process,Type,Clocks,Result]),
+  {IsTyped,_} = Result,
+  {ok, IsTyped};
+%%
+
+%% @doc test for type-checking, rule [Del-t] 
+test(type_checking=_Name, del_t_branch_cascade=_Kind, Index) ->
+  %% sending 
+  %% get process, type and clocks
+  Process = {delay, 1.0, {'p','->',1,[{{c,undefined},'term'}], 
+            'after', {delay, 5.0, {'p','->',5,[{{a,undefined},'term'},{{b,undefined},'term'}],
+                                  'after', {'p','->',infinity,{b,undefined},'term'}}}}},
+  Type = [{recv,{a,none},{{x,'geq',6},'and',{x,'les',9}},[],'end'},
+          {recv,{b,none},{y,'geq',6},[],'end'},
+          {recv,{c,none},{z,'leq',1},[],'end'}],
+  Clocks = [{x,0}],
+  %% type check
+  Gamma = #{},
+  Theta = #{},
+  Result = checker:rule(Gamma, Theta, Process, {'p',Clocks,Type}),
+  io:format("\n~p:~p/~p,\n\nGamma: ~p, Theta: ~p,\nPrc:\t~w,\nType:\t~w,\nClocks: ~p.\n\nResult: ~p.",[_Name,_Kind,Index,Gamma,Theta,Process,Type,Clocks,Result]),
+  {IsTyped,_} = Result,
+  {ok, IsTyped};
+%%
+
+%% @doc test for type-checking, rule [Del-t] 
+test(type_checking=_Name, del_t_branch=_Kind, Index) ->
+  %% sending 
+  %% get process, type and clocks
+  Process = {delay, 2.0*(Index), {'p','->',infinity,[{{a,undefined},'term'},{{b,undefined},'term'}]}},
+  Type = [{recv,{a,none},{x,'geq',6},[],'end'},
+          {recv,{b,none},{y,'geq',6},[],'end'}],
+  Clocks = [{x,2}],
+  %% type check
+  Gamma = #{},
+  Theta = #{},
+  Result = checker:rule(Gamma, Theta, Process, {'p',Clocks,Type}),
+  io:format("\n~p:~p/~p,\n\nGamma: ~p, Theta: ~p,\nPrc:\t~p,\nType:\t~p,\nClocks: ~p.\n\nResult: ~p.",[_Name,_Kind,Index,Gamma,Theta,Process,Type,Clocks,Result]),
+  {IsTyped,_} = Result,
+  {ok, IsTyped};
+%%
+
+%% @doc test for type-checking, rule [Del-t] 
+test(type_checking=_Name, del_t_recv=_Kind, Index) ->
+  %% sending 
+  %% get process, type and clocks
+  Process = {delay, 2.0*(Index), {'p','->',infinity,{a,undefined}, 'term'}},
+  Type = {recv,{a,none},{x,'geq',6},[],'end'},
+  Clocks = [{x,2}],
+  %% type check
+  Gamma = #{},
+  Theta = #{},
+  Result = checker:rule(Gamma, Theta, Process, {'p',Clocks,Type}),
+  io:format("\n~p:~p/~p,\n\nGamma: ~p, Theta: ~p,\nPrc:\t~p,\nType:\t~p,\nClocks: ~p.\n\nResult: ~p.",[_Name,_Kind,Index,Gamma,Theta,Process,Type,Clocks,Result]),
+  {IsTyped,_} = Result,
+  {ok, IsTyped};
+%%
+
+%% @doc test for type-checking, rule [Del-t] that should pass
+test(type_checking=_Name, del_t_pass_send=_Kind, Index) ->
   %% sending 
   %% get process, type and clocks
   Process = {delay, 4.0, {'p','<-',{a,undefined}, 'term'}},
@@ -482,10 +560,26 @@ test(type_checking=_Name, del_t=_Kind, Index) ->
   %% type check
   Gamma = #{},
   Theta = #{},
-  Result = checker:rule(Gamma, Theta, Process, {Clocks,Type}),
-  io:format("\n~p:~p/~p, Result: ~p.",[_Name,_Kind,Index,Result]),
+  Result = checker:rule(Gamma, Theta, Process, {'p',Clocks,Type}),
+  io:format("\n~p:~p/~p,\n\nGamma: ~p, Theta: ~p,\nPrc:\t~p,\nType:\t~p,\nClocks: ~p.\n\nResult: ~p.",[_Name,_Kind,Index,Gamma,Theta,Process,Type,Clocks,Result]),
+  {IsTyped,_} = Result,
+  {ok, IsTyped};
+%%
 
-  {ok, true};
+%% @doc test for type-checking, rule [Del-t] that should fail
+test(type_checking=_Name, del_t_fail_send=_Kind, Index) ->
+  %% sending 
+  %% get process, type and clocks
+  Process = {delay, 4.0, {'p','<-',{a,undefined}, 'term'}},
+  Type = {send,{a,none},{'not',{x,'gtr',4}},[],'end'},
+  Clocks = [{x,3*Index}],
+  %% type check
+  Gamma = #{},
+  Theta = #{},
+  Result = checker:rule(Gamma, Theta, Process, {'p',Clocks,Type}),
+  io:format("\n~p:~p/~p,\n\nGamma: ~p, Theta: ~p,\nPrc:\t~p,\nType:\t~p,\nClocks: ~p.\n\nResult: ~p.",[_Name,_Kind,Index,Gamma,Theta,Process,Type,Clocks,Result]),
+  {IsTyped,_} = Result,
+  {ok, IsTyped};
 %%
 
 %% @doc not_t_reading tests

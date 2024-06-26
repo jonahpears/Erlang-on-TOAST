@@ -1,5 +1,36 @@
 from z3 import *
 
+# n = Int('n')
+# t, t_, global_, v, w, y, x, u, z = Reals('t t_ global_ v w y x u z')
+# s = Solver()
+# s.add(t==2.5, global_==5.0, v==3.0, w==5.0, y==5.0, x==2.0, u==5.0, z==5.0, n==3)
+# s.add(Exists(t_,And(0<=t_,t_<t, (x+t_)>n)))
+# result = s.check()
+
+# n = Int('n')
+# t, t_, global_, x = Reals('t t_ global_ x')
+# s = Solver()
+# s.add(t==99999999999.0, global_==7.0, x==7.0, n==4)
+# s.add(Exists(t_,And(0<=t_,t_<t, (x+t_)>n)))
+
+# n = Int('n')
+# t, t_, global_, x = Reals('t t_ global_ x')
+# s = Solver()
+# s.add(t==4.0, global_==2.0, x==2.0, n==5)
+# s.add(Exists(t_,And(0<=t_,t_<t, (x+t_)>n)))
+# result = s.check()
+
+# n = Int('n')
+# global_, x = Reals('global_ x')
+# s = Solver()
+# s.add(global_==6.0, x==6.0, n==6)
+# s.add(x>n)
+
+# print(f"solver: {s}.")
+# # print(f"m: {s.model()}.")
+# print(f"result: {s.check()}.")
+
+
 # x = Int('x')
 # print(f"simplify: {simplify(And(x==4,x>3))}")
 # # print(f"solve: {solve(x==4,x>3)}")
@@ -10,9 +41,6 @@ from z3 import *
 # s.add(x==4, t==0.30259726, n==3)
 # s.add(Exists(t_,And(0<=t_,t_<t, (x+t_) > n)))
 # result = s.check()
-
-# print(f"solver: {s}.")
-# print(f"result: {result}.")
 
 # x, n = Ints('x n')
 # t, t_ = Reals('t t_')
