@@ -3,9 +3,11 @@
 -compile(nowarn_export_all).
 
 %% how fine grained to check decimals
--define(DECIMAL_PRECISION,8).
+-define(DECIMAL_PRECISION,1).
 
--define(INFINITY,99999999999).
+-define(INFINITY,99).
+
+-define(DEFAULT_SHOW_TRACE,true).
 
 
 -include_lib("stdlib/include/assert.hrl").
@@ -38,17 +40,30 @@ when is_list(Args) and is_binary(H) ->
 -spec ask_z3(atom(), map()|list()) -> {atom(), boolean()|list()}.
 
 %% @doc constructs python code to ask z3 if constraint holds, given clocks
-ask_z3(satisfied_constraints, #{clocks:=Clocks,constraints:=Constraints}) 
+ask_z3(satisfied_constraints=_Kind, #{clocks:=Clocks,constraints:=Constraints}) 
 when is_map(Clocks) ->
   %% build build super-constraint string and see if it holds
   ExecString = to_python_exec_string(satisfied_constraints, #{clocks=>Clocks,delta=>Constraints}),
+  io:format("\n\n~p, ExecString:\n~s\n.",[_Kind,ExecString]),
   %% send to python program and get response
   Z3Response = z3(ask_z3,[list_to_binary(ExecString)]),
-  % io:format("\n\nsatisfied_constraints, ExecString:\n~s\n\tResponse: ~p.",[ExecString,Z3Response]),
+  io:format("\n\n~p, ExecString:\n~s\n\tResponse: ~p.",[_Kind,ExecString,Z3Response]),
   %% return result
   {ok, Z3Response};
 %%
 
+%% @doc constructs python code to ask z3 if constraint holds, given clocks
+ask_z3(feasible_constraints=_Kind, #{clocks:=Clocks,constraints:=Constraints,e:=E}) 
+when is_map(Clocks) ->
+  %% build build super-constraint string and see if it holds
+  ExecString = to_python_exec_string(feasible_constraints, #{clocks=>Clocks,delta=>Constraints,e=>E}),
+  io:format("\n\n~p, ExecString:\n~s\n.",[_Kind,ExecString]),
+  %% send to python program and get response
+  Z3Response = z3(ask_z3,[list_to_binary(ExecString)]),
+  io:format("\n\n~p, ExecString:\n~s\n\tResponse: ~p.",[_Kind,ExecString,Z3Response]),
+  %% return result
+  {ok, Z3Response};
+%%
 
 %% @doc for each Clock valuation, asks z3 to check if they are t_reading
 ask_z3(t_reading, #{clocks:=Clocks,type:=Type,t:=_T})
@@ -155,6 +170,35 @@ when is_map(Clocks) ->
   ExecString;
 %%
 
+%% @doc build delta string, and prepare z3 python code to query if it is sat given the clock valuations
+to_python_exec_string(feasible_constraints, #{clocks:=Clocks,delta:=Constraints,e:=E})
+when is_map(Clocks) ->
+  {EVarList,EString} = to_python_exec_string(constraints, #{delta=>E,is_t=>true}),
+  io:format("\n1.\n"),
+  %% build code for e_timeout
+  {ENames, ENamesSep, EDeclarations} = to_python_exec_string(vars, #{vars=>maps:to_list(EVarList),datatype=>float}),
+  io:format("\n2.\n"),
+  %% stringify Delta
+  {{VarList,ClockList}, DeltaString} = to_python_exec_string(constraints, #{delta=>Constraints,add_t=>true}),
+  io:format("\n3.\n"),
+  %% make sure each clock in ClockList is instantiated.
+  Clocks1 = instansiate_clocks(Clocks,ClockList),
+  io:format("\n4.\n"),
+  %% build code for constants
+  {ConstantNames, ConstantNamesSep, ConstantDeclarations} = to_python_exec_string(vars, #{vars=>VarList,datatype=>int}),
+  io:format("\n5.\n"),
+  %% build code for clocks
+  io:format("\n6.\n"),
+  {ClockNames, ClockNamesSep, ClockDeclarations} = to_python_exec_string(vars, #{vars=>maps:to_list(Clocks1),datatype=>float}),
+  io:format("\n7.\n"),
+  %% denote if multiple constants
+  IntString = case length(VarList)>1 of true -> "Ints"; _ -> "Int" end,
+  %% build exec python string (for z3)
+  ExecString = io_lib:format("~s = ~s('~s')\nt, ~s ~s = Reals('t ~s ~s')\ns = Solver()\ns.add(~s, ~s, ~s)\ns.add(ForAll(t, t>=0, ~s, ~s))\nresult = s.check()",[ConstantNamesSep,IntString,ConstantNames,ENamesSep,ClockNamesSep,ENames,ClockNames,EDeclarations,ClockDeclarations,ConstantDeclarations,EString,DeltaString]),
+  %% return string
+  ExecString;
+%%
+
 %% @doc for each clock in Clocks, call z3 to see if there exists t'<T such that delta holds 
 %% this is only for simple constraints (no diagonal)
 %% ! make sure to initialise the variables of clocks always, including those within the delta -- later on be more clever about this and only test for clocks present in the delta
@@ -181,7 +225,9 @@ to_python_exec_string(constraints, #{delta:={'not',Constraints}}=Args) ->
   Offset = maps:get(offset,Args,""),
   TReading = maps:get(t_reading,Args,false),
   Negated = maps:get(negated,Args,false),
-  {VarList, ConstraintString} = to_python_exec_string(constraints, #{delta=>Constraints,offset=>Offset,t_reading=>TReading,negated=>not Negated}),
+  AddT = maps:get(add_t,Args,false),
+  IsT = maps:get(is_t,Args,false),
+  {VarList, ConstraintString} = to_python_exec_string(constraints, #{delta=>Constraints,offset=>Offset,t_reading=>TReading,negated=>not Negated,add_t=>AddT,is_t=>IsT}),
   % {VarList, io_lib:format("Not(~s)",[ConstraintString])};
   {VarList, ConstraintString};
 %%
@@ -191,8 +237,10 @@ to_python_exec_string(constraints, #{delta:={Constraints1,'and',Constraints2}}=A
   Offset = maps:get(offset,Args,""),
   TReading = maps:get(t_reading,Args,false),
   Negated = maps:get(negated,Args,false),
-  {{VarList1,ClockList1}, ConstraintString1} = to_python_exec_string(constraints, #{delta=>Constraints1,offset=>Offset++"1",t_reading=>TReading,negated=>Negated}),
-  {{VarList2,ClockList2}, ConstraintString2} = to_python_exec_string(constraints, #{delta=>Constraints2,offset=>Offset++"2",t_reading=>TReading,negated=>Negated}),
+  AddT = maps:get(add_t,Args,false),
+  IsT = maps:get(is_t,Args,false),
+  {{VarList1,ClockList1}, ConstraintString1} = to_python_exec_string(constraints, #{delta=>Constraints1,offset=>Offset++"1",t_reading=>TReading,negated=>Negated,add_t=>AddT,is_t=>IsT}),
+  {{VarList2,ClockList2}, ConstraintString2} = to_python_exec_string(constraints, #{delta=>Constraints2,offset=>Offset++"2",t_reading=>TReading,negated=>Negated,add_t=>AddT,is_t=>IsT}),
   %% if t_reading, no need to wrap in And
   DeltaString = case TReading of 
       true -> io_lib:format("~s, ~s",[ConstraintString1,ConstraintString2]);
@@ -207,12 +255,19 @@ when is_atom(Clock) and is_atom(DBC) and is_integer(Constant) ->
   Offset = maps:get(offset,Args,""),
   TReading = maps:get(t_reading,Args,false),
   Negated = maps:get(negated,Args,false),
-  ConstantString = "n"++Offset,
+  IsT = maps:get(is_t,Args,false),
+  ConstantString = case IsT of true -> "timeout_e"; _ -> "n"++Offset end,
+% ConstantString = case Constant of 'infinity' -> "timeout_e"; _ -> "n"++Offset end,
   DeltaString = case TReading of 
       true -> io_lib:format("(~w+t_)~s~s",[Clock,to_python_exec_string(constraints, #{dbc=>DBC,negated=>Negated}),ConstantString]);
-      _ -> io_lib:format("~w~s~s",[Clock,to_python_exec_string(constraints, #{dbc=>DBC,negated=>Negated}),ConstantString])
+      _ -> 
+        AddT = maps:get(add_t,Args,false),
+        ClockString = io_lib:format("~w",[Clock]) ++ case AddT of true -> "+t"; _ -> "" end,
+        io_lib:format("~s~s~s",[ClockString,to_python_exec_string(constraints, #{dbc=>DBC,negated=>Negated}),ConstantString])
   end,
-  {{[{ConstantString,Constant}],[Clock]},DeltaString};
+  %% if IsT then no clock, leave as is
+  case IsT of true -> {[{ConstantString,Constant}],DeltaString};
+   _ -> {{[{ConstantString,Constant}],[Clock]},DeltaString} end;
 %%
 
 %% @doc catch constraints (diagonal)
@@ -221,10 +276,15 @@ when is_atom(Clock1) and is_atom(Clock2) and is_atom(DBC) and is_integer(Constan
   Offset = maps:get(offset,Args,""),
   TReading = maps:get(t_reading,Args,false),
   Negated = maps:get(negated,Args,false),
-  ConstantString = "n"++Offset,
+  ConstantString = case maps:get(is_t,Args,false) of true -> "timeout_e"; _ -> "n"++Offset end,
+  % ConstantString = case Constant of 'infinity' -> "timeout_e"; _ -> "n"++Offset end,
   DeltaString = case TReading of 
-      true -> io_lib:format("(~w+t_)-(~w+t_)~s~s",[Clock1,Clock2,to_python_exec_string(constraints, #{dbc=>DBC,negated=>Negated}),ConstantString]);
-      _ -> io_lib:format("~w-~w~s~s",[Clock1,Clock2,to_python_exec_string(constraints, #{dbc=>DBC,negated=>Negated}),ConstantString])
+      true -> io_lib:format("(~s+t_)-(~s+t_)~s~s",[Clock1,Clock2,to_python_exec_string(constraints, #{dbc=>DBC,negated=>Negated}),ConstantString]);
+      _ -> 
+        AddT = maps:get(add_t,Args,false),
+        Clock1String = io_lib:format("~w",[Clock1]) ++ case AddT of true -> "+t"; _ -> "" end,
+        Clock2String = io_lib:format("~w",[Clock2]) ++ case AddT of true -> "+t"; _ -> "" end,
+        io_lib:format("~s-~s~s~s",[Clock1String,Clock2String,to_python_exec_string(constraints, #{dbc=>DBC,negated=>Negated}),ConstantString])
   end,
   {{[{ConstantString,Constant}],[Clock1,Clock2]},DeltaString};
 %%
@@ -244,7 +304,10 @@ to_python_exec_string(constraints, #{dbc:='neq'}=_Args) -> case maps:get(negated
 to_python_exec_string(vars, #{vars:=Vars,datatype:=DataType}=_Args)
 when is_list(Vars) ->
   {VarNames, VarNamesSep, VarDeclarations} = lists:foldl(fun({VarName,VarValue}, {InNames,InNamesSep,InDecls}) -> 
+    %% appropriatly stringify var name
     VarString = case is_atom(VarName) of true -> atom_to_list(VarName)++case VarName of 'global' -> "_"; _ -> "" end; _ -> VarName end,
+    %% add t if necessary (only used in decls of clocks)
+    % VarString1 = case maps:get(add_t,_Args,false) of true -> VarString++"+t"; _ -> VarString end,
     %% this will appear inside the "Ints(...)" call in the python with z3
     NewNames = case length(InNames)==0 of true -> VarString; _ -> InNames++" "++VarString end,
     NewNamesSep = case length(InNamesSep)==0 of true -> VarString; _ -> InNamesSep++", "++VarString end,
@@ -273,7 +336,43 @@ to_python_exec_string(Unknown, Args) ->
 %%
 
 
+%% @doc helper function to rewrap via eval(map)
+-spec eval(map(), map(), toast:process(), map()) -> {boolean(), [[atom()]]} | {boolean(), [atom()]}.
+eval(Gamma,Theta,Process,Delta) -> eval(#{gamma=>Gamma,theta=>Theta,process=>Process,delta=>Delta}).
 
+%% @doc for starting an type-checking evaluation of a process against a delta
+-spec eval(map()) -> {boolean(),list()}.
+eval(Map) ->
+  %% extract necessities
+  Gamma = maps:get(gamma,Map,#{}),
+  Theta = maps:get(theta,Map,#{}),
+  _Process = maps:get(process,Map,undefined),
+  _Delta = maps:get(delta,Map,undefined),
+
+  %% warn if no process or delta provided
+  Process = case _Process of undefined -> io:format("\n\nWarning, no process found. Using 'term'."), 'term'; _ -> _Process end,
+  Delta = case _Delta of undefined -> io:format("\n\nWarning, no delta found. Using {#{},'end'}."), {#{},'end'}; _ -> _Delta end,
+
+  %% setup ets for printouts
+  ets:new(toast_checker_ets,[set,named_table,protected]),
+  ets:insert(toast_checker_ets, {checker_id, self()}),
+
+  %% check for options on printouts
+  ShowTrace = maps:get(show_trace,Map,?DEFAULT_SHOW_TRACE),
+  ets:insert(toast_checker_ets, {show_trace_init, ShowTrace}),
+  ets:insert(toast_checker_ets, {show_trace, ShowTrace}),
+
+  %% begin eval
+  io:format("\nBeginning type-checking eval of:\nGamma: ~p,\nTheta: ~p,\nProcess: ~p,\nDelta: ~p.\n",[Gamma,Theta,Process,Delta]),
+
+  Eval = rule(Gamma,Theta,Process,Delta),
+
+  io:format("\nFinished type-checking, eval: ~p.", [Eval]),
+  %% delete table
+  ets:delete(toast_checker_ets),
+  %% return
+  Eval.
+%%
 
 
 %% @doc type-checking rules
@@ -296,18 +395,77 @@ rule(Gamma, Theta, Process, {_Role,Clocks,Type}) -> rule(Gamma, Theta, Process, 
 %% @doc rule [Recv]
 %% type-checking single reception
 rule(Gamma, Theta, {_Role,'->',E,{Label,_Payload},P}=_Process, {Clocks,[{recv,{_Label,__Payload},Constraints,Resets,S}]=Type}=Delta)
-when (is_atom(E) or is_integer(E)) and is_atom(Label) and (Label=:=_Label) and is_list(Resets) ->
+when is_atom(Label) and (Label=:=_Label) and is_list(Resets) ->
 
   %% reset clocks
   Clocks1 = lists:foldl(fun(Clock, NewClocks) -> 
     maps:put(Clock,0,NewClocks)
   end, Clocks, Resets),
 
+  %% obtain DBC from E
+  {Ez3,DBC,N} = case E of {leq,_N} -> {{t,leq,_N},leq,_N}; {les,_N} -> {{t,les,_N},les, _N}; 'infinity' -> {{t,les,'infinity'},les, ?INFINITY}; _ -> io:format("\n\nWarning, unrecognised E: ~p.",[E]), {leq, 0} end,
+
+  MinimalPrecision = minimal_precision(),
+
+  %% determine bounds
+  %% counter is used to keep track of how much of the interval between integers remains to be evaluated
+  %% NOTE: all lowerbounds are exclusive, since we explore the minimal case before the workers (with trace enabled)
+  BoundMap = case DBC of 
+    'les' -> 
+      _Map = #{ is_lower_exclusive=>true,
+                is_upper_exclusive=>true,
+                lower=>0+MinimalPrecision,
+                upper=>N-MinimalPrecision,
+                is_first=>true,
+                is_last=>(N==1),
+                decrement=>MinimalPrecision };
+    'leq' -> 
+      _Map = #{ is_lower_exclusive=>true,
+                is_upper_exclusive=>false,
+                lower=>0+MinimalPrecision,
+                upper=>N,
+                is_first=>true,
+                is_last=>(N==1),
+                decrement=>MinimalPrecision };
+    _ -> io:format("\n\nWarning, DBC unsupported: ~p.\n",[DBC]), {-1,#{}}
+  end,
+
+  %% show initial trace now, with minimal value (which is always 0)
   %% continue type-checking (yields premise)
-  {Continuation, Trace} = rule(Gamma, Theta, P, {Clocks1,S}),
+  {InitialContinuation, InitialTrace} = rule(Gamma, Theta, P, {Clocks1,S}),
+
+  io:format("\nBoundMap: ~p.\n",[BoundMap]),
+
+  %% suppress messages of eval
+  ShowTrace = show_trace(),
+  ets:insert(toast_checker_ets,{show_trace,false}),
+
+  %% use worker functions to calculate in parallel
+  % Self = self(),
+  WorkerIDs = start_evaluation_workers(premise_recv, {Gamma,Theta,P,{#{clocks=>Clocks,resets=>Resets},S}}, BoundMap),
+  io:format("\n\nStarted (~p) workers: ~p.\n",[length(WorkerIDs),WorkerIDs]),
   
-  %% update Trace
-  Trace1 = add_to_trace(Trace,'Recv'),
+  %% receive all of the workers
+  {Continuation,TraceList} = lists:foldl(fun(ID, {InEvals,InTrace}) -> 
+    receive {ID, {eval, {Eval,Traces}}, {range, Counter, T}} -> 
+      io:format("Received from (~p, range: ~p, ~p) -- ~p.\n",[ID, Counter,T,Eval]),
+      %% check if all continuations passed & update trace
+      NewEvals = (InEvals and Eval),
+      NewTrace = Traces++InTrace,
+      %% return
+      {NewEvals,NewTrace}
+    end
+  end, {true,[InitialTrace]}, WorkerIDs),
+  io:format("\nReceived from all (~p) workers.\n",[length(WorkerIDs)]),
+
+  %% undo suprpesion of eval messages
+  ets:insert(toast_checker_ets,{show_trace,ShowTrace}),
+
+  %% add to traces
+  OutTraces = add_to_trace(TraceList,'Recv'),
+
+  %% undo suprpesion of eval messages
+  ets:insert(toast_checker_ets,{show_trace,ShowTrace}),
 
   %% if Delta is only a tuple, and not a map containing other roles, then do not check E-reading
   case is_tuple(Delta) of 
@@ -322,31 +480,28 @@ when (is_atom(E) or is_integer(E)) and is_atom(Label) and (Label=:=_Label) and i
       ?assert(is_boolean(NotEReading))
   end,
 
-  %% ask z3 if Delta if constraints satisfied
-  {Signal2, SatisfiedConstraints} = ask_z3(satisfied_constraints,#{clocks=>Clocks,constraints=>Constraints}),
+  %% ask z3 if Delta if constraints feasible (satisfied bimplies E)
+  {Signal2, FeasibleConstraints} = ask_z3(feasible_constraints,#{clocks=>Clocks,constraints=>Constraints,e=>Ez3}),
   ?assert(Signal2=:=ok),
-  ?assert(is_boolean(SatisfiedConstraints)),
+  ?assert(is_boolean(FeasibleConstraints)),
 
   %% construct premise and return
-  Premise = Continuation and SatisfiedConstraints and NotEReading,
-  io:format("\nRule [Recv] -> ~p. (~p)\n",[Premise,{Continuation,SatisfiedConstraints,NotEReading}]),
-  {Premise, Trace1};
+  Premise = InitialContinuation and Continuation and FeasibleConstraints and NotEReading,
+  show_trace('Recv',Premise,{InitialContinuation,Continuation,FeasibleConstraints,NotEReading}),
+  {Premise, OutTraces};
 %%
 
 %% @doc helper function to wrap any lone branch process type in list (to reapply rule [Recv])
 %% @see rule [Recv]
 rule(Gamma, Theta, {_Role,'->',E,{Label,_Payload},P}=_Process, {Clocks,Type}=_Delta)
-when is_list(Type) -> 
-  rule(Gamma, Theta, {_Role,'->',E,[{{Label,_Payload},P}]}, {Clocks,Type});
-%%
+when is_list(Type) -> rule(Gamma, Theta, {_Role,'->',E,[{{Label,_Payload},P}]}, {Clocks,Type});
 
 
 %% @doc helper function to wrap any lone interact type in list (now that we are past rule [Recv])
 %% @see rule [Recv]
 rule(Gamma, Theta, Process, {Clocks,Type}=_Delta)
-when is_tuple(Type) -> 
-  rule(Gamma, Theta, Process, {Clocks,toast:interactions(Type)});
-%%
+when is_tuple(Type) -> rule(Gamma, Theta, Process, {Clocks,toast:interactions(Type)});
+
 
 
 %% @doc rule [Send]
@@ -392,7 +547,7 @@ when is_list(Type) ->
 
   %% construct premise and return
   Premise = Continuation and SatisfiedConstraints,
-  io:format("\nRule [Send] -> ~p. (~p)\n",[Premise,{Continuation,SatisfiedConstraints}]),
+  show_trace('Send',Premise,{Continuation,SatisfiedConstraints}),
   {Premise, Trace1};
 %%
 
@@ -401,7 +556,7 @@ when is_list(Type) ->
 %% type-checking each reception in branch 
 %% @see rule [Recv]
 rule(Gamma, Theta, {Role,'->',E,Branches}=_Process, {Clocks,Type}=_Delta)
-when (is_atom(E) or is_integer(E)) and is_list(Branches) and is_list(Type) ->
+when is_list(Branches) and is_list(Type) ->
   %% for each reception in Type that is enabled now
   Pairings = lists:foldl(fun({Direction_j,{Label_j,_Payload_j},Constraints_j,_Resets_j,_S_j}=Type_j, InPairs) -> 
     %% check recv
@@ -460,7 +615,7 @@ when (is_atom(E) or is_integer(E)) and is_list(Branches) and is_list(Type) ->
 
   %% construct premise and return
   Premise = Continuation,
-  io:format("\nRule [Branch] -> ~p. (~p)\n",[Premise,{Continuation}]),
+  show_trace('Branch',Premise,{Continuation}),
   {Premise, TraceList};
 %%
 
@@ -469,7 +624,7 @@ when (is_atom(E) or is_integer(E)) and is_list(Branches) and is_list(Type) ->
 %% type-checking branches with timeouts 
 %% @see rule [Branch]
 rule(Gamma, Theta, {Role,'->',E,Branches,'after',Q}=_Process, {Clocks,Type}=_Delta)
-when (is_atom(E) or is_integer(E)) and is_list(Branches) and is_list(Type) ->
+when is_list(Branches) and is_list(Type) ->
   
   %% check via rule [Branch]
   {Continuation1, Trace1} = rule(Gamma, Theta, {Role,'->',E,Branches}, {Clocks,Type}),
@@ -490,7 +645,7 @@ when (is_atom(E) or is_integer(E)) and is_list(Branches) and is_list(Type) ->
 
   %% construct premise and return
   Premise = Continuation1 and Continuation2,
-  io:format("\nRule [Timeout] -> ~p. (~p)\n",[Premise,{Continuation1,Continuation2}]),
+  show_trace('Timeout',Premise,{Continuation1,Continuation2}),
   {Premise, Trace3};
 %%
 
@@ -526,69 +681,100 @@ rule(Gamma, Theta, {'set', Timer, P}=_Process, {_Clocks,_Type}=Delta)
 
   %% construct premise and return
   Premise = Continuation,
-  io:format("\nRule [Timer] -> ~p. (~p)\n",[Premise,{Continuation}]),
+  show_trace('Timer',Premise,{Continuation}),
   {Premise, Trace1};
 %%
 
 
 %% @doc rule [Del-delta]
 %% type-checking non-deterministic delays
-rule(Gamma, Theta, {'delay',{t, DBC, N},P}=_Process, {Clocks,Type}=_Delta)
+rule(Gamma, Theta, {'delay',{t, DBC, N},P}=_Process, {_Clocks,_Type}=Delta)
 when is_atom(DBC) and (is_atom(N) or is_integer(N)) ->
+  
+
+  MinimalPrecision = minimal_precision(),
 
   %% determine bounds
-  {Lower, Upper} = case DBC of 
-    'gtr' -> {N,?INFINITY}; 'geq' -> {N,?INFINITY};
-    'les' -> {0,N}; 'leq' -> {0,N};
-    _ -> io:format("\n\nWarning, DBC unsupported: ~p.\n",[DBC]), {0,1}
+  %% counter is used to keep track of how much of the interval between integers remains to be evaluated
+  %% NOTE: all lowerbounds are exclusive, since we explore the minimal case before the workers (with trace enabled)
+  {Init,BoundMap} = case DBC of 
+    'gtr' -> 
+      _Map = #{ is_lower_exclusive=>true,
+                is_upper_exclusive=>false,
+                lower=>N+MinimalPrecision,
+                upper=>?INFINITY,
+                is_first=>true,
+                is_last=>false,
+                decrement=>MinimalPrecision },
+      {N,_Map};
+    'geq' -> 
+      _Map = #{ is_lower_exclusive=>true,
+                is_upper_exclusive=>false,
+                lower=>N+MinimalPrecision,
+                upper=>?INFINITY,
+                is_first=>true,
+                is_last=>false,
+                decrement=>MinimalPrecision },
+      {N,_Map};
+    'les' -> 
+      _Map = #{ is_lower_exclusive=>true,
+                is_upper_exclusive=>true,
+                lower=>0+MinimalPrecision,
+                upper=>N-MinimalPrecision,
+                is_first=>true,
+                is_last=>(N==1),
+                decrement=>MinimalPrecision },
+      {0,_Map};
+    'leq' -> 
+      _Map = #{ is_lower_exclusive=>true,
+                is_upper_exclusive=>false,
+                lower=>0+MinimalPrecision,
+                upper=>N,
+                is_first=>true,
+                is_last=>(N==1),
+                decrement=>MinimalPrecision },
+      {0,_Map};
+    _ -> io:format("\n\nWarning, DBC unsupported: ~p.\n",[DBC]), {-1,#{}}
   end,
 
-  %% determine how many iterations (based on how precise we measure our decimals to be)
-  % Iterations = math:pow(10,?DECIMAL_PRECISION),
-  DecimalPrecision = lists:flatten(lists:duplicate(?DECIMAL_PRECISION,"0")),
-  PerIntegerPrecision = list_to_integer("10"++DecimalPrecision),
-  % Iterations = Upper*PerIntegerPrecision,
+  %% show initial trace now, with minimal value 
+  {InitialContinuation,InitialTrace} = rule(Gamma, Theta, {'delay',Init, P}, Delta),
 
-  {_,IntegerIterationIndex} = lists:foldl(fun(_,{Index,Iterations}) -> 
-    %% build current iteration index
-    % IterationFloat = (PerIntegerPrecision+Index)/PerIntegerPrecision,
-    IterationInteger = Index+1,
-    %% next iteration
-    {IterationInteger,Iterations++[IterationInteger]}
-  end, {0,[]}, Upper-Lower),
+  io:format("\nBoundMap: ~p.\n",[BoundMap]),
+
+  %% suppress messages of eval
+  ShowTrace = show_trace(),
+  ets:insert(toast_checker_ets,{show_trace,false}),
 
   %% use worker functions to calculate in parallel
-  Self = self(),
-  WorkerIDs = lists:foldl(fun(StartIndex, IDs) -> 
-    %% spawn worker and give it 
-    {ok, ID} = spawn(fun(StartInteger) ->
-      %% generate range (up to precision)
-      Range = [X/PerIntegerPrecision || X <- lists:seq(StartInteger,StartInteger+PerIntegerPrecision)],
-      lists:foreach(fun(T) -> 
-        %% evaluate for given T in range
-        Continuation = rule(Gamma,Theta,{'delay',T,P},{Clocks,Type}),
-        %% send back to self
-        Self ! {self(), eval, Continuation, T}
-      end, Range)
-    end, [StartIndex]),
-    %% add to IDs
-    IDs++[ID]
-  end, [], IntegerIterationIndex),
-
+  % Self = self(),
+  WorkerIDs = start_evaluation_workers(premise_del_delta, {Gamma,Theta,P,Delta}, BoundMap),
+  io:format("\n\nStarted (~p) workers: ~p.\n",[length(WorkerIDs),WorkerIDs]),
+  
   %% receive all of the workers
-  Continuations = lists:foldl(fun(ID, InEvals) -> 
-    receive {ID, eval, Eval} -> InEvals++[Eval] end
-  end, [], WorkerIDs),
+  {Continuation,TraceList} = lists:foldl(fun(ID, {InEvals,InTrace}) -> 
+    receive {ID, {eval, {Eval,Traces}}, {range, Counter, T}} -> 
+      io:format("Received from (~p, range: ~p, ~p) -- ~p.\n",[ID, Counter,T,Eval]),
+      %% check if all continuations passed & update trace
+      NewEvals = (InEvals and Eval),
+      % NewTrace = add_to_trace(Traces,'Del-delta')++InTrace,
+      NewTrace = Traces++InTrace,
+      %% return
+      {NewEvals,NewTrace}
+    end
+  end, {true,[InitialTrace]}, WorkerIDs),
+  io:format("\nReceived from all (~p) workers.\n",[length(WorkerIDs)]),
 
-  %% check if all continuations passed & update trace
-  {Continuation, TraceList} = lists:foldl(fun({Eval,Trace}, {InEval,InTrace}) -> 
-    {(Eval and InEval),[add_to_trace(Trace,'Branch')]++InTrace} 
-  end, {true,[]}, Continuations),
+  %% add to traces
+  OutTraces = add_to_trace(TraceList,'Del-delta'),
+
+  %% undo suprpesion of eval messages
+  ets:insert(toast_checker_ets,{show_trace,ShowTrace}),
 
   %% construct premise and return
-  Premise = Continuation,
-  io:format("\nRule [Branch] -> ~p. (~p)\n",[Premise,{Continuation}]),
-  {Premise, TraceList};
+  Premise = InitialContinuation and Continuation,
+  show_trace('Del-delta',Premise,{InitialContinuation,Continuation}),
+  {Premise, OutTraces};
 %%
 
 
@@ -613,7 +799,7 @@ rule(Gamma, Theta, {'delay',T,P}=_Process, {Clocks,Type}=_Delta)
 
   %% construct premise and return
   Premise = Continuation and NotTReading,
-  io:format("\nRule [Del-t] -> ~p. (~p)\n",[Premise,{Continuation,NotTReading}]),
+  show_trace('Del-t',Premise,{Continuation,NotTReading}),
   {Premise, Trace1};
 %%
 
@@ -636,6 +822,7 @@ rule(Gamma, Theta, {'def', P, 'as', {Var, Msgs}}=_Process, {_Clocks,_Type}=Delta
   %% construct premise and return
   Premise = Continuation and FreeName,
   io:format("\nRule [Rec] -> ~p. (~p)\n",[Premise,{Continuation,FreeName}]),
+  show_trace('Rec',Premise,{Continuation,FreeName}),
   {Premise, Trace1};
 %%
 
@@ -659,7 +846,7 @@ rule(Gamma, _Theta, {'call', {Var, Msgs}}=_Process, {_Clocks,{'call', Name}=_Typ
 
   %% construct premise and return
   Premise = NamesMatch and IsInGamma and MsgsValid,
-  io:format("\nRule [Var] -> ~p. (~p)\n",[Premise,{NamesMatch,IsInGamma,MsgsValid}]),
+  show_trace('Var',Premise,{NamesMatch,IsInGamma,MsgsValid}),
   {Premise, ['Var']};
 %%
 
@@ -670,7 +857,7 @@ rule(_Gamma, _Theta, 'term'=_Process, {_Clocks,Type}=_Delta)
 ->
   %% type must be end
   Premise = (Type=:='end'),
-  io:format("\nRule [End] -> ~p. (~p)\n",[Premise,{Premise}]),
+  show_trace('End',Premise,{Premise}),
   {Premise, ['End']};
 %%
 
@@ -679,7 +866,7 @@ rule(_Gamma, _Theta, 'term'=_Process, {_Clocks,Type}=_Delta)
 rule(Gamma, Theta, Process, {_Clocks,'end'=_Type}=Delta)
 ->
   io:format("\n\nWarning, rule [Weak] indicates that the type as terminated, but the process has not.\n\nGamma:\t~p,\nTheta:\t~p,\nPrc:\t~p,\nDelta:~p.\n\n",[Gamma, Theta, Process, Delta]),
-  io:format("\nRule [Weak] -> ~p. (~p)\n",[false,{false}]),
+  show_trace('Weak',false,{false}),
   {false, ['Weak']};
 %%
 
@@ -764,6 +951,9 @@ when is_list(Clocks) and is_list(List) ->
   maps:to_list(Clocks1).
 %%
 
+%% @doc 
+minimal_precision() -> 1.0/(list_to_integer(lists:flatten("1"++lists:duplicate(?DECIMAL_PRECISION,"0")))).
+
 
 %% @doc rounds to DECIMAL_PRECISION decimal places
 precision_rounding(Float) 
@@ -772,6 +962,173 @@ when is_float(Float) ->
   round(Float*Offset)/Offset.
 %%
 
+
+%% @doc starts evaluation workers for each integer of the given range, and collects their IDs in a list to return
+% -spec start_evaluation_workers(atom(), {map(), map(), toast:process(), {map(),toast:types()}}, integer(), float(), float(), float()) -> list().
+
+%% @doc for starting the workers for rules (del-delta and recv)
+start_evaluation_workers(Kind, {_Gamma, _Theta, _P, _Delta}=Judgement, #{is_first:=IsFirst,is_last:=IsLast,is_lower_exclusive:=IsLowerExclusive,is_upper_exclusive:=IsUpperExclusive,lower:=Lower,upper:=Upper,decrement:=Decrement}) ->
+  %% if upper is exclusive, set counter for first to be one precision out
+  %% since the workers count down, this will ensure they do not evaluate inclusive of the bound
+  %% if not first or last, then just set to 1.0
+  Counter = case IsLast of true -> case IsUpperExclusive of true -> 1.0-Decrement; _ -> 1.0 end; _ -> 1.0 end,
+  %% check if this is also first, (i.e., for a 1 integer non-det delay)
+  {Counter1,IsLowerExclusive1} = case IsFirst of true -> case IsLowerExclusive of true -> {Counter-Decrement,false}; _ -> {Counter,false} end; _ -> {Counter,IsLowerExclusive} end,
+  %% we floor and increment lower to ensure that it is an integer moving forward
+  Lower1 = case (IsFirst or IsLast) of true -> floor(Lower)+1.0; _ -> Lower+1.0 end,
+  %% determine T to pass to worker
+  T = case IsLast of true -> case IsUpperExclusive of true -> Upper;  _ -> Lower1 end; _ -> Lower1 end,
+  %% if is last, then the distance between Lower and Upper should be less than 1
+  %% next is last if the difference between Lower1 and Upper is leq 1
+  IsNextLast = case IsLast of true -> ?assert((abs(Upper-Lower)=<1)), false; _ -> (abs(Upper-Lower1)=<1.0) end,
+  %% spawn worker for this integer
+  PID = self(),
+  WorkerID = spawn(?MODULE, evaluation_worker, [Kind, Judgement, precision_rounding(Counter1), precision_rounding(T), Decrement, PID]),
+  %% create new map 
+  Map1 = #{ is_upper_exclusive=>IsUpperExclusive,
+            is_lower_exclusive=>IsLowerExclusive1,
+            lower=>precision_rounding(Lower1),
+            upper=>Upper,
+            decrement=>Decrement,
+            is_last=>IsNextLast,
+            is_first=>false },
+  %% call to start next worker 
+  WorkerIDs = case IsLast of true -> []; _ -> start_evaluation_workers(Kind, Judgement, Map1) end,
+  %% add to worker IDs and return
+  IDs = WorkerIDs ++ [WorkerID],
+  IDs;
+%%
+
+
+%% @doc unexpected kind
+start_evaluation_workers(Kind, {Gamma, Theta, P, Delta}=_Judgement, Map) ->
+  io:format("\n\nWarning, unknown start_evaluation_workers called: ~p.\nGamma: ~p, Theta: ~p,\nP: ~p,\nDelta: ~p,\nMap: ~p.\n",[Kind, Gamma, Theta, P, Delta, Map]),
+  [].
+%%
+
+
+
+%% @doc worker that tail-recursively evaluates delay of incrementing value.
+-spec evaluation_worker(atom(), {map(), map(), toast:process(), {map(),toast:types()}}, float(), float(), float(), pid()) -> atom().
+
+%% @doc the first iteration of the worker sends back the result, evaluates a delay of T-Decrement, and calls the next decrememnt
+evaluation_worker(premise_recv=Kind, {Gamma, Theta, P, {#{clocks:=Clocks,resets:=Resets},Type}}=Judgement, Counter, T, Decrement, PID)
+when is_float(T) and is_float(Decrement) ->
+  %% increment clocks and timers
+  Theta1 = increment_timers(Theta,T),
+  Clocks1 = increment_timers(Clocks,T),
+  %% reset clocks
+  Clocks2 = lists:foldl(fun(Clock, NewClocks) -> 
+    maps:put(Clock,0,NewClocks)
+  end, Clocks1, Resets),
+  %% evaluate for this current value of T
+  {Result,Trace1} = rule(Gamma,Theta1,P,{Clocks2,Type}),
+  %% establish next decrement
+  T1 = T - Decrement,
+  Counter1 = Counter - Decrement,
+  %% call next 
+  {NextEval,Trace2} = evaluation_worker(Kind, Judgement, precision_rounding(Counter1), precision_rounding(T1), Decrement),
+  %% send results to PID
+  Holds = Result and NextEval,
+  PID ! {self(), {eval, {Holds,[Trace1]++Trace2}}, {range, T-Counter, T}},
+  %% return OK
+  ok;
+%%
+
+%% @doc the first iteration of the worker sends back the result, evaluates a delay of T-Decrement, and calls the next decrememnt
+evaluation_worker(premise_del_delta=Kind, {Gamma, Theta, P, Delta}=Judgement, Counter, T, Decrement, PID)
+when is_float(T) and is_float(Decrement) ->
+  %% evaluate for this current value of T
+  {Result,Trace1} = rule(Gamma,Theta,{'delay',T,P},Delta),
+  %% establish next decrement
+  T1 = T - Decrement,
+  Counter1 = Counter - Decrement,
+  %% call next 
+  {NextEval,Trace2} = evaluation_worker(Kind, Judgement, precision_rounding(Counter1), precision_rounding(T1), Decrement),
+  %% send results to PID
+  Holds = Result and NextEval,
+  PID ! {self(), {eval, {Holds,[Trace1]++Trace2}}, {range, T-Counter, T}},
+  %% return OK
+  ok;
+%%
+
+%% @doc unexpected worker starter
+evaluation_worker(Kind, {Gamma, Theta, P, Delta}=_Judgement, Counter, T, Decrement, PID)
+when is_float(T) and is_float(Decrement) ->
+  io:format("\n\nWarning, unknown evaluation_worker called: ~p.\nGamma: ~p, Theta: ~p,\nP: ~p,\nDelta: ~p,\nCounter: ~p,\nT: ~p,\nDecrement: ~p,\nPID: ~p.\n",[Kind, Gamma, Theta, P, Delta, Counter, T, Decrement,PID]),
+  ok.
+%%
+
+
+-spec evaluation_worker(atom(), {map(), map(), toast:process(), {map(),toast:types()}}, integer(), float(), float()) -> {boolean(),list()}.
+
+%% @doc for catching the final evaluation
+evaluation_worker(premise_recv=_Kind, {Gamma, Theta, P, {#{clocks:=Clocks,resets:=Resets},Type}}, Counter, T, _Decrement)
+when (Counter=<0) ->
+  %% increment clocks and timers
+  Theta1 = increment_timers(Theta,T),
+  Clocks1 = increment_timers(Clocks,T),
+  %% reset clocks
+  Clocks2 = lists:foldl(fun(Clock, NewClocks) -> 
+    maps:put(Clock,0,NewClocks)
+  end, Clocks1, Resets),
+  %% evaluate for this current value of T
+  {Result,Trace} = rule(Gamma,Theta1,P,{Clocks2,Type}),
+  %% return
+  {Result,[Trace]};
+%%
+
+%% @doc evaluates a delay of T-Decrement, and calls the next decrememnt
+evaluation_worker(premise_recv=Kind, {Gamma, Theta, P, {#{clocks:=Clocks,resets:=Resets},Type}}=Judgement, Counter, T, Decrement)
+when is_float(T) and is_float(Decrement) ->
+  %% increment clocks and timers
+  Theta1 = increment_timers(Theta,T),
+  Clocks1 = increment_timers(Clocks,T),
+  %% reset clocks
+  Clocks2 = lists:foldl(fun(Clock, NewClocks) -> 
+    maps:put(Clock,0,NewClocks)
+  end, Clocks1, Resets),
+  %% evaluate for this current value of T
+  {Result,Trace1} = rule(Gamma,Theta1,P,{Clocks2,Type}),
+  %% establish next decrement
+  T1 = T - Decrement,
+  Counter1 = Counter - Decrement,
+  %% call next 
+  {NextEval,Trace2} = evaluation_worker(Kind, Judgement, precision_rounding(Counter1), precision_rounding(T1), Decrement),
+  %% return result
+  Holds = Result and NextEval,
+  {Holds,[Trace1]++Trace2};
+%%
+
+%% @doc for catching the final evaluation
+evaluation_worker(premise_del_delta=_Kind, {Gamma, Theta, P, Delta}, Counter, T, _Decrement)
+when (Counter=<0) ->
+  %% evaluate for this current value of T
+  {Result,Trace} = rule(Gamma,Theta,{'delay',T,P},Delta),
+  %% return
+  {Result,[Trace]};
+%%
+
+%% @doc evaluates a delay of T-Decrement, and calls the next decrememnt
+evaluation_worker(premise_del_delta=Kind, {Gamma, Theta, P, Delta}=Judgement, Counter, T, Decrement)
+when is_float(T) and is_float(Decrement) ->
+  %% evaluate for this current value of T
+  {Result,Trace1} = rule(Gamma,Theta,{'delay',T,P},Delta),
+  %% establish next decrement
+  T1 = T - Decrement,
+  Counter1 = Counter - Decrement,
+  %% call next 
+  {NextEval,Trace2} = evaluation_worker(Kind, Judgement, precision_rounding(Counter1), precision_rounding(T1), Decrement),
+  %% return result
+  Holds = Result and NextEval,
+  {Holds,[Trace1]++Trace2};
+%%
+
+%% @doc unknown worker
+evaluation_worker(Kind, {Gamma, Theta, P, Delta}, Counter, T, Decrement) -> 
+  io:format("\n\nWarning, unknown evaluation_worker called: ~p.\nGamma: ~p, Theta: ~p,\nP: ~p,\nDelta: ~p,\nCounter: ~p,\nT: ~p,\nDecrement: ~p.\n",[Kind, Gamma, Theta, P, Delta, Counter, T, Decrement]),
+  false.
+%%
 
 
 %% @doc type conversion functions
@@ -794,3 +1151,13 @@ to_string(N) when is_float(N) -> lists:flatten(io_lib:format("~w",[N]));
 to_string(N) when is_integer(N) -> lists:flatten(io_lib:format("~w",[N]));
 to_string(N) when is_binary(N) -> lists:flatten(io_lib:format("~w",[N]));
 to_string(N) when is_list(N) -> lists:flatten(N).
+
+%% @doc for the type-checker printing its trace as it goes
+show_trace(Rule,Pass,Premise) -> 
+  case show_trace() of 
+    true -> io:format("\nRule [~p] -> ~p. (~p)\n",[Rule,Pass,Premise]);
+    _ -> ok
+  end.
+
+%% @doc returns if trace should be shown
+show_trace() -> ets:member(toast_checker_ets, show_trace) andalso ets:lookup(toast_checker_ets, show_trace).

@@ -1,5 +1,77 @@
 from z3 import *
 
+s = Solver()
+
+
+# (x<3)
+n = Int('n')
+x = Real('x')
+
+# clocks
+x = Real('x')
+
+# ## e infinite
+# e = fpInfinity(FPSort(8,24),False)
+# # premies
+# t = FP('t',FPSort(8,24))
+# # t = Real('t')
+# texpr = fpLEQ(t,e)
+
+# (x>3)
+# delta = fpGEQ(fpAdd(RNE(),fpRealToFP(RNE(),x,Float32()),t),3.0)
+# s.add(n==3)
+# s.add(x==3.0)
+
+## e not infinite
+e = Real('e')
+
+# premies
+t = Real('t')
+texpr = t<e
+
+# # (x<3)
+# s.add(e==3)     # e </<= 3
+# delta = x+t<n
+# s.add(n==3)
+# s.add(x==0.0)
+
+# # (3<x<6)
+# s.add(e==3)     # e </<= 3
+# delta = x+t<n
+# s.add(n==6)
+# s.add(x==3.0)
+
+# (x=3) # ! does not, just rule out in erlang
+# s.add(e==0.0)     # e </<= 0
+# delta = x+t=n
+# s.add(n==3)
+# s.add(x==0.0)
+
+## ask z3
+lhs = Implies(delta, texpr)
+rhs = Implies(texpr, delta)
+
+s.add(ForAll(t,Implies(0<=t,And(lhs,rhs))))
+
+# # e = FPSort(8, 24)
+# # fpPlusInfinity(e)
+# s = Solver()
+# s.add(global_==0.0, x==0.0, n==5,e==99999)
+# s.add(ForAll(t, And(0<=t, t<e, x+t<=n)))
+# # result = s.check()
+
+print(f"solver: {s}.")
+print(f"result: {s.check()}.")
+
+
+
+
+
+
+
+
+
+
 # n = Int('n')
 # t, t_, global_, v, w, y, x, u, z = Reals('t t_ global_ v w y x u z')
 # s = Solver()
@@ -26,8 +98,16 @@ from z3 import *
 # s.add(global_==6.0, x==6.0, n==6)
 # s.add(x>n)
 
+# n = Int('n')
+# t, global_, x, e = Reals('t global_ x e')
+# # e = FPSort(8, 24)
+# # fpPlusInfinity(e)
+# s = Solver()
+# s.add(global_==0.0, x==0.0, n==5,e==99999)
+# s.add(ForAll(t, And(0<=t, t<e, x+t<=n)))
+# # result = s.check()
+
 # print(f"solver: {s}.")
-# # print(f"m: {s.model()}.")
 # print(f"result: {s.check()}.")
 
 

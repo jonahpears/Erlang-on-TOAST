@@ -387,8 +387,9 @@ tests(type_checking) -> [
                          {del_t_fail_send,[false]},
                          {del_t_recv,[false,true,false]},
                          {del_t_branch,[false,true,false]},
-                         {del_t_branch_cascade,[true]}
-                        %  {del_delta_send,[true]}
+                         {del_t_branch_cascade,[true]},
+                         {del_delta_send,[true]}
+                        %  {recv,[true,false]}
                          ];
 
 %% @doc tests for t-reading
@@ -481,19 +482,35 @@ when is_atom(_Name) and is_integer(_Index) ->
 %% @doc catch for returning once index has reached 0
 test(_Kind,_Name,0) -> true;
 
+%% @doc test for type-checking, rule [Recv] 
+test(type_checking=_Name, recv=_Kind, Index) ->
+  %% sending 
+  %% get process, type and clocks
+  Process = {'p','->',{'leq',5},{a,undefined}, 'term'},
+  Type = {recv,{a,none},{x,'leq',5},[],'end'},
+  Clocks = [{x,Index-1}],
+  %% type check
+  Gamma = #{},
+  Theta = #{},
+  Result = checker:eval(Gamma, Theta, Process, {Clocks,Type}),
+  {IsTyped,_} = Result,
+  io:format("\n~p:~p/~p,\n\nGamma: ~p, Theta: ~p,\nPrc:\t~p,\nType:\t~p,\nClocks: ~p.\n\nIsTyped: ~p.",[_Name,_Kind,Index,Gamma,Theta,Process,Type,Clocks,IsTyped]),
+  {ok, IsTyped};
+%%
+
 %% @doc test for type-checking, rule [Del-delta] 
 test(type_checking=_Name, del_delta_send=_Kind, Index) ->
   %% sending 
   %% get process, type and clocks
-  Process = {delay, {t,'leq',5}, {'p','<-',{a,undefined}, 'term'}},
+  Process = {delay, {t,'les',3}, {'p','<-',{a,undefined}, 'term'}},
   Type = {send,{a,none},{x,'les',9},[],'end'},
   Clocks = [{x,3}],
   %% type check
   Gamma = #{},
   Theta = #{},
-  Result = checker:rule(Gamma, Theta, Process, {Clocks,Type}),
-  io:format("\n~p:~p/~p,\n\nGamma: ~p, Theta: ~p,\nPrc:\t~p,\nType:\t~p,\nClocks: ~p.\n\nResult: ~p.",[_Name,_Kind,Index,Gamma,Theta,Process,Type,Clocks,Result]),
+  Result = checker:eval(#{gamma=>Gamma, theta=>Theta, process=>Process, delta=>{Clocks,Type}, show_trace=>true}),
   {IsTyped,_} = Result,
+  io:format("\n~p:~p/~p,\n\nGamma: ~p, Theta: ~p,\nPrc:\t~p,\nType:\t~p,\nClocks: ~p.\n\nIsTyped: ~p.",[_Name,_Kind,Index,Gamma,Theta,Process,Type,Clocks,IsTyped]),
   {ok, IsTyped};
 %%
 
@@ -511,7 +528,7 @@ test(type_checking=_Name, del_t_branch_cascade=_Kind, Index) ->
   %% type check
   Gamma = #{},
   Theta = #{},
-  Result = checker:rule(Gamma, Theta, Process, {'p',Clocks,Type}),
+  Result = checker:eval(Gamma, Theta, Process, {Clocks,Type}),
   io:format("\n~p:~p/~p,\n\nGamma: ~p, Theta: ~p,\nPrc:\t~w,\nType:\t~w,\nClocks: ~p.\n\nResult: ~p.",[_Name,_Kind,Index,Gamma,Theta,Process,Type,Clocks,Result]),
   {IsTyped,_} = Result,
   {ok, IsTyped};
@@ -528,7 +545,7 @@ test(type_checking=_Name, del_t_branch=_Kind, Index) ->
   %% type check
   Gamma = #{},
   Theta = #{},
-  Result = checker:rule(Gamma, Theta, Process, {'p',Clocks,Type}),
+  Result = checker:eval(Gamma, Theta, Process, {Clocks,Type}),
   io:format("\n~p:~p/~p,\n\nGamma: ~p, Theta: ~p,\nPrc:\t~p,\nType:\t~p,\nClocks: ~p.\n\nResult: ~p.",[_Name,_Kind,Index,Gamma,Theta,Process,Type,Clocks,Result]),
   {IsTyped,_} = Result,
   {ok, IsTyped};
@@ -544,7 +561,7 @@ test(type_checking=_Name, del_t_recv=_Kind, Index) ->
   %% type check
   Gamma = #{},
   Theta = #{},
-  Result = checker:rule(Gamma, Theta, Process, {'p',Clocks,Type}),
+  Result = checker:eval(Gamma, Theta, Process, {Clocks,Type}),
   io:format("\n~p:~p/~p,\n\nGamma: ~p, Theta: ~p,\nPrc:\t~p,\nType:\t~p,\nClocks: ~p.\n\nResult: ~p.",[_Name,_Kind,Index,Gamma,Theta,Process,Type,Clocks,Result]),
   {IsTyped,_} = Result,
   {ok, IsTyped};
@@ -560,7 +577,7 @@ test(type_checking=_Name, del_t_pass_send=_Kind, Index) ->
   %% type check
   Gamma = #{},
   Theta = #{},
-  Result = checker:rule(Gamma, Theta, Process, {'p',Clocks,Type}),
+  Result = checker:eval(Gamma, Theta, Process, {Clocks,Type}),
   io:format("\n~p:~p/~p,\n\nGamma: ~p, Theta: ~p,\nPrc:\t~p,\nType:\t~p,\nClocks: ~p.\n\nResult: ~p.",[_Name,_Kind,Index,Gamma,Theta,Process,Type,Clocks,Result]),
   {IsTyped,_} = Result,
   {ok, IsTyped};
@@ -576,7 +593,7 @@ test(type_checking=_Name, del_t_fail_send=_Kind, Index) ->
   %% type check
   Gamma = #{},
   Theta = #{},
-  Result = checker:rule(Gamma, Theta, Process, {'p',Clocks,Type}),
+  Result = checker:eval(Gamma, Theta, Process, {Clocks,Type}),
   io:format("\n~p:~p/~p,\n\nGamma: ~p, Theta: ~p,\nPrc:\t~p,\nType:\t~p,\nClocks: ~p.\n\nResult: ~p.",[_Name,_Kind,Index,Gamma,Theta,Process,Type,Clocks,Result]),
   {IsTyped,_} = Result,
   {ok, IsTyped};

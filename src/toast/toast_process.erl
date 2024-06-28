@@ -57,6 +57,7 @@ supported_processes() -> [error_process, termination_process, send_process, bran
 -type send_process () :: {party(), '<-', msg(), toast_process()}.
 
 %% {from, within, [msg, next]}
+-type recv_process () :: {party(), '->', upper_bound(), msg(), toast_process()}.
 -type branch_process () :: {party(), '->', upper_bound(), [{msg(), toast_process()}]}.
 
 %% {from, within, [msg, next], after, other}
@@ -82,6 +83,7 @@ supported_processes() -> [error_process, termination_process, send_process, bran
 
 -type toast_process () :: termination_process() 
                         | send_process()
+                        | recv_process()
                         | branch_process()
                         | timeout_process()
                         | set_process()
