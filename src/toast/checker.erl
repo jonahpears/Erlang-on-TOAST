@@ -44,7 +44,7 @@ ask_z3(satisfied_constraints=_Kind, #{clocks:=Clocks,constraints:=Constraints})
 when is_map(Clocks) ->
   %% build build super-constraint string and see if it holds
   ExecString = to_python_exec_string(satisfied_constraints, #{clocks=>Clocks,delta=>Constraints}),
-  io:format("\n\n~p, ExecString:\n~s\n.",[_Kind,ExecString]),
+  % io:format("\n\n~p, ExecString:\n~s\n.",[_Kind,ExecString]),
   %% send to python program and get response
   Z3Response = z3(ask_z3,[list_to_binary(ExecString)]),
   io:format("\n\n~p, ExecString:\n~s\n\tResponse: ~p.",[_Kind,ExecString,Z3Response]),
@@ -57,7 +57,7 @@ ask_z3(feasible_constraints=_Kind, #{clocks:=Clocks,constraints:=Constraints,e:=
 when is_map(Clocks) ->
   %% build build super-constraint string and see if it holds
   ExecString = to_python_exec_string(feasible_constraints, #{clocks=>Clocks,delta=>Constraints,e=>E}),
-  io:format("\n\n~p, ExecString:\n~s\n.",[_Kind,ExecString]),
+  % io:format("\n\n~p, ExecString:\n~s\n.",[_Kind,ExecString]),
   %% send to python program and get response
   Z3Response = z3(ask_z3,[list_to_binary(ExecString)]),
   io:format("\n\n~p, ExecString:\n~s\n\tResponse: ~p.",[_Kind,ExecString,Z3Response]),
@@ -249,7 +249,7 @@ to_python_exec_string(constraints, #{delta:={Constraints1,'and',Constraints2}}=A
   {{VarList1++VarList2,ClockList1++ClockList2}, DeltaString};
 %%
 
-%% @doc catch constraints (simple)
+%% @doc catch constraints (simple, no infinity)
 to_python_exec_string(constraints, #{delta:={Clock,DBC,Constant}}=Args)
 when is_atom(Clock) and is_atom(DBC) and is_integer(Constant) -> 
   Offset = maps:get(offset,Args,""),
@@ -365,7 +365,11 @@ eval(Map) ->
   %% begin eval
   io:format("\nBeginning type-checking eval of:\nGamma: ~p,\nTheta: ~p,\nProcess: ~p,\nDelta: ~p.\n",[Gamma,Theta,Process,Delta]),
 
-  Eval = rule(Gamma,Theta,Process,Delta),
+  _Eval = rule(Gamma,Theta,Process,Delta),
+  {Pass,_Trace} = _Eval,
+  Trace = lists:uniq(_Trace),
+  % repackage
+  Eval = {Pass,Trace},
 
   io:format("\nFinished type-checking, eval: ~p.", [Eval]),
   %% delete table
@@ -403,7 +407,8 @@ when is_atom(Label) and (Label=:=_Label) and is_list(Resets) ->
   end, Clocks, Resets),
 
   %% obtain DBC from E
-  {Ez3,DBC,N} = case E of {leq,_N} -> {{t,leq,_N},leq,_N}; {les,_N} -> {{t,les,_N},les, _N}; 'infinity' -> {{t,les,'infinity'},les, ?INFINITY}; _ -> io:format("\n\nWarning, unrecognised E: ~p.",[E]), {leq, 0} end,
+  % {Ez3,DBC,N} = case E of {leq,_N} -> {{t,leq,_N},leq,_N}; {les,_N} -> {{t,les,_N},les, _N}; 'infinity' -> {{t,les,'infinity'},les, ?INFINITY}; _ -> io:format("\n\nWarning, unrecognised E: ~p.\n",[E]), {{t,leq,0}, leq, 0} end,
+  {DBC,N} = case E of {leq,_N} -> {leq,_N}; {les,_N} -> {les, _N}; 'infinity' -> {les, ?INFINITY}; _ -> io:format("\n\nWarning, unrecognised E: ~p.\n",[E]), {leq, 0} end,
 
   MinimalPrecision = minimal_precision(),
 
@@ -443,12 +448,12 @@ when is_atom(Label) and (Label=:=_Label) and is_list(Resets) ->
   %% use worker functions to calculate in parallel
   % Self = self(),
   WorkerIDs = start_evaluation_workers(premise_recv, {Gamma,Theta,P,{#{clocks=>Clocks,resets=>Resets},S}}, BoundMap),
-  io:format("\n\nStarted (~p) workers: ~p.\n",[length(WorkerIDs),WorkerIDs]),
+  io:format("\n\n[Recv], Started (~p) workers: ~w.\n",[length(WorkerIDs),WorkerIDs]),
   
   %% receive all of the workers
   {Continuation,TraceList} = lists:foldl(fun(ID, {InEvals,InTrace}) -> 
-    receive {ID, {eval, {Eval,Traces}}, {range, Counter, T}} -> 
-      io:format("Received from (~p, range: ~p, ~p) -- ~p.\n",[ID, Counter,T,Eval]),
+    receive {ID, {eval, {Eval,Traces}}, {range, _Counter, _T}} -> 
+      % io:format("Received from (~p, range: ~p, ~p) -- ~p.\n",[ID, _Counter,_T,Eval]),
       %% check if all continuations passed & update trace
       NewEvals = (InEvals and Eval),
       NewTrace = Traces++InTrace,
@@ -480,15 +485,20 @@ when is_atom(Label) and (Label=:=_Label) and is_list(Resets) ->
       ?assert(is_boolean(NotEReading))
   end,
 
-  %% ask z3 if Delta if constraints feasible (satisfied bimplies E)
-  {Signal2, FeasibleConstraints} = ask_z3(feasible_constraints,#{clocks=>Clocks,constraints=>Constraints,e=>Ez3}),
-  ?assert(Signal2=:=ok),
-  ?assert(is_boolean(FeasibleConstraints)),
+  %% TODO from here, and go to ask_z3/2 and to_python_exec_string (for constraints and actual code.)
+  %% TODO see z3 python example file
+
+  % %% ask z3 if Delta if constraints feasible (satisfied bimplies E)
+  % {Signal2, FeasibleConstraints} = ask_z3(feasible_constraints,#{clocks=>Clocks,constraints=>Constraints,e=>Ez3}),
+  % ?assert(Signal2=:=ok),
+  % ?assert(is_boolean(FeasibleConstraints)),
+
+  FeasibleConstraints = true, %% TODO temporary
 
   %% construct premise and return
   Premise = InitialContinuation and Continuation and FeasibleConstraints and NotEReading,
   show_trace('Recv',Premise,{InitialContinuation,Continuation,FeasibleConstraints,NotEReading}),
-  {Premise, OutTraces};
+  {Premise, lists:uniq(OutTraces)};
 %%
 
 %% @doc helper function to wrap any lone branch process type in list (to reapply rule [Recv])
@@ -548,7 +558,7 @@ when is_list(Type) ->
   %% construct premise and return
   Premise = Continuation and SatisfiedConstraints,
   show_trace('Send',Premise,{Continuation,SatisfiedConstraints}),
-  {Premise, Trace1};
+  {Premise, lists:uniq(Trace1)};
 %%
 
 
@@ -603,7 +613,7 @@ when is_list(Branches) and is_list(Type) ->
 
       %% check if all continuations passed & update trace
       {Continuation, TraceList} = lists:foldl(fun({Eval,Trace}, {InEval,InTrace}) -> 
-        {(Eval and InEval),[add_to_trace(Trace,'Branch')]++InTrace} 
+        {(Eval and InEval),add_to_trace(Trace,'Branch')++InTrace} 
       end, {true,[]}, Continuations);
 
     %% each branch is not evaluated
@@ -616,7 +626,7 @@ when is_list(Branches) and is_list(Type) ->
   %% construct premise and return
   Premise = Continuation,
   show_trace('Branch',Premise,{Continuation}),
-  {Premise, TraceList};
+  {Premise, lists:uniq(TraceList)};
 %%
 
 
@@ -635,7 +645,10 @@ when is_list(Branches) and is_list(Type) ->
     infinity -> Continuation2 = false, Trace2 = [];
 
     %% incrememnt clocks and timers by E, then type-check against Q
-    _ -> Theta1 = increment_timers(Theta,E), Clocks1 = increment_clocks(Clocks,E),
+    {Less,_ValE} -> 
+      ValE = case Less of 'leq' -> _ValE; 'les' -> _ValE-minimal_precision(); _ -> io:format("\n\nWarning, the DBC in E is not recognised: ~p.\n",[E]),_ValE end,
+      Theta1 = increment_timers(Theta,ValE), 
+      Clocks1 = increment_clocks(Clocks,ValE),
       {Continuation2, Trace2} = rule(Gamma, Theta1, Q, {Clocks1,Type})
 
   end,
@@ -646,7 +659,7 @@ when is_list(Branches) and is_list(Type) ->
   %% construct premise and return
   Premise = Continuation1 and Continuation2,
   show_trace('Timeout',Premise,{Continuation1,Continuation2}),
-  {Premise, Trace3};
+  {Premise, lists:uniq(Trace3)};
 %%
 
 
@@ -682,7 +695,7 @@ rule(Gamma, Theta, {'set', Timer, P}=_Process, {_Clocks,_Type}=Delta)
   %% construct premise and return
   Premise = Continuation,
   show_trace('Timer',Premise,{Continuation}),
-  {Premise, Trace1};
+  {Premise, lists:uniq(Trace1)};
 %%
 
 
@@ -749,12 +762,12 @@ when is_atom(DBC) and (is_atom(N) or is_integer(N)) ->
   %% use worker functions to calculate in parallel
   % Self = self(),
   WorkerIDs = start_evaluation_workers(premise_del_delta, {Gamma,Theta,P,Delta}, BoundMap),
-  io:format("\n\nStarted (~p) workers: ~p.\n",[length(WorkerIDs),WorkerIDs]),
+  io:format("\n\n[Del-delta], Started (~p) workers: ~w.\n",[length(WorkerIDs),WorkerIDs]),
   
   %% receive all of the workers
   {Continuation,TraceList} = lists:foldl(fun(ID, {InEvals,InTrace}) -> 
-    receive {ID, {eval, {Eval,Traces}}, {range, Counter, T}} -> 
-      io:format("Received from (~p, range: ~p, ~p) -- ~p.\n",[ID, Counter,T,Eval]),
+    receive {ID, {eval, {Eval,Traces}}, {range, _Counter, _T}} -> 
+      % io:format("Received from (~p, range: ~p, ~p) -- ~p.\n",[ID, _Counter,_T,Eval]),
       %% check if all continuations passed & update trace
       NewEvals = (InEvals and Eval),
       % NewTrace = add_to_trace(Traces,'Del-delta')++InTrace,
@@ -774,7 +787,7 @@ when is_atom(DBC) and (is_atom(N) or is_integer(N)) ->
   %% construct premise and return
   Premise = InitialContinuation and Continuation,
   show_trace('Del-delta',Premise,{InitialContinuation,Continuation}),
-  {Premise, OutTraces};
+  {Premise, lists:uniq(OutTraces)};
 %%
 
 
@@ -800,7 +813,7 @@ rule(Gamma, Theta, {'delay',T,P}=_Process, {Clocks,Type}=_Delta)
   %% construct premise and return
   Premise = Continuation and NotTReading,
   show_trace('Del-t',Premise,{Continuation,NotTReading}),
-  {Premise, Trace1};
+  {Premise, lists:uniq(Trace1)};
 %%
 
 

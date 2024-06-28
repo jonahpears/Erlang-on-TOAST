@@ -518,8 +518,8 @@ test(type_checking=_Name, del_delta_send=_Kind, Index) ->
 test(type_checking=_Name, del_t_branch_cascade=_Kind, Index) ->
   %% sending 
   %% get process, type and clocks
-  Process = {delay, 1.0, {'p','->',1,[{{c,undefined},'term'}], 
-            'after', {delay, 5.0, {'p','->',5,[{{a,undefined},'term'},{{b,undefined},'term'}],
+  Process = {delay, 1.0, {'p','->',{'leq',1},[{{c,undefined},'term'}], 
+            'after', {delay, 5.0, {'p','->',{'leq',5},[{{a,undefined},'term'},{{b,undefined},'term'}],
                                   'after', {'p','->',infinity,{b,undefined},'term'}}}}},
   Type = [{recv,{a,none},{{x,'geq',6},'and',{x,'les',9}},[],'end'},
           {recv,{b,none},{y,'geq',6},[],'end'},

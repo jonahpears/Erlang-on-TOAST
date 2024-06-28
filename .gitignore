@@ -21,6 +21,8 @@ tool_output/*
 
 tool_output.zip
 *.pyc
+*.cpython-312.pyc
 src/toast/__pycache__/*
+src/toast/__pycache__/z3_interface.cpython-312.pyc
 src/toast/__pycache__/z3_interface.cpython-312.pyc
 src/toast/__pycache__/z3_interface.cpython-312.pyc
