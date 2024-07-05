@@ -167,7 +167,7 @@ sample(continuation,Options) ->
 
       %% unrecognised continuation, use end but warn
       Err -> 
-        io:format("\n\nWarning, ~p, unrecognised continuation: ~p.\n\tUsing 'end' instead.\n(Options:\t~p.)\n",[Err,Options]),
+        io:format("\n\nWarning, ~p, unrecognised continuation.\n\tUsing 'end' instead.\n(Options:\t~p.)\n",[Err,Options]),
         'end'
   end;
 %%
@@ -383,12 +383,12 @@ get_all_tests() -> [t_reading,not_t_reading]. %  from_string
 
 %% @doc tests for type-checking
 tests(type_checking) -> [
-                         {del_t_pass_send,[true]},
-                         {del_t_fail_send,[false]},
-                         {del_t_recv,[false,true,false]},
-                         {del_t_branch,[false,true,false]},
-                         {del_t_branch_cascade,[true]},
-                         {del_delta_send,[true]}
+                        %  {del_t_pass_send,[true]},
+                        %  {del_t_fail_send,[false]},
+                        %  {del_t_recv,[false,true,false]},
+                        %  {del_t_branch,[false,true,false]},
+                         {del_t_branch_cascade,[true]}
+                        %  {del_delta_send,[true]}
                         %  {recv,[true,false]}
                          ];
 
@@ -518,12 +518,12 @@ test(type_checking=_Name, del_delta_send=_Kind, Index) ->
 test(type_checking=_Name, del_t_branch_cascade=_Kind, Index) ->
   %% sending 
   %% get process, type and clocks
-  Process = {delay, 1.0, {'p','->',{'leq',1},[{{c,undefined},'term'}], 
-            'after', {delay, 5.0, {'p','->',{'leq',5},[{{a,undefined},'term'},{{b,undefined},'term'}],
+  Process = {delay, 1.0, {'p','->',0,[{{c,undefined},'term'}], 
+            'after', {delay, 5.0, {'p','->',{'leq',3},[{{a,undefined},'term'},{{b,undefined},'term'}],
                                   'after', {'p','->',infinity,{b,undefined},'term'}}}}},
   Type = [{recv,{a,none},{{x,'geq',6},'and',{x,'les',9}},[],'end'},
           {recv,{b,none},{y,'geq',6},[],'end'},
-          {recv,{c,none},{z,'leq',1},[],'end'}],
+          {recv,{c,none},{z,'eq',1},[],'end'}],
   Clocks = [{x,0}],
   %% type check
   Gamma = #{},

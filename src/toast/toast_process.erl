@@ -17,7 +17,7 @@
 
 -type timer() :: string().
 
--type upper_bound () :: {leq, integer()} | {les, integer()} | 'infinity'.
+-type upper_bound () :: {leq, integer()} | {les, integer()} | 'infinity' | 0.
 
 -type equalities() :: eq | neq.
 -type greaters() :: geq | gtr.
