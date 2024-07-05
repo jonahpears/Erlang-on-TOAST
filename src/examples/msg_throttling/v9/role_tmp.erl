@@ -276,7 +276,7 @@ handle_event(state_timeout, begin_process_queue, State, #{name:=Name,queue:=#{on
 %% state enter, continue handling queued actions (list Off may be non-empty, containing those already tried this state)
 handle_event(enter, _OldState, State, #{name:=Name,queue:=#{on:=On,state_to_return_to:=StateToReturnTo}}=Data) when is_list(On) and StateToReturnTo=/=undefined ->
   show( verbose, {"(->) ~p (handling queue),\n\tdata: ~p.", [State,Data]},
-        else, {"(->) ~p (handling queue).", [State]}, {Name, Data}),
+        'else', {"(->) ~p (handling queue).", [State]}, {Name, Data}),
   {keep_state_and_data, [{state_timeout,0,continue_process_queue}]};
 
 handle_event(state_timeout, continue_process_queue, State, 
@@ -313,7 +313,7 @@ handle_event(state_timeout, continue_process_queue, State,
       end;
     _ -> %% this queued action has flagged itself to be dropped after a recent receive
       show( verbose, {"~p, dropped queued action (~p: ~p) since:\n\tdrop_after_recv: ~p,\n\tdrop_after_labels: ~p,\n\tcheck_recvs: ~p.", [State, Label, Payload, DropAfterRecv, DropAfterLabels, CheckRecvs]},
-            else, {"~p, dropped queued action (~p: ~p).", [State, Label, Payload]}, 
+            'else', {"~p, dropped queued action (~p: ~p).", [State, Label, Payload]}, 
             {Name, Data1} ),
       {next_state, StateToReturnTo, Data1}
   end;
@@ -358,7 +358,7 @@ when is_map_key(State, Map) and is_map(Meta) and is_map_key(auto_label, Meta) an
           Off1 = Off,
           %% assuming mixed-states are modelled as two (with silent/timeout edge between them)
           show( verbose, {"~p, wrong state to send (~p: ~p),\n\tand global-queue option set to true,\n\tbut -- message explicitly flagged to not be queue-able:\n\t~p.", [State, Label, Payload, Action]},
-                else, {"~p, unusual, cannot add to queue: ~p.", [State, {Label, Payload}]}, {Name, Data})
+                'else', {"~p, unusual, cannot add to queue: ~p.", [State, {Label, Payload}]}, {Name, Data})
       end,
       Queue1 = Queue#{off=>Off1},
       Data1 = Data#{queue=>Queue1},
@@ -398,7 +398,7 @@ when is_map_key(State, Map) and is_map(Meta) ->
       Off1 = Off,
       %% assuming mixed-states are modelled as two (with silent/timeout edge between them)
       show( verbose, {"~p, wrong state to send (~p: ~p),\n\tand global-queue option set to true,\n\tbut -- message explicitly flagged to not be queue-able:\n\t~p.", [State, Label, Payload, Action]},
-            else, {"~p, unusual, cannot add to queue: ~p.", [State, {Label, Payload}]}, {Name, Data})
+            'else', {"~p, unusual, cannot add to queue: ~p.", [State, {Label, Payload}]}, {Name, Data})
   end,
   %% next data has updated off-queue 
   Queue1 = Queue#{off=>Off1},
@@ -420,7 +420,7 @@ when is_map_key(State, Map) and is_map(Meta) ->
   Action = new_queued_action(Label, Payload, Meta),
   %% assuming mixed-states are modelled as two (with silent/timeout edge between them)
   show( verbose, {"~p, wrong state to send (~p: ~p),\n\tand global-queue option set to false,\n\tbut -- message flagged to be queue-able:\n\t~p.", [State, Label, Payload, Action]}, 
-        else, {"~p, added to queue: ~p.", [State, {Label, Payload}]}, {Name, Data}),
+        'else', {"~p, added to queue: ~p.", [State, {Label, Payload}]}, {Name, Data}),
   %% add to queue
   Off1 = Off ++ [Action],
   %% next data has updated off-queue 
@@ -480,7 +480,7 @@ when is_map_key(State, Map) and is_atom(map_get(Label, map_get(recv, map_get(Sta
 
 %% from wrong states 
 handle_event(info, {CoPartyID, Label, Payload}, State, #{name:=Name,coparty_id:=CoPartyID}=Data) ->
-  show(verbose, {"~p, wrong state to recv (~p: ~p), postponing,\n\tdata: ~p.", [State, Label, Payload, Data]}, else, {"~p, wrong state to recv (~p: ~p), postponing.", [State, Label, Payload]}, {Name, Data}),
+  show(verbose, {"~p, wrong state to recv (~p: ~p), postponing,\n\tdata: ~p.", [State, Label, Payload, Data]}, 'else', {"~p, wrong state to recv (~p: ~p), postponing.", [State, Label, Payload]}, {Name, Data}),
   {keep_state_and_data, [postpone]};
 
 

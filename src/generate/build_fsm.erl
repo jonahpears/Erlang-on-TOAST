@@ -638,7 +638,7 @@ to_fsm({if_not_timer, Name, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndInd
     to_fsm(error, QEdges1, QNodes, QRecMap, QIndex, QIndex, QEndIndex, QClocks);
 
 %% @doc 
-to_fsm({if_timer, Name, P, else, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
+to_fsm({if_timer, Name, P, 'else', Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
   % add new state that is a if_then_else_state
   Nodes1 = maps:put(PrevVis, if_then_else_state(), Nodes),
   %% get index of P
@@ -675,7 +675,7 @@ to_fsm({if_timer, Name, P, else, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, E
   to_fsm(Q, QEdges1, QNodes, QRecMap, QIndex, QIndex, QEndIndex, QClocks);
 
 %% @doc 
-to_fsm({if_not_timer, Name, P, else, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
+to_fsm({if_not_timer, Name, P, 'else', Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
   % add new state that is a if_then_else_state
   Nodes1 = maps:put(PrevVis, if_then_else_state(), Nodes),
   %% get index of P

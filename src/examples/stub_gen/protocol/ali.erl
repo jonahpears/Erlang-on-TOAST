@@ -404,13 +404,13 @@ spec(basic_if_then_loop) ->
 spec(basic_if_then_else) -> 
   {timer, "t", 5000, 
     {if_timer, "t", {act, s_finished, endP},
-     else, {act, s_data, endP} }};
+     'else', {act, s_data, endP} }};
 
 spec(basic_if_then_else_loop) -> 
   {timer, "t", 5000, 
     {rec, "a", 
       {if_timer, "t", {act, s_finished, endP},
-       else, {act, s_data, {rvar, "a"}} }}};
+       'else', {act, s_data, {rvar, "a"}} }}};
 
 %% if not 
 spec(basic_if_not_then) -> 
@@ -427,13 +427,13 @@ spec(basic_if_not_then_loop) ->
 spec(basic_if_not_then_else) -> 
   {timer, "t", 5000, 
     {if_not_timer, "t", {act, s_finished, endP},
-     else, {act, s_data, endP} }};
+     'else', {act, s_data, endP} }};
 
 spec(basic_if_not_then_else_loop) -> 
   {timer, "t", 5000, 
     {rec, "a", 
       {if_not_timer, "t", {act, s_finished, endP},
-       else, {act, s_data, {rvar, "a"}} }}};
+       'else', {act, s_data, {rvar, "a"}} }}};
 
 
 
@@ -642,7 +642,7 @@ spec(iteration_test) ->
       rec, "r1", {
         if_timer, "y10", {
           act, r_stop, endP
-        }, else, {
+        }, 'else', {
           delay, "x1", {
             act, s_data, {
               {timer, "x1", {rvar, "x1"}}

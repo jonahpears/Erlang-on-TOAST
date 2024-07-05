@@ -19,17 +19,17 @@ show(verbose, _) -> ok.
 
 
 
-show(verbose, {Str1, Args1}, else, {Str2, Args2}, {#{options:=#{printout:=#{enabled:=true,verbose:=Verbose}}}=_Data}) -> 
+show(verbose, {Str1, Args1}, 'else', {Str2, Args2}, {#{options:=#{printout:=#{enabled:=true,verbose:=Verbose}}}=_Data}) -> 
   case Verbose of
     true -> printout(Str1, Args1);
     _ -> printout(Str2, Args2)
   end;
 
-show(verbose, {Str1, Args1}, else, {Str2, Args2}, {Name, #{options:=#{printout:=#{enabled:=true,verbose:=Verbose}}}=_Data}) -> 
+show(verbose, {Str1, Args1}, 'else', {Str2, Args2}, {Name, #{options:=#{printout:=#{enabled:=true,verbose:=Verbose}}}=_Data}) -> 
   case Verbose of
     true -> printout(Name, Str1, Args1);
     _ -> printout(Name, Str2, Args2)
   end;
 
-show(verbose, _, else, _, _) -> ok.
+show(verbose, _, 'else', _, _) -> ok.
 
