@@ -133,11 +133,11 @@ def ongoing_test():
   rhs = Implies(texpr,delta)
   s.add(global_==6.0, x==6.0)
   # s.add(ForAll(t,Implies(0<=t,And(lhs,rhs))))
-  s.add(ForAll(t,Implies(0<=t,lhs)))
-  # s.add(ForAll(t,Implies(0<=t,rhs)))
+  # s.add(ForAll(t,Implies(0<=t,lhs)))
+  s.add(ForAll(t,Implies(0<=t,rhs)))
   result = s.check()
 
   print(f"solver: {s}")
   print(f"result: {result}")
 
-ongoing_test()
+# ongoing_test()

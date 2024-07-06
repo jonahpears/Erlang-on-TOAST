@@ -737,7 +737,8 @@ when is_list(Branches) and is_list(Type) ->
               _ -> OutPairs
             end
           end, [], Branches),
-          ?assert(length(Pair)==1),
+          % io:format("\n\npair: ~p,\nBranches: ~p,\nType_j: ~p.\n",[Pair,Branches,Type_j]),
+          % ?assert(length(Pair)==1),
           InPairs++Pair;
 
         %% not enabled, skip
@@ -821,20 +822,60 @@ when is_list(Branches) and is_list(Type) ->
 %%
 
 
-% %% @doc rule [IfTrue]
-% %% type-checking if-true
-% rule(_Gamma, _Theta, _Process, {_Clocks,_Type}=_Delta)
-% ->
-%   ok;
-% %%
+%% @doc rule [IfTrue] or [IfFalse]
+%% type-checking if-true/if-false
+rule(Gamma, Theta, {'if',{Timer, DBC, Value}, 'then', P, 'else', Q}=_Process, {_Clocks,_Type}=Delta)
+->
+
+  %% determine if [IfTrue] or [IfFalse]
+  HasTimer = is_map_key(Timer,Theta),
+
+  Constraint = case HasTimer of 
+    true -> 
+      ActualValue = maps:get(Timer,Theta),
+      ?assert(is_number(ActualValue)),
+      case DBC of 
+        'leq' -> (ActualValue =< Value); 
+        'les' -> (ActualValue < Value); 
+        'geq' -> (ActualValue >= Value); 
+        'gtr' -> (ActualValue >= Value); 
+        'eq' -> (ActualValue == Value); 
+        'neq' -> not (ActualValue == Value); 
+        _ -> io:format("\n\nWarning, unrecognised DBC: ~p. Using eq.\n",[DBC]), (ActualValue == Value)
+      end;
+    _ -> false
+  end,
+
+  %% if constraint true, then true
+  case Constraint of 
+    true ->
+      io:format("\n\n/ / / /[IfTrue]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,_Clocks,_Type]),
+
+      %% continue with P
+      {Continuation, Trace} = rule(Gamma, Theta, P, Delta),
+
+      %% set rule name
+      RuleName = 'IfTrue';
+
+    _ -> 
+      io:format("\n\n/ / / /[IfTrue]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,_Clocks,_Type]),
+
+      %% continue with P
+      {Continuation, Trace} = rule(Gamma, Theta, Q, Delta),
+
+      %% set rule name
+      RuleName = 'IfFalse'
+  end,
 
 
-% %% @doc rule [IfFalse]
-% %% type-checking if-false
-% rule(_Gamma, _Theta, _Process, {_Clocks,_Type}=_Delta)
-% ->
-%   ok;
-% %%
+  %% merge traces and update
+  Trace1 = add_to_trace(Trace,RuleName),
+
+  %% construct premise and return
+  Premise = Continuation and Constraint,
+  show_trace(RuleName,Premise,{Continuation,Constraint}),
+  {Premise, lists:uniq(Trace1)};
+%%
 
 
 %% @doc rule [Timer]
