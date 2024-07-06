@@ -8,6 +8,9 @@
 -define(INFINITY,99).
 
 -define(DEFAULT_SHOW_TRACE,true).
+-define(WORKER_SHOW_TRACE,false).
+
+-define(SHOW_V3_SNIPPET,false).
 
 
 -include_lib("stdlib/include/assert.hrl").
@@ -44,10 +47,11 @@ ask_z3(satisfied_constraints=_Kind, #{clocks:=Clocks,constraints:=Constraints})
 when is_map(Clocks) ->
   %% build build super-constraint string and see if it holds
   ExecString = to_python_exec_string(satisfied_constraints, #{clocks=>Clocks,delta=>Constraints}),
-  io:format("\n\n~p, ExecString:\n~s\n.",[_Kind,ExecString]),
+  case ?SHOW_V3_SNIPPET of true -> io:format("\n\n~p, ExecString:\n~s\n.",[_Kind,ExecString]); _ -> ok end,
   %% send to python program and get response
   Z3Response = z3(ask_z3,[list_to_binary(ExecString)]),
-  io:format("\n\n~p, ExecString:\n~s\n\nResponse: ~p.\n",[_Kind,ExecString,Z3Response]),
+  case ?SHOW_V3_SNIPPET of true -> 
+  io:format("\n\n~p, ExecString:\n~s\n\nResponse: ~p.\n",[_Kind,ExecString,Z3Response]); _ -> ok end,
   %% return result
   {ok, Z3Response};
 %%
@@ -57,10 +61,11 @@ ask_z3(feasible_constraints=_Kind, #{clocks:=Clocks,constraints:=Constraints,e:=
 when is_map(Clocks) ->
   %% build build super-constraint string and see if it holds
   ExecString = to_python_exec_string(feasible_constraints, #{clocks=>Clocks,delta=>Constraints,e=>E}),
-  io:format("\n\n~p, (infinity) ExecString:\n~s\n.",[_Kind,ExecString]),
+  case ?SHOW_V3_SNIPPET of true -> io:format("\n\n~p, (infinity) ExecString:\n~s\n.",[_Kind,ExecString]); _ -> ok end,
   %% send to python program and get response
   Z3Response = z3(ask_z3,[list_to_binary(ExecString)]),
-  io:format("\n\n~p, (infinity) ExecString:\n~s\n\nResponse: ~p.\n",[_Kind,ExecString,Z3Response]),
+  case ?SHOW_V3_SNIPPET of true -> 
+  io:format("\n\n~p, (infinity) ExecString:\n~s\n\nResponse: ~p.\n",[_Kind,ExecString,Z3Response]); _ -> ok end,
   %% return result
   {ok, Z3Response};
 %%
@@ -70,10 +75,11 @@ ask_z3(feasible_constraints=_Kind, #{clocks:=Clocks,constraints:=Constraints,e:=
 when is_map(Clocks) ->
   %% build build super-constraint string and see if it holds
   ExecString = to_python_exec_string(feasible_constraints, #{clocks=>Clocks,delta=>Constraints,e=>E}),
-  io:format("\n\n~p, (non-infinity) ExecString:\n~s\n.",[_Kind,ExecString]),
+  case ?SHOW_V3_SNIPPET of true -> io:format("\n\n~p, (non-infinity) ExecString:\n~s\n.",[_Kind,ExecString]); _ -> ok end,
   %% send to python program and get response
   Z3Response = z3(ask_z3,[list_to_binary(ExecString)]),
-  io:format("\n\n~p, (non-infinity) ExecString:\n~s\n\nResponse: ~p.\n",[_Kind,ExecString,Z3Response]),
+  case ?SHOW_V3_SNIPPET of true -> 
+  io:format("\n\n~p, (non-infinity) ExecString:\n~s\n\nResponse: ~p.\n",[_Kind,ExecString,Z3Response]); _ -> ok end,
   %% return result
   {ok, Z3Response};
 %%
@@ -495,6 +501,7 @@ eval(Map) ->
   ShowTrace = maps:get(show_trace,Map,?DEFAULT_SHOW_TRACE),
   ets:insert(toast_checker_ets, {show_trace_init, ShowTrace}),
   ets:insert(toast_checker_ets, {show_trace, ShowTrace}),
+  % set_show_trace(ShowTrace),
 
   %% begin eval
   io:format("\nBeginning type-checking eval of:\nGamma: ~p,\nTheta: ~p,\nProcess: ~p,\nDelta: ~p.\n",[Gamma,Theta,Process,Delta]),
@@ -516,26 +523,32 @@ eval(Map) ->
 %% @doc type-checking rules
 %% @returns tuple of bool denoting if the result of the evaluation, and a list detailing the traces of rules visited.
 -spec rule(map(), map(), toast:process(), map()) -> {boolean(), [[atom()]]} | {boolean(), [atom()]}.
+rule(Gamma, Theta, Process, Delta) -> rule(Gamma, Theta, Process, Delta, #{show_print=>?DEFAULT_SHOW_TRACE}).
+
+
+-spec rule(map(), map(), toast:process(), map(), map()) -> {boolean(), [[atom()]]} | {boolean(), [atom()]}.
 
 %% @doc helper function to make sure /timersclocks are map not list of tuples
-rule(Gamma, Theta, Process, Delta) 
-when is_list(Theta) -> rule(Gamma, maps:from_list(Theta), Process, Delta);
-rule(Gamma, Theta, Process, {Clocks,Type}) 
-when is_list(Clocks) -> rule(Gamma, Theta, Process, {maps:from_list(Clocks),Type});
+rule(Gamma, Theta, Process, Delta, #{show_print:=_ShowPrint}=_Args) 
+when is_list(Theta) -> rule(Gamma, maps:from_list(Theta), Process, Delta, _Args);
+rule(Gamma, Theta, Process, {Clocks,Type}, #{show_print:=_ShowPrint}=_Args) 
+when is_list(Clocks) -> rule(Gamma, Theta, Process, {maps:from_list(Clocks),Type}, _Args);
 
 % %% @doc helper function to convert delta tuple into map
 % rule(Gamma, Theta, Process, {Role,Clocks,Type}) -> rule(Gamma, Theta, Process, #{Role=>{Clocks,Type}});
 
 %% @doc helper function to convert delta triple (currently unused) into tuple
-rule(Gamma, Theta, Process, {_Role,Clocks,Type}) -> rule(Gamma, Theta, Process, {Clocks,Type});
+rule(Gamma, Theta, Process, {_Role,Clocks,Type}, #{show_print:=_ShowPrint}=_Args) -> rule(Gamma, Theta, Process, {Clocks,Type}, _Args);
 
 
 %% @doc rule [Recv]
 %% type-checking single reception
-rule(Gamma, Theta, {_Role,'->',E,{Label,_Payload},P}=_Process, {Clocks,[{recv,{_Label,__Payload},Constraints,Resets,S}]=Type}=Delta)
+rule(Gamma, Theta, {_Role,'->',E,{Label,_Payload},P}=_Process, {Clocks,[{recv,{_Label,__Payload},Constraints,Resets,S}]=Type}=Delta, #{show_print:=ShowPrint}=_Args)
 when is_atom(Label) and (Label=:=_Label) and is_list(Resets) ->
 
+  case ShowPrint of true ->
   io:format("\n\n/ / / /[Recv]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,Clocks,Type]),
+  ok; _ -> ok end,
 
   %% reset clocks
   Clocks1 = lists:foldl(fun(Clock, NewClocks) -> 
@@ -573,13 +586,14 @@ when is_atom(Label) and (Label=:=_Label) and is_list(Resets) ->
 
   %% show initial trace now, with minimal value (which is always 0)
   %% continue type-checking (yields premise)
-  {InitialContinuation, InitialTrace} = rule(Gamma, Theta, P, {Clocks1,S}),
+  {InitialContinuation, InitialTrace} = rule(Gamma, Theta, P, {Clocks1,S}, _Args),
 
-  io:format("\nBoundMap: ~p.\n",[BoundMap]),
+  % io:format("\nBoundMap: ~p.\n",[BoundMap]),
 
   %% suppress messages of eval
-  ShowTrace = show_trace(),
-  ets:insert(toast_checker_ets,{show_trace,false}),
+  % ShowTrace = get_show_trace(),
+  % ets:insert(toast_checker_ets,{show_trace,false}),
+  % set_show_trace(false),
 
   %% only use workers if not 0
   case E of
@@ -589,7 +603,7 @@ when is_atom(Label) and (Label=:=_Label) and is_list(Resets) ->
 
     %% use worker functions to calculate in parallel
     % Self = self(),
-    WorkerIDs = start_evaluation_workers(premise_recv, {Gamma,Theta,P,{#{clocks=>Clocks,resets=>Resets},S}}, BoundMap),
+    WorkerIDs = start_evaluation_workers(premise_recv, {Gamma,Theta,P,{#{clocks=>Clocks,resets=>Resets},S}}, maps:put(show_print,?WORKER_SHOW_TRACE,BoundMap)),
     % io:format("\n\n[Recv], Started (~p) workers: ~w.\n",[length(WorkerIDs),WorkerIDs]),
     
     %% receive all of the workers
@@ -606,13 +620,14 @@ when is_atom(Label) and (Label=:=_Label) and is_list(Resets) ->
     % io:format("\nReceived from all (~p) workers.\n",[length(WorkerIDs)]),
 
     %% undo suprpesion of eval messages
-    ets:insert(toast_checker_ets,{show_trace,ShowTrace}),
+    % ets:insert(toast_checker_ets,{{show_trace,self()},ShowTrace}),
+    % set_show_trace(ShowTrace),
 
     %% add to traces
-    OutTraces = add_to_trace(TraceList,'Recv'),
+    OutTraces = add_to_trace(TraceList,'Recv')
 
-    %% undo suprpesion of eval messages
-    ets:insert(toast_checker_ets,{show_trace,ShowTrace})
+    % %% undo suprpesion of eval messages
+    % ets:insert(toast_checker_ets,{{show_trace,self()},ShowTrace})
   end,
 
   %% if Delta is only a tuple, and not a map containing other roles, then do not check E-reading
@@ -637,33 +652,40 @@ when is_atom(Label) and (Label=:=_Label) and is_list(Resets) ->
   ?assert(Signal2=:=ok),
   ?assert(is_boolean(FeasibleConstraints)),
 
-  % FeasibleConstraints = true, %% TODO temporary
-
   %% construct premise and return
   Premise = InitialContinuation and Continuation and FeasibleConstraints and NotEReading,
-  show_trace('Recv',Premise,{InitialContinuation,Continuation,FeasibleConstraints,NotEReading}),
+
+
+  % %% if premise fail, print
+  % case Premise of true -> ok; _ -> case ShowPrint of true -> ok; _ ->
+  %   io:format("\n> > > Rule [Recv], premise fail: ~p\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[{InitialContinuation,Continuation,FeasibleConstraints,NotEReading},_Process,Clocks,Type])
+  % end end,
+
+  show_trace('Recv',Premise,{InitialContinuation,Continuation,FeasibleConstraints,NotEReading},ShowPrint),
   {Premise, lists:uniq(OutTraces)};
 %%
 
 %% @doc helper function to wrap any lone branch process type in list (to reapply rule [Recv])
 %% @see rule [Recv]
-rule(Gamma, Theta, {_Role,'->',E,{Label,_Payload},P}=_Process, {Clocks,Type}=_Delta)
-when is_list(Type) -> rule(Gamma, Theta, {_Role,'->',E,[{{Label,_Payload},P}]}, {Clocks,Type});
+rule(Gamma, Theta, {_Role,'->',E,{Label,_Payload},P}=_Process, {Clocks,Type}=_Delta, #{show_print:=_ShowPrint}=_Args)
+when is_list(Type) -> rule(Gamma, Theta, {_Role,'->',E,[{{Label,_Payload},P}]}, {Clocks,Type}, _Args);
 
 
 %% @doc helper function to wrap any lone interact type in list (now that we are past rule [Recv])
 %% @see rule [Recv]
-rule(Gamma, Theta, Process, {Clocks,Type}=_Delta)
-when is_tuple(Type) -> rule(Gamma, Theta, Process, {Clocks,toast:interactions(Type)});
+rule(Gamma, Theta, Process, {Clocks,Type}=_Delta, #{show_print:=_ShowPrint}=_Args)
+when is_tuple(Type) -> rule(Gamma, Theta, Process, {Clocks,toast:interactions(Type)}, _Args);
 
 
 
 %% @doc rule [Send]
 %% type-checking one send from type
-rule(Gamma, Theta, {_Role,'<-',{Label,_Payload},P}=_Process, {Clocks,Type}=_Delta)
+rule(Gamma, Theta, {_Role,'<-',{Label,_Payload},P}=_Process, {Clocks,Type}=_Delta, #{show_print:=ShowPrint}=_Args)
 when is_list(Type) ->
 
-io:format("\n\n/ / / /[Send]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,Clocks,Type]),
+  case ShowPrint of true ->
+  io:format("\n\n/ / / /[Send]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,Clocks,Type]),
+  ok; _ -> ok end,
 
 
   %% for each interaction in type, for those that are sending, check their labels match, and add to exists -- there should only be one
@@ -692,7 +714,7 @@ io:format("\n\n/ / / /[Send]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,Cl
   end, Clocks, Resets),
 
   %% continue type-checking (yields premise)
-  {Continuation, Trace} = rule(Gamma, Theta, P, {Clocks1,S}),
+  {Continuation, Trace} = rule(Gamma, Theta, P, {Clocks1,S}, _Args),
   
   %% update Trace
   Trace1 = add_to_trace(Trace,'Send'),
@@ -701,10 +723,10 @@ io:format("\n\n/ / / /[Send]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,Cl
   {Signal, SatisfiedConstraints} = ask_z3(satisfied_constraints,#{clocks=>Clocks,constraints=>Constraints}),
   ?assert(Signal=:=ok),
   ?assert(is_boolean(SatisfiedConstraints)),
-
+  
   %% construct premise and return
   Premise = Continuation and SatisfiedConstraints,
-  show_trace('Send',Premise,{Continuation,SatisfiedConstraints}),
+  show_trace('Send',Premise,{Continuation,SatisfiedConstraints},ShowPrint),
   {Premise, lists:uniq(Trace1)};
 %%
 
@@ -712,10 +734,12 @@ io:format("\n\n/ / / /[Send]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,Cl
 %% @doc rule [Branch]
 %% type-checking each reception in branch 
 %% @see rule [Recv]
-rule(Gamma, Theta, {Role,'->',E,Branches}=_Process, {Clocks,Type}=_Delta)
+rule(Gamma, Theta, {Role,'->',E,Branches}=_Process, {Clocks,Type}=_Delta, #{show_print:=ShowPrint}=_Args)
 when is_list(Branches) and is_list(Type) ->
 
+  case ShowPrint of true ->
   io:format("\n\n/ / / /[Branch]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,Clocks,Type]),
+  ok; _ -> ok end,
   
 
   %% for each reception in Type that is enabled now
@@ -760,7 +784,7 @@ when is_list(Branches) and is_list(Type) ->
     %% find matching branch, and evaluate
     true -> 
       Continuations = lists:foldl(fun({RecvType,RecvBranch}, InEvals) -> 
-        InEvals++[rule(Gamma,Theta,RecvBranch,{Clocks,RecvType})]
+        InEvals++[rule(Gamma,Theta,RecvBranch,{Clocks,RecvType}, _Args)]
       end, [], Pairings),
 
       %% check if all continuations passed & update trace
@@ -777,7 +801,7 @@ when is_list(Branches) and is_list(Type) ->
 
   %% construct premise and return
   Premise = Continuation,
-  show_trace('Branch',Premise,{Continuation}),
+  show_trace('Branch',Premise,{Continuation},ShowPrint),
   {Premise, lists:uniq(TraceList)};
 %%
 
@@ -785,15 +809,19 @@ when is_list(Branches) and is_list(Type) ->
 %% @doc rule [Timeout]
 %% type-checking branches with timeouts 
 %% @see rule [Branch]
-rule(Gamma, Theta, {Role,'->',E,Branches,'after',Q}=_Process, {Clocks,Type}=_Delta)
+rule(Gamma, Theta, {Role,'->',E,Branches,'after',Q}=_Process, {Clocks,Type}=_Delta, #{show_print:=ShowPrint}=_Args)
 when is_list(Branches) and is_list(Type) ->
   
+  case ShowPrint of true ->
   io:format("\n\n/ / / /[Timeout-P]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,Clocks,Type]),
+  ok; _ -> ok end,
   
   %% check via rule [Branch]
   {Continuation1, Trace1} = rule(Gamma, Theta, {Role,'->',E,Branches}, {Clocks,Type}),
 
+  case ShowPrint of true ->
   io:format("\n\n/ / / /[Timeout-Q]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,Clocks,Type]),
+  ok; _ -> ok end,
 
   %% check Q (let E pass over Theta and Clocks)
   case E of
@@ -801,14 +829,14 @@ when is_list(Branches) and is_list(Type) ->
     infinity -> Continuation2 = false, Trace2 = [];
 
     %% easy
-    0 -> {Continuation2, Trace2} = rule(Gamma, Theta, Q, {Clocks,Type});
+    0 -> {Continuation2, Trace2} = rule(Gamma, Theta, Q, {Clocks,Type}, _Args);
 
     %% incrememnt clocks and timers by E, then type-check against Q
     {Less,_ValE} -> 
       ValE = case Less of 'leq' -> _ValE; 'les' -> _ValE-minimal_precision(); _ -> io:format("\n\n(~p) Warning, the DBC in E is not recognised: ~p.\n",[?LINE,E]),_ValE end,
       Theta1 = increment_timers(Theta,ValE), 
       Clocks1 = increment_clocks(Clocks,ValE),
-      {Continuation2, Trace2} = rule(Gamma, Theta1, Q, {Clocks1,Type})
+      {Continuation2, Trace2} = rule(Gamma, Theta1, Q, {Clocks1,Type}, _Args)
 
   end,
 
@@ -817,14 +845,14 @@ when is_list(Branches) and is_list(Type) ->
 
   %% construct premise and return
   Premise = Continuation1 and Continuation2,
-  show_trace('Timeout',Premise,{Continuation1,Continuation2}),
+  show_trace('Timeout',Premise,{Continuation1,Continuation2},ShowPrint),
   {Premise, lists:uniq(Trace3)};
 %%
 
 
 %% @doc rule [IfTrue] or [IfFalse]
 %% type-checking if-true/if-false
-rule(Gamma, Theta, {'if',{Timer, DBC, Value}, 'then', P, 'else', Q}=_Process, {_Clocks,_Type}=Delta)
+rule(Gamma, Theta, {'if',{Timer, DBC, Value}, 'then', P, 'else', Q}=_Process, {_Clocks,_Type}=Delta, #{show_print:=ShowPrint}=_Args)
 ->
 
   %% determine if [IfTrue] or [IfFalse]
@@ -849,63 +877,70 @@ rule(Gamma, Theta, {'if',{Timer, DBC, Value}, 'then', P, 'else', Q}=_Process, {_
   %% if constraint true, then true
   case Constraint of 
     true ->
+      case ShowPrint of true ->
       io:format("\n\n/ / / /[IfTrue]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,_Clocks,_Type]),
+      ok; _ -> ok end,
 
       %% continue with P
-      {Continuation, Trace} = rule(Gamma, Theta, P, Delta),
+      {Continuation, Trace} = rule(Gamma, Theta, P, Delta, _Args),
 
       %% set rule name
       RuleName = 'IfTrue';
 
     _ -> 
-      io:format("\n\n/ / / /[IfTrue]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,_Clocks,_Type]),
+      case ShowPrint of true ->
+      io:format("\n\n/ / / /[IfFalse]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,_Clocks,_Type]),
+      ok; _ -> ok end,
 
       %% continue with P
-      {Continuation, Trace} = rule(Gamma, Theta, Q, Delta),
+      {Continuation, Trace} = rule(Gamma, Theta, Q, Delta, _Args),
 
       %% set rule name
       RuleName = 'IfFalse'
   end,
 
-
   %% merge traces and update
   Trace1 = add_to_trace(Trace,RuleName),
 
   %% construct premise and return
-  Premise = Continuation and Constraint,
-  show_trace(RuleName,Premise,{Continuation,Constraint}),
+  Premise = Continuation,
+  show_trace(RuleName,Premise,{Continuation},ShowPrint),
   {Premise, lists:uniq(Trace1)};
 %%
 
 
 %% @doc rule [Timer]
 %% type-checking setting timers
-rule(Gamma, Theta, {'set', Timer, P}=_Process, {_Clocks,_Type}=Delta)
+rule(Gamma, Theta, {'set', Timer, P}=_Process, {_Clocks,_Type}=Delta, #{show_print:=ShowPrint}=_Args)
 ->
+  case ShowPrint of true ->
   io:format("\n\n/ / / /[Timer]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,_Clocks,_Type]),
+  ok; _ -> ok end,
 
   %% set timer to 0 (regardless of if it existed before or not)
   Theta1 = maps:put(Timer, 0, Theta),
 
   %% continue type-checking (yields premise)
-  {Continuation, Trace} = rule(Gamma, Theta1, P, Delta),
+  {Continuation, Trace} = rule(Gamma, Theta1, P, Delta, _Args),
   
   %% update Trace
   Trace1 = add_to_trace(Trace,'Timer'),
 
   %% construct premise and return
   Premise = Continuation,
-  show_trace('Timer',Premise,{Continuation}),
+  show_trace('Timer',Premise,{Continuation},ShowPrint),
   {Premise, lists:uniq(Trace1)};
 %%
 
 
 %% @doc rule [Del-delta]
 %% type-checking non-deterministic delays
-rule(Gamma, Theta, {'delay',{t, DBC, N},P}=_Process, {_Clocks,_Type}=Delta)
+rule(Gamma, Theta, {'delay',{t, DBC, N},P}=_Process, {_Clocks,_Type}=Delta, #{show_print:=ShowPrint}=_Args)
 when is_atom(DBC) and (is_atom(N) or is_integer(N)) ->
   
-  io:format("\n\n/ / / /[Del-Delta]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,_Clocks,_Type]),
+  case ShowPrint of true ->
+  io:format("\n\n/ / / /[Del-delta]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,_Clocks,_Type]),
+  ok; _ -> ok end,
 
 
   MinimalPrecision = minimal_precision(),
@@ -954,17 +989,18 @@ when is_atom(DBC) and (is_atom(N) or is_integer(N)) ->
   end,
 
   %% show initial trace now, with minimal value 
-  {InitialContinuation,InitialTrace} = rule(Gamma, Theta, {'delay',Init, P}, Delta),
+  {InitialContinuation,InitialTrace} = rule(Gamma, Theta, {'delay',Init, P}, Delta, _Args),
 
-  io:format("\nBoundMap: ~p.\n",[BoundMap]),
+  % io:format("\nBoundMap: ~p.\n",[BoundMap]),
 
   %% suppress messages of eval
-  ShowTrace = show_trace(),
-  ets:insert(toast_checker_ets,{show_trace,false}),
+  % ShowTrace = get_show_trace(),
+  % % ets:insert(toast_checker_ets,{{show_trace,self()},false}),
+  % set_show_trace(false),
 
   %% use worker functions to calculate in parallel
   % Self = self(),
-  WorkerIDs = start_evaluation_workers(premise_del_delta, {Gamma,Theta,P,Delta}, BoundMap),
+  WorkerIDs = start_evaluation_workers(premise_del_delta, {Gamma,Theta,P,Delta}, maps:put(show_print,?WORKER_SHOW_TRACE,BoundMap)),
   % io:format("\n\n[Del-delta], Started (~p) workers: ~w.\n",[length(WorkerIDs),WorkerIDs]),
   
   %% receive all of the workers
@@ -985,27 +1021,30 @@ when is_atom(DBC) and (is_atom(N) or is_integer(N)) ->
   OutTraces = add_to_trace(TraceList,'Del-delta'),
 
   %% undo suprpesion of eval messages
-  ets:insert(toast_checker_ets,{show_trace,ShowTrace}),
+  % ets:insert(toast_checker_ets,{{show_trace,self()},ShowTrace}),
+  % set_show_trace(ShowTrace),
 
   %% construct premise and return
   Premise = InitialContinuation and Continuation,
-  show_trace('Del-delta',Premise,{InitialContinuation,Continuation}),
+  show_trace('Del-delta',Premise,{InitialContinuation,Continuation},ShowPrint),
   {Premise, lists:uniq(OutTraces)};
 %%
 
 
 %% @doc rule [Del-t]
 %% type-checking determined delays
-rule(Gamma, Theta, {'delay',T,P}=_Process, {Clocks,Type}=_Delta)
-->
+rule(Gamma, Theta, {'delay',T,P}=_Process, {Clocks,Type}=_Delta, #{show_print:=ShowPrint}=_Args)
+when is_number(T) ->
+  case ShowPrint of true ->
   io:format("\n\n/ / / /[Del-t]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,Clocks,Type]),
+  ok; _ -> ok end,
 
   %% increment timers and clocks y T
   Theta1 = increment_timers(Theta,T),
   Clocks1 = increment_timers(Clocks,T),
 
   %% continue type-checking (yields premise)
-  {Continuation, Trace} = rule(Gamma, Theta1, P, {Clocks1,Type}),
+  {Continuation, Trace} = rule(Gamma, Theta1, P, {Clocks1,Type}, _Args),
   
   %% update Trace
   Trace1 = add_to_trace(Trace,'Del-t'),
@@ -1017,16 +1056,24 @@ rule(Gamma, Theta, {'delay',T,P}=_Process, {Clocks,Type}=_Delta)
 
   %% construct premise and return
   Premise = Continuation and NotTReading,
-  show_trace('Del-t',Premise,{Continuation,NotTReading}),
+
+  % %% if premise fail, print
+  % case Premise of true -> ok; _ -> case ShowPrint of true -> ok; _ ->
+  %   io:format("\n> > > Rule [Del-t], premise fail: ~p\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[{Continuation,NotTReading},_Process,Clocks,Type])
+  % end end,
+
+  show_trace('Del-t',Premise,{Continuation,NotTReading},ShowPrint),
   {Premise, lists:uniq(Trace1)};
 %%
 
 
 %% @doc rule [Rec]
 %% type-checking recursive definitions
-rule(Gamma, Theta, {'def', P, 'as', {Var, Msgs}}=_Process, {_Clocks,_Type}=Delta)
+rule(Gamma, Theta, {'def', P, 'as', {Var, Msgs}}=_Process, {_Clocks,_Type}=Delta, #{show_print:=ShowPrint}=_Args)
 ->
+  case ShowPrint of true ->
   io:format("\n\n/ / / /[Rec]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,_Clocks,_Type]),
+  ok; _ -> ok end,
 
   %% check name not already used
   FreeName = not is_map_key(Var,Gamma),
@@ -1034,7 +1081,7 @@ rule(Gamma, Theta, {'def', P, 'as', {Var, Msgs}}=_Process, {_Clocks,_Type}=Delta
   Gamma1 = maps:put(Var,Msgs,Gamma),
   
   %% continue type-checking
-  {Continuation, Trace} = rule(Gamma1, Theta, P, Delta),
+  {Continuation, Trace} = rule(Gamma1, Theta, P, Delta, _Args),
   
   %% update Trace
   Trace1 = add_to_trace(Trace,'Var'),
@@ -1042,16 +1089,18 @@ rule(Gamma, Theta, {'def', P, 'as', {Var, Msgs}}=_Process, {_Clocks,_Type}=Delta
   %% construct premise and return
   Premise = Continuation and FreeName,
   io:format("\nRule [Rec] -> ~p. (~p)\n",[Premise,{Continuation,FreeName}]),
-  show_trace('Rec',Premise,{Continuation,FreeName}),
+  show_trace('Rec',Premise,{Continuation,FreeName},ShowPrint),
   {Premise, Trace1};
 %%
 
 
 %% @doc rule [Var]
 %% type-checking recursive calls
-rule(Gamma, _Theta, {'call', {Var, Msgs}}=_Process, {_Clocks,{'call', Name}=_Type}=_Delta)
+rule(Gamma, _Theta, {'call', {Var, Msgs}}=_Process, {_Clocks,{'call', Name}=_Type}=_Delta, #{show_print:=ShowPrint}=_Args)
 ->
-  io:format("\n\n/ / / /[Var]/ / / /\n"),
+  case ShowPrint of true ->
+  io:format("\n\n/ / / /[Var]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,_Clocks,_Type]),
+  ok; _ -> ok end,
 
   %% check names match
   NamesMatch = (Var=:=Name),
@@ -1068,39 +1117,39 @@ rule(Gamma, _Theta, {'call', {Var, Msgs}}=_Process, {_Clocks,{'call', Name}=_Typ
 
   %% construct premise and return
   Premise = NamesMatch and IsInGamma and MsgsValid,
-  show_trace('Var',Premise,{NamesMatch,IsInGamma,MsgsValid}),
+  show_trace('Var',Premise,{NamesMatch,IsInGamma,MsgsValid},ShowPrint),
   {Premise, ['Var']};
 %%
 
 
 %% @doc rule [End]
 %% type-checking termination type
-rule(_Gamma, _Theta, 'term'=_Process, {_Clocks,Type}=_Delta)
+rule(_Gamma, _Theta, 'term'=_Process, {_Clocks,Type}=_Delta, #{show_print:=ShowPrint}=_Args)
 ->
   % io:format("\n\n/ / / /[End]/ / / /\n"),
 
   %% type must be end
   Premise = (Type=:='end'),
-  show_trace('End',Premise,{Premise}),
+  show_trace('End',Premise,{Premise},ShowPrint),
   {Premise, ['End']};
 %%
 
 %% @doc rule [Weak]
 %% type-checking termination type
-rule(Gamma, Theta, Process, {_Clocks,'end'=_Type}=Delta)
+rule(Gamma, Theta, Process, {_Clocks,'end'=_Type}=Delta, #{show_print:=ShowPrint}=_Args)
 ->
   io:format("\n\n(~p) Warning, rule [Weak] indicates that the type as terminated, but the process has not.\n\nGamma:\t~p,\nTheta:\t~p,\nPrc:\t~p,\nDelta:~p.\n\n",[?LINE,Gamma, Theta, Process, Delta]),
-  show_trace('Weak',false,{false}),
+  show_trace('Weak',false,{false},ShowPrint),
   {false, ['Weak']};
 %%
 
 %% @doc special case, allow recursive type to be unfolded
-rule(Gamma, Theta, Process, {Clocks,{'def', _Name, S}=_Type}=_Delta)
--> rule(Gamma, Theta, Process, {Clocks, S});
+rule(Gamma, Theta, Process, {Clocks,{'def', _Name, S}=_Type}=_Delta, #{show_print:=_ShowPrint}=_Args)
+-> rule(Gamma, Theta, Process, {Clocks, S}, _Args);
 %%
 
 %% @doc unhandled case
-rule(Gamma, Theta, Process, Delta) ->
+rule(Gamma, Theta, Process, Delta, #{show_print:=_ShowPrint}=_Args) ->
   io:format("\n\n(~p) Warning, unhandled case:\nGamma:\t~p,\nTheta:\t~p,\nProcess:\t~p,\nDelta:~p.\n\n",[?LINE,Gamma, Theta, Process, Delta]),
   %% return false since unhandled
   {false, ['unknown']}.
@@ -1191,7 +1240,7 @@ when is_float(Float) ->
 % -spec start_evaluation_workers(atom(), {map(), map(), toast:process(), {map(),toast:types()}}, integer(), float(), float(), float()) -> list().
 
 %% @doc for starting the workers for rules (del-delta and recv)
-start_evaluation_workers(Kind, {_Gamma, _Theta, _P, _Delta}=Judgement, #{is_first:=IsFirst,is_last:=IsLast,is_lower_exclusive:=IsLowerExclusive,is_upper_exclusive:=IsUpperExclusive,lower:=Lower,upper:=Upper,decrement:=Decrement}) ->
+start_evaluation_workers(Kind, {_Gamma, _Theta, _P, _Delta}=Judgement, #{is_first:=IsFirst,is_last:=IsLast,is_lower_exclusive:=IsLowerExclusive,is_upper_exclusive:=IsUpperExclusive,lower:=Lower,upper:=Upper,decrement:=Decrement}=_Args) ->
   %% if upper is exclusive, set counter for first to be one precision out
   %% since the workers count down, this will ensure they do not evaluate inclusive of the bound
   %% if not first or last, then just set to 1.0
@@ -1207,7 +1256,7 @@ start_evaluation_workers(Kind, {_Gamma, _Theta, _P, _Delta}=Judgement, #{is_firs
   IsNextLast = case IsLast of true -> ?assert((abs(Upper-Lower)=<1)), false; _ -> (abs(Upper-Lower1)=<1.0) end,
   %% spawn worker for this integer
   PID = self(),
-  WorkerID = spawn(?MODULE, evaluation_worker, [Kind, Judgement, precision_rounding(Counter1), precision_rounding(T), Decrement, PID]),
+  WorkerID = spawn(?MODULE, evaluation_worker, [Kind, Judgement, precision_rounding(Counter1), precision_rounding(T), Decrement, PID, maps:get(show_print,_Args,?WORKER_SHOW_TRACE)]),
   %% create new map 
   Map1 = #{ is_upper_exclusive=>IsUpperExclusive,
             is_lower_exclusive=>IsLowerExclusive1,
@@ -1217,7 +1266,7 @@ start_evaluation_workers(Kind, {_Gamma, _Theta, _P, _Delta}=Judgement, #{is_firs
             is_last=>IsNextLast,
             is_first=>false },
   %% call to start next worker 
-  WorkerIDs = case IsLast of true -> []; _ -> start_evaluation_workers(Kind, Judgement, Map1) end,
+  WorkerIDs = case IsLast of true -> []; _ -> start_evaluation_workers(Kind, Judgement, maps:put(show_print,maps:get(show_print,_Args,?WORKER_SHOW_TRACE),Map1)) end,
   %% add to worker IDs and return
   IDs = WorkerIDs ++ [WorkerID],
   IDs;
@@ -1233,10 +1282,10 @@ start_evaluation_workers(Kind, {Gamma, Theta, P, Delta}=_Judgement, Map) ->
 
 
 %% @doc worker that tail-recursively evaluates delay of incrementing value.
--spec evaluation_worker(atom(), {map(), map(), toast:process(), {map(),toast:types()}}, float(), float(), float(), pid()) -> atom().
+-spec evaluation_worker(atom(), {map(), map(), toast:process(), {map(),toast:types()}}, float(), float(), float(), pid(), boolean()) -> atom().
 
 %% @doc the first iteration of the worker sends back the result, evaluates a delay of T-Decrement, and calls the next decrememnt
-evaluation_worker(premise_recv=Kind, {Gamma, Theta, P, {#{clocks:=Clocks,resets:=Resets},Type}}=Judgement, Counter, T, Decrement, PID)
+evaluation_worker(premise_recv=Kind, {Gamma, Theta, P, {#{clocks:=Clocks,resets:=Resets},Type}}=Judgement, Counter, T, Decrement, PID, ShowPrint)
 when is_float(T) and is_float(Decrement) ->
   %% increment clocks and timers
   Theta1 = increment_timers(Theta,T),
@@ -1246,12 +1295,12 @@ when is_float(T) and is_float(Decrement) ->
     maps:put(Clock,0,NewClocks)
   end, Clocks1, Resets),
   %% evaluate for this current value of T
-  {Result,Trace1} = rule(Gamma,Theta1,P,{Clocks2,Type}),
+  {Result,Trace1} = rule(Gamma,Theta1,P,{Clocks2,Type},#{show_print=>ShowPrint}),
   %% establish next decrement
   T1 = T - Decrement,
   Counter1 = Counter - Decrement,
   %% call next 
-  {NextEval,Trace2} = evaluation_worker(Kind, Judgement, precision_rounding(Counter1), precision_rounding(T1), Decrement),
+  {NextEval,Trace2} = evaluation_worker(Kind, Judgement, precision_rounding(Counter1), precision_rounding(T1), Decrement, ShowPrint),
   %% send results to PID
   Holds = Result and NextEval,
   PID ! {self(), {eval, {Holds,[Trace1]++Trace2}}, {range, T-Counter, T}},
@@ -1260,15 +1309,15 @@ when is_float(T) and is_float(Decrement) ->
 %%
 
 %% @doc the first iteration of the worker sends back the result, evaluates a delay of T-Decrement, and calls the next decrememnt
-evaluation_worker(premise_del_delta=Kind, {Gamma, Theta, P, Delta}=Judgement, Counter, T, Decrement, PID)
+evaluation_worker(premise_del_delta=Kind, {Gamma, Theta, P, Delta}=Judgement, Counter, T, Decrement, PID, ShowPrint)
 when is_float(T) and is_float(Decrement) ->
   %% evaluate for this current value of T
-  {Result,Trace1} = rule(Gamma,Theta,{'delay',T,P},Delta),
+  {Result,Trace1} = rule(Gamma,Theta,{'delay',T,P},Delta,#{show_print=>ShowPrint}),
   %% establish next decrement
   T1 = T - Decrement,
   Counter1 = Counter - Decrement,
   %% call next 
-  {NextEval,Trace2} = evaluation_worker(Kind, Judgement, precision_rounding(Counter1), precision_rounding(T1), Decrement),
+  {NextEval,Trace2} = evaluation_worker(Kind, Judgement, precision_rounding(Counter1), precision_rounding(T1), Decrement, ShowPrint),
   %% send results to PID
   Holds = Result and NextEval,
   PID ! {self(), {eval, {Holds,[Trace1]++Trace2}}, {range, T-Counter, T}},
@@ -1277,17 +1326,17 @@ when is_float(T) and is_float(Decrement) ->
 %%
 
 %% @doc unexpected worker starter
-evaluation_worker(Kind, {Gamma, Theta, P, Delta}=_Judgement, Counter, T, Decrement, PID)
+evaluation_worker(Kind, {Gamma, Theta, P, Delta}=_Judgement, Counter, T, Decrement, PID, _ShowPrint)
 when is_float(T) and is_float(Decrement) ->
   io:format("\n\n(~p) Warning, unknown evaluation_worker called: ~p.\nGamma: ~p, Theta: ~p,\nP: ~p,\nDelta: ~p,\nCounter: ~p,\nT: ~p,\nDecrement: ~p,\nPID: ~p.\n",[?LINE,Kind, Gamma, Theta, P, Delta, Counter, T, Decrement,PID]),
   ok.
 %%
 
 
--spec evaluation_worker(atom(), {map(), map(), toast:process(), {map(),toast:types()}}, integer(), float(), float()) -> {boolean(),list()}.
+-spec evaluation_worker(atom(), {map(), map(), toast:process(), {map(),toast:types()}}, integer(), float(), float(), boolean()) -> {boolean(),list()}.
 
 %% @doc for catching the final evaluation
-evaluation_worker(premise_recv=_Kind, {Gamma, Theta, P, {#{clocks:=Clocks,resets:=Resets},Type}}, Counter, T, _Decrement)
+evaluation_worker(premise_recv=_Kind, {Gamma, Theta, P, {#{clocks:=Clocks,resets:=Resets},Type}}, Counter, T, _Decrement, ShowPrint)
 when (Counter=<0) ->
   %% increment clocks and timers
   Theta1 = increment_timers(Theta,T),
@@ -1297,13 +1346,13 @@ when (Counter=<0) ->
     maps:put(Clock,0,NewClocks)
   end, Clocks1, Resets),
   %% evaluate for this current value of T
-  {Result,Trace} = rule(Gamma,Theta1,P,{Clocks2,Type}),
+  {Result,Trace} = rule(Gamma,Theta1,P,{Clocks2,Type},#{show_print=>ShowPrint}),
   %% return
   {Result,[Trace]};
 %%
 
 %% @doc evaluates a delay of T-Decrement, and calls the next decrememnt
-evaluation_worker(premise_recv=Kind, {Gamma, Theta, P, {#{clocks:=Clocks,resets:=Resets},Type}}=Judgement, Counter, T, Decrement)
+evaluation_worker(premise_recv=Kind, {Gamma, Theta, P, {#{clocks:=Clocks,resets:=Resets},Type}}=Judgement, Counter, T, Decrement, ShowPrint)
 when is_float(T) and is_float(Decrement) ->
   %% increment clocks and timers
   Theta1 = increment_timers(Theta,T),
@@ -1313,43 +1362,43 @@ when is_float(T) and is_float(Decrement) ->
     maps:put(Clock,0,NewClocks)
   end, Clocks1, Resets),
   %% evaluate for this current value of T
-  {Result,Trace1} = rule(Gamma,Theta1,P,{Clocks2,Type}),
+  {Result,Trace1} = rule(Gamma,Theta1,P,{Clocks2,Type},#{show_print=>ShowPrint}),
   %% establish next decrement
   T1 = T - Decrement,
   Counter1 = Counter - Decrement,
   %% call next 
-  {NextEval,Trace2} = evaluation_worker(Kind, Judgement, precision_rounding(Counter1), precision_rounding(T1), Decrement),
+  {NextEval,Trace2} = evaluation_worker(Kind, Judgement, precision_rounding(Counter1), precision_rounding(T1), Decrement, ShowPrint),
   %% return result
   Holds = Result and NextEval,
   {Holds,[Trace1]++Trace2};
 %%
 
 %% @doc for catching the final evaluation
-evaluation_worker(premise_del_delta=_Kind, {Gamma, Theta, P, Delta}, Counter, T, _Decrement)
+evaluation_worker(premise_del_delta=_Kind, {Gamma, Theta, P, Delta}, Counter, T, _Decrement, ShowPrint)
 when (Counter=<0) ->
   %% evaluate for this current value of T
-  {Result,Trace} = rule(Gamma,Theta,{'delay',T,P},Delta),
+  {Result,Trace} = rule(Gamma,Theta,{'delay',T,P},Delta,#{show_print=>ShowPrint}),
   %% return
   {Result,[Trace]};
 %%
 
 %% @doc evaluates a delay of T-Decrement, and calls the next decrememnt
-evaluation_worker(premise_del_delta=Kind, {Gamma, Theta, P, Delta}=Judgement, Counter, T, Decrement)
+evaluation_worker(premise_del_delta=Kind, {Gamma, Theta, P, Delta}=Judgement, Counter, T, Decrement, ShowPrint)
 when is_float(T) and is_float(Decrement) ->
   %% evaluate for this current value of T
-  {Result,Trace1} = rule(Gamma,Theta,{'delay',T,P},Delta),
+  {Result,Trace1} = rule(Gamma,Theta,{'delay',T,P},Delta,#{show_print=>ShowPrint}),
   %% establish next decrement
   T1 = T - Decrement,
   Counter1 = Counter - Decrement,
   %% call next 
-  {NextEval,Trace2} = evaluation_worker(Kind, Judgement, precision_rounding(Counter1), precision_rounding(T1), Decrement),
+  {NextEval,Trace2} = evaluation_worker(Kind, Judgement, precision_rounding(Counter1), precision_rounding(T1), Decrement, ShowPrint),
   %% return result
   Holds = Result and NextEval,
   {Holds,[Trace1]++Trace2};
 %%
 
 %% @doc unknown worker
-evaluation_worker(Kind, {Gamma, Theta, P, Delta}, Counter, T, Decrement) -> 
+evaluation_worker(Kind, {Gamma, Theta, P, Delta}, Counter, T, Decrement, _ShowPrint) -> 
   io:format("\n\n(~p) Warning, unknown evaluation_worker called: ~p.\nGamma: ~p, Theta: ~p,\nP: ~p,\nDelta: ~p,\nCounter: ~p,\nT: ~p,\nDecrement: ~p.\n",[?LINE,Kind, Gamma, Theta, P, Delta, Counter, T, Decrement]),
   false.
 %%
@@ -1377,12 +1426,55 @@ to_string(N) when is_binary(N) -> lists:flatten(io_lib:format("~w",[N]));
 to_string(N) when is_list(N) -> lists:flatten(N).
 
 %% @doc for the type-checker printing its trace as it goes
-show_trace(Rule,Pass,Premise) -> 
-  case show_trace() of 
+show_trace(Rule,Pass,Premise,ShowPrint) -> 
+  case (?DEFAULT_SHOW_TRACE and ShowPrint) of 
     true -> io:format("\nRule [~p] -> ~p. (~p)\n",[Rule,Pass,Premise]);
     _ -> ok
   end.
 %%
 
 %% @doc returns if trace should be shown
-show_trace() -> ets:member(toast_checker_ets, show_trace) andalso ets:lookup(toast_checker_ets, show_trace).
+% show_trace() -> ets:member(toast_checker_ets, {show_trace,self()}) andalso ets:lookup(toast_checker_ets, {show_trace,self()}).
+
+% get_show_trace() -> case ets:member(toast_checker_ets, show_trace) of 
+%   true -> 
+%     Ret = ets:lookup(toast_checker_ets, show_trace),
+%     ?assert(is_list(Ret)),
+%     {_,_Map} = lists:nth(1,Ret),
+%     ?assert(is_map(_Map)),
+%     maps:get(pid_to_list(self()),_Map,false);
+%   _ -> false
+%   end.
+% %%
+
+% set_show_trace(Val) -> 
+%   Map = case ets:member(toast_checker_ets, show_trace) of 
+%     true -> 
+%       Ret = ets:lookup(toast_checker_ets, show_trace),
+%       ?assert(is_list(Ret)),
+%       {_,_Map} = lists:nth(1,Ret),
+%       _Map;
+%     _ -> #{}
+%   end,
+%   ?assert(is_map(Map)),
+%   ets:insert(toast_checker_ets,{show_trace,maps:put(pid_to_list(self()),Val,Map)}).
+% %%
+
+% get_show_trace() -> 
+%   io:format("\n\n\n\n7.\n"),
+%   case ets:member(toast_checker_ets, {show_trace,pid_to_list(self())}) of 
+%     true -> 
+%       List = ets:lookup(toast_checker_ets, {show_trace,pid_to_list(self())}),
+%       ?assert(is_list(List)),
+%       {_,Ret} = lists:nth(1,List);
+%     _ -> Ret = false
+%   end,
+%   io:format("\n\n\n\n8. ~p\n",[Ret]),
+%   Ret.
+% %%
+
+% set_show_trace(Val) -> 
+%   io:format("\n\n\n\n9.\n"),
+%   ets:insert(toast_checker_ets,{{show_trace,pid_to_list(self())},Val}).
+% %%
+

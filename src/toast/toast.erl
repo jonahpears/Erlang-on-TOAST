@@ -387,9 +387,10 @@ tests(type_checking) -> [
                         %  {del_t_fail_send,[false]},
                         %  {del_t_recv,[false,true,false]},
                         %  {del_t_branch,[false,true,false]},
-                         {del_t_branch_cascade,[true]}
+                        %  {del_t_branch_cascade,[true]}
                         %  {del_delta_send,[true]}
                         %  {recv,[true,false]}
+                         {if_timer,[true,false]}
                          ];
 
 %% @doc tests for t-reading
@@ -444,8 +445,9 @@ when is_list(Names) and is_atom(_Name) and is_list(_Expected) ->
     %% for each expected
     {_,TestResults} = lists:foldl(fun(ExpectedResult, {Index, InTest}) ->
       {_,CurrentTest} = test(Kind,Name,Index),
-      io:format("\n~p:~p/~p, result/expected: ~p/~p.\n\n- - - - - - - -\n",[Kind,Name,Index,CurrentTest,ExpectedResult]),
-    %% return whether it was expected
+      io:format("\n~p:~p/~p, result/expected: ~p/~p.\n\n- - - - - - - -\n\n\n",[Kind,Name,Index,CurrentTest,ExpectedResult]),
+      timer:sleep(2000),
+      %% return whether it was expected
       {Index+1, InTest++[CurrentTest=:=ExpectedResult]}
     end, {1,[]},Expected),
     InResults++TestResults
@@ -481,6 +483,27 @@ when is_atom(_Name) and is_integer(_Index) ->
 
 %% @doc catch for returning once index has reached 0
 test(_Kind,_Name,0) -> true;
+
+%% @doc test for type-checking, rules [IfTrue]  and [IfFalse]
+test(type_checking=_Name, if_timer=_Kind, Index) ->
+  %% sending 
+  %% get process, type and clocks
+  Process = {'set', "x", {delay, {t,'leq',5}, {
+              'if', {"x", 'les', 5}, 
+              'then', {'p','<-',{a,undefined}, 'term'},
+              'else', {'p','->',infinity,{b,undefined}, 'term'}
+            }}},
+  Type = [{send,{a,none},{x,'les',5},[],'end'},
+          {recv,{b,none},{x,'geq',5},[],'end'}],
+  Clocks = [{x,Index-1}],
+  %% type check
+  Gamma = #{},
+  Theta = #{},
+  Result = checker:eval(Gamma, Theta, Process, {Clocks,Type}),
+  {IsTyped,_} = Result,
+  io:format("\n~p:~p/~p,\n\nGamma: ~p, Theta: ~p,\nPrc:\t~p,\nType:\t~p,\nClocks: ~p.\n\nIsTyped: ~p.",[_Name,_Kind,Index,Gamma,Theta,Process,Type,Clocks,IsTyped]),
+  {ok, IsTyped};
+%%
 
 %% @doc test for type-checking, rule [Recv] 
 test(type_checking=_Name, recv=_Kind, Index) ->
