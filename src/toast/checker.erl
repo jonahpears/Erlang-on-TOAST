@@ -2,478 +2,26 @@
 -compile(export_all).
 -compile(nowarn_export_all).
 
-%% how fine grained to check decimals
--define(DECIMAL_PRECISION,1).
-
--define(INFINITY,99).
-
--define(DEFAULT_SHOW_TRACE,true).
--define(WORKER_SHOW_TRACE,false).
-
--define(SHOW_V3_SNIPPET,false).
-
 
 -include_lib("stdlib/include/assert.hrl").
+-include("utils.hrl").
 
 
+%% special constraint used during type-checking for cascading receptions
+-type cascade () :: {toast_process:upper_bound(), toast_type:constraints()}.
 
-%% @doc wrapper function for calling the default function in the python program.
--spec z3(list()) -> any().
-z3(Args) -> z3(ask_z3, Args).
+-type sugar_interact_type () :: {toast_type:direction(), toast_type:msg(), cascade()|toast_type:constraints(), toast_type:resets(), sugar_toast_type()}.
 
-%% @doc python interface for calling specific functions that use z3
--spec z3(atom(), list()) -> any().
-z3(Name, [H|_T]=Args)
-when is_list(Args) and is_binary(H) ->
-  %% get filepath to python file (same dir)
-  Z3FilePath = filename:absname("")++"/src/toast/",
-  %% start python instance
-  {ok, P} = python:start([{python_path, [Z3FilePath]},{python, "python3"}]),
-  %% call function
-  Response = python:call(P, z3_interface, Name, Args),
-  % io:format("\nResponse: ~p.\n",[Response]),
-  %% close python instance
-  python:stop(P),
-  %% return response
-  Response.
-%%
+-type sugar_choice_type () :: [sugar_interact_type()].
 
-%% @doc helper functions to ask z3 via python in a more sensible (but convoluted way)
-%% this is necessary since some of the datatypes do not transfer well
--spec ask_z3(atom(), map()|list()) -> {atom(), boolean()|list()}.
+-type sugar_def_type () :: {'def', string(), sugar_toast_type()}.
 
-%% @doc constructs python code to ask z3 if constraint holds, given clocks
-ask_z3(satisfied_constraints=_Kind, #{clocks:=Clocks,constraints:=Constraints}) 
-when is_map(Clocks) ->
-  %% build build super-constraint string and see if it holds
-  ExecString = to_python_exec_string(satisfied_constraints, #{clocks=>Clocks,delta=>Constraints}),
-  case ?SHOW_V3_SNIPPET of true -> io:format("\n\n~p, ExecString:\n~s\n.",[_Kind,ExecString]); _ -> ok end,
-  %% send to python program and get response
-  Z3Response = z3(ask_z3,[list_to_binary(ExecString)]),
-  case ?SHOW_V3_SNIPPET of true -> 
-  io:format("\n\n~p, ExecString:\n~s\n\nResponse: ~p.\n",[_Kind,ExecString,Z3Response]); _ -> ok end,
-  %% return result
-  {ok, Z3Response};
-%%
+-type sugar_toast_type () :: sugar_interact_type() 
+                           | sugar_choice_type()
+                           | sugar_def_type()
+                           | toast_type:call_type()
+                           | toast_type:term_type().
 
-%% @doc constructs python code to ask z3 if constraint holds, given clocks and INFINITY upperbound
-ask_z3(feasible_constraints=_Kind, #{clocks:=Clocks,constraints:=Constraints,e:='infinity'=E}) 
-when is_map(Clocks) ->
-  %% build build super-constraint string and see if it holds
-  ExecString = to_python_exec_string(feasible_constraints, #{clocks=>Clocks,delta=>Constraints,e=>E}),
-  case ?SHOW_V3_SNIPPET of true -> io:format("\n\n~p, (infinity) ExecString:\n~s\n.",[_Kind,ExecString]); _ -> ok end,
-  %% send to python program and get response
-  Z3Response = z3(ask_z3,[list_to_binary(ExecString)]),
-  case ?SHOW_V3_SNIPPET of true -> 
-  io:format("\n\n~p, (infinity) ExecString:\n~s\n\nResponse: ~p.\n",[_Kind,ExecString,Z3Response]); _ -> ok end,
-  %% return result
-  {ok, Z3Response};
-%%
-
-%% @doc constructs python code to ask z3 if constraint holds, given clocks and non-infinite upperbound
-ask_z3(feasible_constraints=_Kind, #{clocks:=Clocks,constraints:=Constraints,e:=E}) 
-when is_map(Clocks) ->
-  %% build build super-constraint string and see if it holds
-  ExecString = to_python_exec_string(feasible_constraints, #{clocks=>Clocks,delta=>Constraints,e=>E}),
-  case ?SHOW_V3_SNIPPET of true -> io:format("\n\n~p, (non-infinity) ExecString:\n~s\n.",[_Kind,ExecString]); _ -> ok end,
-  %% send to python program and get response
-  Z3Response = z3(ask_z3,[list_to_binary(ExecString)]),
-  case ?SHOW_V3_SNIPPET of true -> 
-  io:format("\n\n~p, (non-infinity) ExecString:\n~s\n\nResponse: ~p.\n",[_Kind,ExecString,Z3Response]); _ -> ok end,
-  %% return result
-  {ok, Z3Response};
-%%
-
-%% @doc for each Clock valuation, asks z3 to check if they are t_reading
-ask_z3(t_reading, #{clocks:=Clocks,type:=Type,t:=_T})
-when is_map(Clocks) and is_float(_T) ->
-  %% round T down to accepted precision
-  T = precision_rounding(_T),
-  %% get as list of interactions
-  Interactions = toast:interactions(Type),
-
-  %% get only constraints of receptions
-  ReceptionConstraints = lists:foldl(fun({Direction,_Msg,Constraints,_Resets,_S}=_I, In) ->
-    case Direction of 
-      send -> In; %% do nothing, skip this interaction
-      recv -> In++[Constraints] %% add constraints to list
-    end
-  end, [], Interactions),
-
-  %% if no receptions, then t_reading false
-  case length(ReceptionConstraints)==0 of 
-    true -> {ok, false};
-
-    %% otherise, receptions
-    _ ->
-      %% for each reception, go through each clock and ask z3 if there exists t'<t such that constraints are satisfied
-      AskZ3 = lists:foldl(fun(Constraints, {IsOk, InSat}) ->
-        %% get python string to execute using z3
-        ExecString = to_python_exec_string(t_reading, #{clocks=>Clocks,delta=>Constraints,t=>T}),
-        %% send to python program and get response
-        Z3Response = z3(ask_z3,[list_to_binary(ExecString)]),
-        % io:format("\n\nt_reading, ExecString:\n~s\n\tResponse: ~p.",[ExecString,Z3Response]),
-
-        %% check IsOk
-        case IsOk of
-          %% check if response was okay from z3
-          ok -> 
-            case is_boolean(Z3Response) of 
-              %% is ok
-              true -> {ok, (InSat and Z3Response)};
-              %% not okay, some error
-              _ -> {error, [InSat,Z3Response]}
-            end;
-
-          %% not okay, continue to collect results in list, in attempt to analyse them afterwards
-          _Err -> {IsOk, [InSat,Z3Response]}
-
-        end
-
-      end, {ok,true}, ReceptionConstraints),
-      %% check response from z3
-      case AskZ3 of %lists:foldl(AskZ3, {ok, true}, ReceptionConstraints)
-
-        {ok, IsSatisfied} -> {ok, IsSatisfied};
-
-        Err -> 
-          io:format("\nError, t_reading did not return as expected...\nResult:\t~p.\n",[Err]),
-          Err
-
-      end
-  end;
-%%
-
-%% @doc inverse of t_reading
-%% @see ask_z3(t_reading, {Clocks,T})
-ask_z3(not_t_reading, #{clocks:=_Clocks,type:=_Type,t:=_T}=Map) 
-when is_map(_Clocks) and is_float(_T) ->
-  %% inverse t_reading
-  case ask_z3(t_reading, Map) of 
-    {ok, Result} -> {ok, not Result};
-    Err -> 
-      io:format("\nError, not_t_reading did not return as expected...\nResult:\t~p.\n",[Err]),
-      Err
-  end; 
-%%
-
-
-%% @doc catch for unrecognised (invalid) questions for z3
-ask_z3(Unknown, Args) ->
-  io:format("\n\n(~p) Warning, ~p, unrecognised question: ~p,\n\twith args: ~p.\n",[?LINE,?FUNCTION_NAME,Unknown,Args]),
-  {unknown,false}.
-%%
-
-
-
-%% @doc helper function for converting constraints to string to be used by python
--spec to_python_exec_string(atom(), map()) -> string()|{{list(),list()},string()}|{list(),list(),list()}.
-
-%% @doc build delta string, and prepare z3 python code to query if it is sat given the clock valuations
-to_python_exec_string(satisfied_constraints, #{clocks:=Clocks,delta:=Constraints})
-when is_map(Clocks) ->
-  %% stringify Delta
-  {{VarList,ClockList}, DeltaString} = to_python_exec_string(constraints, #{delta=>Constraints}),
-  %% make sure each clock in ClockList is instantiated.
-  Clocks1 = instansiate_clocks(Clocks,ClockList),
-  %% build code for constants
-  {ConstantNames, ConstantNamesSep, ConstantDeclarations} = to_python_exec_string(vars, #{vars=>VarList,datatype=>int}),
-  %% build code for clocks
-  {ClockNames, ClockNamesSep, ClockDeclarations} = to_python_exec_string(vars, #{vars=>maps:to_list(Clocks1),datatype=>float}),
-  %% denote if multiple constants
-  IntString = case length(VarList)>1 of true -> "Ints"; _ -> "Int" end,
-  RealString = case length(maps:keys(Clocks1))>1 of true -> "Reals"; _ -> "Real" end,
-  %% build exec python string (for z3)
-  ExecString = io_lib:format("~s = ~s('~s')\n~s = ~s('~s')\ns = Solver()\ns.add(~s, ~s)\ns.add(~s)\nresult = s.check()",[ConstantNamesSep,IntString,ConstantNames,ClockNamesSep,RealString,ClockNames,ClockDeclarations,ConstantDeclarations,DeltaString]),
-  %% return string
-  ExecString;
-%%
-
-
-%% @doc build delta string for z3 python, for checking constraints are satisfied for duration of infinity=E
-to_python_exec_string(feasible_constraints, #{clocks:=Clocks,delta:=Constraints,e:=E}) ->
-  %% cosntruct E
-  case E of 'infinity' ->
-      StringE = "e = fpInfinity(FPSort(8,24),False)",
-      StringT = "t = FP('t',FPSort(8,24))",
-      StringTExpr = "texpr = fpLEQ(t,e)",
-      IsInfinity = true;
-    _ -> 
-      {EVal, StringDBC} = case E of {'leq',_EVal} -> {_EVal," <= "}; {'les',_EVal} -> {_EVal," < "}; 0 -> {0," == "}; _ -> io:format("\n\n(~p) Warning, unexpected E: ~p.\n",[?LINE,E]), {-1,'les'} end,
-      StringE = io_lib:format("e = Real('e')\ns.add(e==~w)",[EVal]),
-      StringT = "t = Real('t')",
-      StringTExpr = "texpr = t"++StringDBC++"e",
-      IsInfinity = false
-  end,
-  %% solver
-  Solver = "s = Solver()",
-  %% extract vars and string
-  {{VarList,ClockList}, DeltaString} = to_python_exec_string(constraints, #{delta=>Constraints,add_t=>true,as_z3_fp=>IsInfinity}),
-  %% make sure each clock in ClockList is instantiated.
-  Clocks1 = instansiate_clocks(Clocks,ClockList),
-
-  %% if infinity, no constants
-  IntString = case IsInfinity of 
-    true -> "";
-    _ ->
-    %% otherwise, constants
-    %% build code for constants
-    {ConstantNames, ConstantNamesSep, ConstantDeclarations} = to_python_exec_string(vars, #{vars=>VarList,datatype=>int}),
-    
-    % denote if multiple constants
-    IntFunString = case length(VarList)>1 of true -> "Ints"; _ -> "Int" end,
-    io_lib:format("\n~s = ~s('~s')\ns.add(~s)",[ConstantNamesSep,IntFunString,ConstantNames,ConstantDeclarations])
-  end,
-  
-  %% build code for clocks
-  {ClockNames, ClockNamesSep, ClockDeclarations} = to_python_exec_string(vars, #{vars=>maps:to_list(Clocks1),datatype=>float}),
-
-  RealFunString = case length(maps:to_list(Clocks1))>1 of true -> "Reals"; _ -> "Real" end,
-  RealString = io_lib:format("~s = ~s('~s')",[ClockNamesSep,RealFunString,ClockNames]),
-
-  VarSetupString = io_lib:format("~s\n~s\n~s\n~s",[StringE,StringT,RealString,StringTExpr]),
-
-  % io:format("\ne: ~s, t: ~s,\ntexpr: ~s, isinfinity: ~s,\ndelta: ~s.\n\n",[StringE,StringT,StringTExpr,IsInfinity,DeltaString]),
-  % timer:sleep(1000),
-
-  LhsString = "Implies(delta,texpr)",
-  RhsString = "Implies(texpr,delta)",
-
-  ExecString = io_lib:format("~s\n~s~s\ndelta = ~s\nlhs = ~s\nrhs = ~s\ns.add(~s)\ns.add(ForAll(t,Implies(0<=t,And(lhs,rhs))))\nresult = s.check()",[Solver,VarSetupString,IntString,DeltaString,LhsString,RhsString,ClockDeclarations]),
-
-  % io:format("\nexec string:\n~s\n.\n",[ExecString]),
-
-  % timer:sleep(5000),
-
-  ExecString;
-%%
-
-
-%% @doc build delta string, and prepare z3 python code to query if it is sat given the clock valuations
-to_python_exec_string(old_feasible_constraints, #{clocks:=Clocks,delta:=Constraints,e:=E})
-when is_map(Clocks) ->
-  {EVarList,EString} = to_python_exec_string(constraints, #{delta=>E,is_t=>true}),
-  io:format("\n1.\n"),
-  %% build code for e_timeout
-  {ENames, ENamesSep, EDeclarations} = to_python_exec_string(vars, #{vars=>maps:to_list(EVarList),datatype=>float}),
-  io:format("\n2.\n"),
-  %% stringify Delta
-  {{VarList,ClockList}, DeltaString} = to_python_exec_string(constraints, #{delta=>Constraints,add_t=>true}),
-  io:format("\n3.\n"),
-  %% make sure each clock in ClockList is instantiated.
-  Clocks1 = instansiate_clocks(Clocks,ClockList),
-  io:format("\n4.\n"),
-  %% build code for constants
-  {ConstantNames, ConstantNamesSep, ConstantDeclarations} = to_python_exec_string(vars, #{vars=>VarList,datatype=>int}),
-  io:format("\n5.\n"),
-  %% build code for clocks
-  io:format("\n6.\n"),
-  {ClockNames, ClockNamesSep, ClockDeclarations} = to_python_exec_string(vars, #{vars=>maps:to_list(Clocks1),datatype=>float}),
-  io:format("\n7.\n"),
-  %% denote if multiple constants
-  IntString = case length(VarList)>1 of true -> "Ints"; _ -> "Int" end,
-  %% build exec python string (for z3)
-  ExecString = io_lib:format("~s = ~s('~s')\nt, ~s ~s = Reals('t ~s ~s')\ns = Solver()\ns.add(~s, ~s, ~s)\ns.add(ForAll(t, t>=0, ~s, ~s))\nresult = s.check()",[ConstantNamesSep,IntString,ConstantNames,ENamesSep,ClockNamesSep,ENames,ClockNames,EDeclarations,ClockDeclarations,ConstantDeclarations,EString,DeltaString]),
-  %% return string
-  ExecString;
-%%
-
-%% @doc for each clock in Clocks, call z3 to see if there exists t'<T such that delta holds 
-%% this is only for simple constraints (no diagonal)
-%% ! make sure to initialise the variables of clocks always, including those within the delta -- later on be more clever about this and only test for clocks present in the delta
-to_python_exec_string(t_reading, #{clocks:=Clocks,delta:=Delta,t:=T}=_Args)
-when is_map(Clocks) and is_float(T) ->
-  %% stringify Delta
-  {{VarList,ClockList}, DeltaString} = to_python_exec_string(constraints, #{delta=>Delta,t_reading=>true}),
-  %% make sure each clock in ClockList is instantiated.
-  Clocks1 = instansiate_clocks(Clocks,ClockList),
-  %% build code for constants
-  {ConstantNames, ConstantNamesSep, ConstantDeclarations} = to_python_exec_string(vars, #{vars=>VarList,datatype=>int}),
-  %% build code for clocks
-  {ClockNames, ClockNamesSep, ClockDeclarations} = to_python_exec_string(vars, #{vars=>maps:to_list(Clocks1),datatype=>float}),
-  %% denote if multiple constants
-  IntString = case length(VarList)>1 of true -> "Ints"; _ -> "Int" end,
-  %% build exec python string (for z3)
-  ExecString = io_lib:format("~s = ~s('~s')\nt, t_, ~s = Reals('t t_ ~s')\ns = Solver()\ns.add(t==~w, ~s, ~s)\ns.add(Exists(t_,And(0<=t_,t_<t, ~s)))\nresult = s.check()",[ConstantNamesSep,IntString,ConstantNames,ClockNamesSep,ClockNames,T,ClockDeclarations,ConstantDeclarations,DeltaString]),
-  %% return string
-  ExecString;
-%%
-
-%% @doc catch constraints (negation)
-to_python_exec_string(constraints, #{delta:={'not',Constraints}}=Args) -> 
-  Offset = maps:get(offset,Args,""),
-  TReading = maps:get(t_reading,Args,false),
-  Negated = maps:get(negated,Args,false),
-  AddT = maps:get(add_t,Args,false),
-  IsT = maps:get(is_t,Args,false),
-  IsFP = maps:get(as_z3_fp,Args,false),
-  {VarList, ConstraintString} = to_python_exec_string(constraints, #{delta=>Constraints,offset=>Offset,t_reading=>TReading,negated=>not Negated,add_t=>AddT,is_t=>IsT,as_z3_fp=>IsFP}),
-  % {VarList, io_lib:format("Not(~s)",[ConstraintString])};
-  {VarList, ConstraintString};
-%%
-
-%% @doc catch constraints (conjunction) %! <- z3 fp
-to_python_exec_string(constraints, #{delta:={Constraints1,'and',Constraints2},as_z3_fp:=true=IsFP}=Args) -> 
-  Offset = maps:get(offset,Args,""),
-  TReading = maps:get(t_reading,Args,false),
-  Negated = maps:get(negated,Args,false),
-  AddT = maps:get(add_t,Args,false),
-  %% lhs
-  {{VarList1,ClockList1}, ConstraintString1} = to_python_exec_string(constraints, #{delta=>Constraints1,offset=>Offset++"1",t_reading=>TReading,negated=>Negated,add_t=>AddT,as_z3_fp=>IsFP}),
-  %% rhs
-  {{VarList2,ClockList2}, ConstraintString2} = to_python_exec_string(constraints, #{delta=>Constraints2,offset=>Offset++"2",t_reading=>TReading,negated=>Negated,add_t=>AddT,as_z3_fp=>IsFP}),
-  %% if t_reading, no need to wrap in And
-  DeltaString = case TReading of 
-      true -> io_lib:format("~s, ~s",[ConstraintString1,ConstraintString2]);
-      _ -> io_lib:format("And(~s, ~s)",[ConstraintString1,ConstraintString2])
-  end,
-  {{VarList1++VarList2,ClockList1++ClockList2}, DeltaString};
-%%
-
-%% @doc catch constraints  %! <- z3 fp
-to_python_exec_string(constraints, #{delta:={Clock,DBC,Constant},as_z3_fp:=true=IsFP}=Args)
-when is_atom(Clock) and is_atom(DBC) and is_integer(Constant) -> 
-  % Offset = maps:get(offset,Args,""),
-  Negated = maps:get(negated,Args,false),
-  % ConstantString = "n"++Offset,
-  %% get the z3 function for fp that corresponds to the dbc
-  FpFunc = to_python_exec_string(constraints, #{dbc=>DBC,negated=>Negated,as_z3_fp=>IsFP}),
-  % ConstantString = case Constant of 'infinity' -> "timeout_e"; _ -> "n"++Offset end,
-  AddT = maps:get(add_t,Args,false),
-  ClockString = case AddT of true -> io_lib:format("fpAdd(RNE(),~s,t)",[to_python_exec_string(clock_fp,#{clock=>Clock})]); _ -> to_python_exec_string(clock_fp,#{clock=>Clock}) end,
-  DeltaString = io_lib:format("~s(~s,~w)",[FpFunc,ClockString,to_float(Constant)]),
-  {{[],[Clock]},DeltaString};
-%%
-
-%% @doc catch constraints (diagonal) %! <- z3 fp
-to_python_exec_string(constraints, #{delta:={Clock1,'-',Clock2,DBC,Constant},as_z3_fp:=true=IsFP}=Args)
-when is_atom(Clock1) and is_atom(Clock2) and is_atom(DBC) and is_integer(Constant) -> 
-  % Offset = maps:get(offset,Args,""),
-  Negated = maps:get(negated,Args,false),
-  % ConstantString = "n"++Offset,
-  AddT = maps:get(add_t,Args,false),
-  %% get the z3 function for fp that corresponds to the dbc
-  FpFunc = to_python_exec_string(constraints, #{dbc=>DBC,negated=>Negated,as_z3_fp=>IsFP}),
-  %% construct the clock string (because fp, will need to add wrapper functions)
-  Clock1String = case AddT of true -> io_lib:format("fpAdd(RNE(),~s,t)",[to_python_exec_string(clock_fp,#{clock=>Clock1})]); _ -> to_python_exec_string(clock_fp,#{clock=>Clock1}) end,
-  Clock2String = case AddT of true -> io_lib:format("fpAdd(RNE(),~s,t)",[to_python_exec_string(clock_fp,#{clock=>Clock2})]); _ -> to_python_exec_string(clock_fp,#{clock=>Clock2}) end,
-  %% build string
-  DeltaString = io_lib:format("~s(fpSub(~s,~s),~w)",[FpFunc,Clock1String,Clock2String,to_float(Constant)]),
-  {{[],[Clock1,Clock2]},DeltaString};
-%%
-
-to_python_exec_string(clock_fp, #{clock:=Clock}) -> io_lib:format("fpRealToFP(RNE(),~w,Float32())",[Clock]);
-
-%% @doc catch constraints (conjunction)
-to_python_exec_string(constraints, #{delta:={Constraints1,'and',Constraints2}}=Args) -> 
-  Offset = maps:get(offset,Args,""),
-  TReading = maps:get(t_reading,Args,false),
-  Negated = maps:get(negated,Args,false),
-  AddT = maps:get(add_t,Args,false),
-  IsT = maps:get(is_t,Args,false),
-  {{VarList1,ClockList1}, ConstraintString1} = to_python_exec_string(constraints, #{delta=>Constraints1,offset=>Offset++"1",t_reading=>TReading,negated=>Negated,add_t=>AddT,is_t=>IsT}),
-  {{VarList2,ClockList2}, ConstraintString2} = to_python_exec_string(constraints, #{delta=>Constraints2,offset=>Offset++"2",t_reading=>TReading,negated=>Negated,add_t=>AddT,is_t=>IsT}),
-  %% if t_reading, no need to wrap in And
-  DeltaString = case TReading of 
-      true -> io_lib:format("~s, ~s",[ConstraintString1,ConstraintString2]);
-      _ -> io_lib:format("And(~s, ~s)",[ConstraintString1,ConstraintString2])
-  end,
-  {{VarList1++VarList2,ClockList1++ClockList2}, DeltaString};
-%%
-
-%% @doc catch constraints 
-to_python_exec_string(constraints, #{delta:={Clock,DBC,Constant}}=Args)
-when is_atom(Clock) and is_atom(DBC) and is_integer(Constant) -> 
-  Offset = maps:get(offset,Args,""),
-  TReading = maps:get(t_reading,Args,false),
-  Negated = maps:get(negated,Args,false),
-  IsT = maps:get(is_t,Args,false),
-  ConstantString = case IsT of true -> "timeout_e"; _ -> "n"++Offset end,
-  % ConstantString = case Constant of 'infinity' -> "timeout_e"; _ -> "n"++Offset end,
-  DeltaString = case TReading of 
-      true -> io_lib:format("(~w+t_)~s~s",[Clock,to_python_exec_string(constraints, #{dbc=>DBC,negated=>Negated}),ConstantString]);
-      _ -> 
-        AddT = maps:get(add_t,Args,false),
-        ClockString = io_lib:format("~w",[Clock]) ++ case AddT of true -> "+t"; _ -> "" end,
-        io_lib:format("~s~s~s",[ClockString,to_python_exec_string(constraints, #{dbc=>DBC,negated=>Negated}),ConstantString])
-  end,
-  %% if IsT then no clock, leave as is
-  case IsT of true -> {[{ConstantString,Constant}],DeltaString};
-   _ -> {{[{ConstantString,Constant}],[Clock]},DeltaString} end;
-%%
-
-%% @doc catch constraints (diagonal)
-to_python_exec_string(constraints, #{delta:={Clock1,'-',Clock2,DBC,Constant}}=Args)
-when is_atom(Clock1) and is_atom(Clock2) and is_atom(DBC) and is_integer(Constant) -> 
-  Offset = maps:get(offset,Args,""),
-  TReading = maps:get(t_reading,Args,false),
-  Negated = maps:get(negated,Args,false),
-  ConstantString = case maps:get(is_t,Args,false) of true -> "timeout_e"; _ -> "n"++Offset end,
-  % ConstantString = case Constant of 'infinity' -> "timeout_e"; _ -> "n"++Offset end,
-  DeltaString = case TReading of 
-      true -> io_lib:format("(~s+t_)-(~s+t_)~s~s",[Clock1,Clock2,to_python_exec_string(constraints, #{dbc=>DBC,negated=>Negated}),ConstantString]);
-      _ -> 
-        AddT = maps:get(add_t,Args,false),
-        Clock1String = io_lib:format("~w",[Clock1]) ++ case AddT of true -> "+t"; _ -> "" end,
-        Clock2String = io_lib:format("~w",[Clock2]) ++ case AddT of true -> "+t"; _ -> "" end,
-        io_lib:format("~s-~s~s~s",[Clock1String,Clock2String,to_python_exec_string(constraints, #{dbc=>DBC,negated=>Negated}),ConstantString])
-  end,
-  {{[{ConstantString,Constant}],[Clock1,Clock2]},DeltaString};
-%%
-
-%% @doc catch constraints (true)
-to_python_exec_string(constraints, #{delta:=true}=_Args) -> " True ";
-
-%% @doc catch DBC %! <- as z3 fp
-to_python_exec_string(constraints, #{dbc:='gtr',as_z3_fp:=true}=_Args) -> case maps:get(negated,_Args,false) of true -> "fpLEQ"; _ -> "fpGT" end;
-to_python_exec_string(constraints, #{dbc:='geq',as_z3_fp:=true}=_Args) -> case maps:get(negated,_Args,false) of true -> "fpLT"; _ -> "fpGEQ" end;
-to_python_exec_string(constraints, #{dbc:='les',as_z3_fp:=true}=_Args) -> case maps:get(negated,_Args,false) of true -> "fpGEQ"; _ -> "fpLT" end;
-to_python_exec_string(constraints, #{dbc:='leq',as_z3_fp:=true}=_Args) -> case maps:get(negated,_Args,false) of true -> "fpGT"; _ -> "fpLEQ" end;
-to_python_exec_string(constraints, #{dbc:='eq',as_z3_fp:=true}=_Args) -> case maps:get(negated,_Args,false) of true -> "fpNEQ"; _ -> "fpEQ" end;
-to_python_exec_string(constraints, #{dbc:='neq',as_z3_fp:=true}=_Args) -> case maps:get(negated,_Args,false) of true -> "fpEQ"; _ -> "fpNEQ" end;
-
-%% @doc catch DBC 
-to_python_exec_string(constraints, #{dbc:='gtr'}=_Args) -> case maps:get(negated,_Args,false) of true -> "<="; _ -> ">" end;
-to_python_exec_string(constraints, #{dbc:='geq'}=_Args) -> case maps:get(negated,_Args,false) of true -> "<"; _ -> ">=" end;
-to_python_exec_string(constraints, #{dbc:='les'}=_Args) -> case maps:get(negated,_Args,false) of true -> ">="; _ -> "<" end;
-to_python_exec_string(constraints, #{dbc:='leq'}=_Args) -> case maps:get(negated,_Args,false) of true -> ">"; _ -> "<=" end;
-to_python_exec_string(constraints, #{dbc:='eq'}=_Args) -> case maps:get(negated,_Args,false) of true -> "!="; _ -> "==" end;
-to_python_exec_string(constraints, #{dbc:='neq'}=_Args) -> case maps:get(negated,_Args,false) of true -> "=="; _ -> "!=" end;
-
-%% @doc build strings for vars (constants/clocks)
-to_python_exec_string(vars, #{vars:=Vars,datatype:=DataType}=_Args)
-when is_list(Vars) ->
-  {VarNames, VarNamesSep, VarDeclarations} = lists:foldl(fun({VarName,VarValue}, {InNames,InNamesSep,InDecls}) -> 
-    %% appropriatly stringify var name
-    VarString = case is_atom(VarName) of true -> atom_to_list(VarName)++case VarName of 'global' -> "_"; _ -> "" end; _ -> VarName end,
-    %% add t if necessary (only used in decls of clocks)
-    % VarString1 = case maps:get(add_t,_Args,false) of true -> VarString++"+t"; _ -> VarString end,
-    %% this will appear inside the "Ints(...)" call in the python with z3
-    NewNames = case length(InNames)==0 of true -> VarString; _ -> InNames++" "++VarString end,
-    NewNamesSep = case length(InNamesSep)==0 of true -> VarString; _ -> InNamesSep++", "++VarString end,
-    %% ensure value is of the correct form
-    VarTyped = case DataType of 
-      int -> to_integer(VarValue);
-      float -> to_float(VarValue);
-      % float -> binary_to_integer(list_to_binary(VarStr));
-      _ -> io:format("\n\n(~p) Warning, ~p, unrecognised datatype specified for VarValue: ~p. Leaving as is.\n",[?LINE,?FUNCTION_NAME,DataType]),VarValue
-    end,
-    %% this will be added to the "s.add(...)" to initialise the values of the constants
-    DeclString = case length(InDecls)==0 of true -> ""; _ -> InDecls++", " end,
-    NewDecls = to_string(io_lib:format("~s~s==~s",[DeclString,VarString,to_string(VarTyped)])),
-    % io:format("\n\nNewNames: ~p, NewNamesSep: ~p, NewDecls: ~p. (~p)\n",[NewNames,NewNamesSep,NewDecls,DataType]),
-    %% return strings as tuple
-    {NewNames,NewNamesSep,NewDecls}
-  end, {"", "", ""}, Vars),
-  %% return
-  {to_string(VarNames), to_string(VarNamesSep), to_string(VarDeclarations)};
-%%
-
-%% @doc catch unhandled kinds
-to_python_exec_string(Unknown, Args) ->
-  io:format("\n\n(~p) Warning, ~p, unrecognised mode: ~p,\n\twith args: ~p.\n",[?LINE,?FUNCTION_NAME,Unknown,Args]),
-  "".
-%%
 
 
 %% @doc helper function to rewrap via eval(map)
@@ -504,7 +52,7 @@ eval(Map) ->
   % set_show_trace(ShowTrace),
 
   %% begin eval
-  io:format("\nBeginning type-checking eval of:\nGamma: ~p,\nTheta: ~p,\nProcess: ~p,\nDelta: ~p.\n",[Gamma,Theta,Process,Delta]),
+  io:format("\nBeginning type-checking eval of:\nGamma: ~p,\nTheta: ~p,\nProcess: ~p,\nDelta: ~p.\n\n",[Gamma,Theta,Process,Delta]),
 
   _Eval = rule(Gamma,Theta,Process,Delta),
   {Pass,_Trace} = _Eval,
@@ -522,11 +70,11 @@ eval(Map) ->
 
 %% @doc type-checking rules
 %% @returns tuple of bool denoting if the result of the evaluation, and a list detailing the traces of rules visited.
--spec rule(map(), map(), toast:process(), map()) -> {boolean(), [[atom()]]} | {boolean(), [atom()]}.
+-spec rule(map(), map(), toast:process(), {map(),sugar_toast_type()}) -> {boolean(), [[atom()]]} | {boolean(), [atom()]}.
 rule(Gamma, Theta, Process, Delta) -> rule(Gamma, Theta, Process, Delta, #{show_print=>?DEFAULT_SHOW_TRACE}).
 
-
--spec rule(map(), map(), toast:process(), map(), map()) -> {boolean(), [[atom()]]} | {boolean(), [atom()]}.
+%% @doc wrapper for adding map of print args ^^
+-spec rule(map(), map(), toast:process(), {map(),sugar_toast_type()}, map()) -> {boolean(), [[atom()]]} | {boolean(), [atom()]}.
 
 %% @doc helper function to make sure /timersclocks are map not list of tuples
 rule(Gamma, Theta, Process, Delta, #{show_print:=_ShowPrint}=_Args) 
@@ -537,8 +85,8 @@ when is_list(Clocks) -> rule(Gamma, Theta, Process, {maps:from_list(Clocks),Type
 % %% @doc helper function to convert delta tuple into map
 % rule(Gamma, Theta, Process, {Role,Clocks,Type}) -> rule(Gamma, Theta, Process, #{Role=>{Clocks,Type}});
 
-%% @doc helper function to convert delta triple (currently unused) into tuple
-rule(Gamma, Theta, Process, {_Role,Clocks,Type}, #{show_print:=_ShowPrint}=_Args) -> rule(Gamma, Theta, Process, {Clocks,Type}, _Args);
+% %% @doc helper function to convert delta triple (currently unused) into tuple
+% rule(Gamma, Theta, Process, {_Role,Clocks,Type}, #{show_print:=_ShowPrint}=_Args) -> rule(Gamma, Theta, Process, {Clocks,Type}, _Args);
 
 
 %% @doc rule [Recv]
@@ -584,9 +132,12 @@ when is_atom(Label) and (Label=:=_Label) and is_list(Resets) ->
     _ -> io:format("\n\n(~p) Warning, DBC unsupported: ~p.\n",[?LINE, DBC]), {-1,#{}}
   end,
 
+  %% add received message to new gamma
+  Gamma1 = maps:put(_Payload,__Payload,Gamma),
+
   %% show initial trace now, with minimal value (which is always 0)
   %% continue type-checking (yields premise)
-  {InitialContinuation, InitialTrace} = rule(Gamma, Theta, P, {Clocks1,S}, _Args),
+  {InitialContinuation, InitialTrace} = rule(Gamma1, Theta, P, {Clocks1,S}, _Args),
 
   % io:format("\nBoundMap: ~p.\n",[BoundMap]),
 
@@ -602,8 +153,9 @@ when is_atom(Label) and (Label=:=_Label) and is_list(Resets) ->
     _ ->
 
     %% use worker functions to calculate in parallel
+    io:format("\n> > > (~p) Rule ['Recv'] -- evaluating range.\n",[self()]),
     % Self = self(),
-    WorkerIDs = start_evaluation_workers(premise_recv, {Gamma,Theta,P,{#{clocks=>Clocks,resets=>Resets},S}}, maps:put(show_print,?WORKER_SHOW_TRACE,BoundMap)),
+    WorkerIDs = workers:start_evaluation_workers(premise_recv, {Gamma1,Theta,P,{#{clocks=>Clocks,resets=>Resets},S}}, maps:put(show_print,?WORKER_SHOW_TRACE,BoundMap)),
     % io:format("\n\n[Recv], Started (~p) workers: ~w.\n",[length(WorkerIDs),WorkerIDs]),
     
     %% receive all of the workers
@@ -638,14 +190,19 @@ when is_atom(Label) and (Label=:=_Label) and is_list(Resets) ->
     _ -> io:format("\n\n(~p) Warning, rule [Recv] does not currently support Delta maps.\n",[?LINE]),
       %% ask z3 if Delta is not E-reading
       Duration = case E of infinity -> ?INFINITY; _ -> E end,
-      {Signal1, NotEReading} = ask_z3(not_t_reading,#{clocks=>Clocks,type=>Type,t=>to_float(Duration)}),
+      {Signal1, NotEReading} = z3:ask_z3(not_t_reading,#{clocks=>Clocks,type=>Type,t=>to_float(Duration)}),
       ?assert(Signal1=:=ok),
       ?assert(is_boolean(NotEReading))
   end,
 
-  %% TODO from here, and go to ask_z3/2 and to_python_exec_string (for constraints and actual code.)
-  %% TODO see z3 python example file
-  {Signal2, FeasibleConstraints} = ask_z3(feasible_constraints,#{clocks=>Clocks,constraints=>Constraints,e=>E}),
+  
+  {Signal2, FeasibleConstraints} = case Constraints of 
+    %% if Constraints is a cascade, then use the cascade bound
+    {cascade, BoundE, _Constraints} -> z3:ask_z3(feasible_constraints,#{clocks=>Clocks,constraints=>_Constraints,e=>BoundE});
+
+    %% otherwise, use normal constraints
+    _ -> z3:ask_z3(feasible_constraints,#{clocks=>Clocks,constraints=>Constraints,e=>E})
+  end,
 
   % %% ask z3 if Delta if constraints feasible (satisfied bimplies E)
   % {Signal2, FeasibleConstraints} = ask_z3(feasible_constraints,#{clocks=>Clocks,constraints=>Constraints,e=>Ez3}),
@@ -664,18 +221,6 @@ when is_atom(Label) and (Label=:=_Label) and is_list(Resets) ->
   show_trace('Recv',Premise,{InitialContinuation,Continuation,FeasibleConstraints,NotEReading},ShowPrint),
   {Premise, lists:uniq(OutTraces)};
 %%
-
-%% @doc helper function to wrap any lone branch process type in list (to reapply rule [Recv])
-%% @see rule [Recv]
-rule(Gamma, Theta, {_Role,'->',E,{Label,_Payload},P}=_Process, {Clocks,Type}=_Delta, #{show_print:=_ShowPrint}=_Args)
-when is_list(Type) -> rule(Gamma, Theta, {_Role,'->',E,[{{Label,_Payload},P}]}, {Clocks,Type}, _Args);
-
-
-%% @doc helper function to wrap any lone interact type in list (now that we are past rule [Recv])
-%% @see rule [Recv]
-rule(Gamma, Theta, Process, {Clocks,Type}=_Delta, #{show_print:=_ShowPrint}=_Args)
-when is_tuple(Type) -> rule(Gamma, Theta, Process, {Clocks,toast:interactions(Type)}, _Args);
-
 
 
 %% @doc rule [Send]
@@ -707,6 +252,7 @@ when is_list(Type) ->
   
   %% unpack
   {send, {_,_}, Constraints, Resets, S} = Send,
+  % io:format("\nsend: ~p.\n",[Send]),
 
   %% reset clocks
   Clocks1 = lists:foldl(fun(Clock, NewClocks) -> 
@@ -720,7 +266,7 @@ when is_list(Type) ->
   Trace1 = add_to_trace(Trace,'Send'),
 
   %% ask z3 if Delta if constraints satisfied
-  {Signal, SatisfiedConstraints} = ask_z3(satisfied_constraints,#{clocks=>Clocks,constraints=>Constraints}),
+  {Signal, SatisfiedConstraints} = z3:ask_z3(satisfied_constraints,#{clocks=>Clocks,constraints=>Constraints}),
   ?assert(Signal=:=ok),
   ?assert(is_boolean(SatisfiedConstraints)),
   
@@ -747,17 +293,24 @@ when is_list(Branches) and is_list(Type) ->
     %% check recv
     case Direction_j of 
       recv ->
+      %% fix constraints if cascading
+      {BoundE, Constraints} = case Constraints_j of 
+        {cascade,_BoundE,_Constraints_j} -> {_BoundE,_Constraints_j};
+        _ -> {E,Constraints_j}
+      end,
+
       %% ask z3 if Delta if constraints satisfied
-      {Signal_j, SatisfiedConstraints_j} = ask_z3(satisfied_constraints,#{clocks=>Clocks,constraints=>Constraints_j}),
+      {Signal_j, SatisfiedConstraints_j} = z3:ask_z3(satisfied_constraints,#{clocks=>Clocks,constraints=>Constraints}),
       ?assert(Signal_j=:=ok),
       ?assert(is_boolean(SatisfiedConstraints_j)),
       %% check if enabled
       case SatisfiedConstraints_j of 
         %% search for corresponding branch in process
         true -> 
+          % io:format("\n\nenabled, ~p,\n\tclocks: ~p.\n",[Type_j,Clocks]),
           Pair = lists:foldl(fun({{Label_i,Payload_i}, P_i}, OutPairs) ->
             case Label_i=:=Label_j of 
-              true -> OutPairs++[{Type_j,{Role,'->',E,{Label_i,Payload_i},P_i}}];
+              true -> OutPairs++[{Type_j,{Role,'->',BoundE,{Label_i,Payload_i},P_i}}];
               _ -> OutPairs
             end
           end, [], Branches),
@@ -794,7 +347,7 @@ when is_list(Branches) and is_list(Type) ->
 
     %% each branch is not evaluated
     _ -> 
-      io:format("\n\n(~p) Warning, rule [Branch], found no enabled types to pair with branches:\nType:\t~p,\nPrc:\t~p.\n",[?LINE,Type,_Process]),
+      io:format("\n\n(~p) Warning, rule [Branch], found (~p) enabled types to pair (~p) with branches:\nType:\t~p,\nPrc:\t~p.\n",[?LINE,length(Pairings),length(Branches),Type,_Process]),
       Continuation = false, TraceList = ['Branch']
   
   end,
@@ -811,16 +364,34 @@ when is_list(Branches) and is_list(Type) ->
 %% @see rule [Branch]
 rule(Gamma, Theta, {Role,'->',E,Branches,'after',Q}=_Process, {Clocks,Type}=_Delta, #{show_print:=ShowPrint}=_Args)
 when is_list(Branches) and is_list(Type) ->
+
+  ?assert(E=/='infinity'),
+  ?assert(is_list(Type)),
+
+  %% construct new type that compensates for cascading types
+  Type1 = lists:foldl(fun({_Direction,{_Label,_Payload}=_Msg,Constraints,_Resets,_S}=Interaction, TypesIn) -> 
+    %% check if constraints are cascading or not
+    TypesIn++case Constraints of 
+      %% if cascading, leave unmodified
+      {cascade, _, _} -> [Interaction];
+
+      %% if not cascading, check if they should be 
+      _ -> [cascade(_Process,{Clocks, Interaction})]
+    end
+  end, [], Type),
+
   
   case ShowPrint of true ->
-  io:format("\n\n/ / / /[Timeout-P]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,Clocks,Type]),
+  io:format("\n\n/ / / /[Timeout-P]/ / / /\n\nP:\t~p,\nC:\t~p,\nT1: (modified)\n\t~p,\nT: (unmodified)\n\t~p.\n",[_Process,Clocks,Type1,Type]),
   ok; _ -> ok end,
+
+  % timer:sleep(5000),
   
   %% check via rule [Branch]
-  {Continuation1, Trace1} = rule(Gamma, Theta, {Role,'->',E,Branches}, {Clocks,Type}),
+  {Continuation1, Trace1} = rule(Gamma, Theta, {Role,'->',E,Branches}, {Clocks,Type1}),
 
   case ShowPrint of true ->
-  io:format("\n\n/ / / /[Timeout-Q]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,Clocks,Type]),
+  io:format("\n\n/ / / /[Timeout-Q]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,Clocks,Type1]),
   ok; _ -> ok end,
 
   %% check Q (let E pass over Theta and Clocks)
@@ -829,14 +400,14 @@ when is_list(Branches) and is_list(Type) ->
     infinity -> Continuation2 = false, Trace2 = [];
 
     %% easy
-    0 -> {Continuation2, Trace2} = rule(Gamma, Theta, Q, {Clocks,Type}, _Args);
+    0 -> {Continuation2, Trace2} = rule(Gamma, Theta, Q, {Clocks,Type1}, _Args);
 
     %% incrememnt clocks and timers by E, then type-check against Q
     {Less,_ValE} -> 
       ValE = case Less of 'leq' -> _ValE; 'les' -> _ValE-minimal_precision(); _ -> io:format("\n\n(~p) Warning, the DBC in E is not recognised: ~p.\n",[?LINE,E]),_ValE end,
       Theta1 = increment_timers(Theta,ValE), 
       Clocks1 = increment_clocks(Clocks,ValE),
-      {Continuation2, Trace2} = rule(Gamma, Theta1, Q, {Clocks1,Type}, _Args)
+      {Continuation2, Trace2} = rule(Gamma, Theta1, Q, {Clocks1,Type1}, _Args)
 
   end,
 
@@ -999,8 +570,9 @@ when is_atom(DBC) and (is_atom(N) or is_integer(N)) ->
   % set_show_trace(false),
 
   %% use worker functions to calculate in parallel
+  io:format("\n> > > (~p) Rule ['Del-delta'] -- evaluating range.\n",[self()]),
   % Self = self(),
-  WorkerIDs = start_evaluation_workers(premise_del_delta, {Gamma,Theta,P,Delta}, maps:put(show_print,?WORKER_SHOW_TRACE,BoundMap)),
+  WorkerIDs = workers:start_evaluation_workers(premise_del_delta, {Gamma,Theta,P,Delta}, maps:put(show_print,?WORKER_SHOW_TRACE,BoundMap)),
   % io:format("\n\n[Del-delta], Started (~p) workers: ~w.\n",[length(WorkerIDs),WorkerIDs]),
   
   %% receive all of the workers
@@ -1050,7 +622,7 @@ when is_number(T) ->
   Trace1 = add_to_trace(Trace,'Del-t'),
 
   %% ask z3 if Delta is not T-reading
-  {Signal, NotTReading} = ask_z3(not_t_reading,#{clocks=>Clocks,type=>Type,t=>to_float(T)}),
+  {Signal, NotTReading} = z3:ask_z3(not_t_reading,#{clocks=>Clocks,type=>Type,t=>to_float(T)}),
   ?assert(Signal=:=ok),
   ?assert(is_boolean(NotTReading)),
 
@@ -1148,12 +720,34 @@ rule(Gamma, Theta, Process, {Clocks,{'def', _Name, S}=_Type}=_Delta, #{show_prin
 -> rule(Gamma, Theta, Process, {Clocks, S}, _Args);
 %%
 
+
+%% @doc helper function to wrap any lone branch process in list (to reapply rule [Recv])
+%% @see rule [Recv]
+rule(Gamma, Theta, {_Role,'->',E,{Label,_Payload},P}=_Process, {Clocks,Type}=_Delta, #{show_print:=_ShowPrint}=_Args)
+when is_list(Type) -> rule(Gamma, Theta, {_Role,'->',E,[{{Label,_Payload},P}]}, {Clocks,Type}, _Args);
+
+
+%% @doc helper function to wrap any timeout process with a lone branch in list (to reapply rule [Recv])
+%% @see rule [Recv]
+rule(Gamma, Theta, {_Role,'->',E,{Label,_Payload},P,'after',Q}=_Process, {Clocks,Type}=_Delta, #{show_print:=_ShowPrint}=_Args)
+when is_list(Type) -> rule(Gamma, Theta, {_Role,'->',E,[{{Label,_Payload},P}],'after',Q}, {Clocks,Type}, _Args);
+
+
+%% @doc helper function to wrap any lone interact type in list (now that we are past rule [Recv])
+%% NOTE: must be applied after rule [Var] to allow 'call' to be type-checked
+%% @see rule [Recv]
+rule(Gamma, Theta, Process, {Clocks,Type}=_Delta, #{show_print:=_ShowPrint}=_Args)
+when is_tuple(Type) -> rule(Gamma, Theta, Process, {Clocks,toast:interactions(Type)}, _Args);
+
+
 %% @doc unhandled case
 rule(Gamma, Theta, Process, Delta, #{show_print:=_ShowPrint}=_Args) ->
-  io:format("\n\n(~p) Warning, unhandled case:\nGamma:\t~p,\nTheta:\t~p,\nProcess:\t~p,\nDelta:~p.\n\n",[?LINE,Gamma, Theta, Process, Delta]),
+  io:format("\n\n(~p, ~p) Warning, unhandled case:\nGamma:\t~p,\nTheta:\t~p,\nProcess:\t~p,\nDelta:~p,\nArgs:\t~p.\n\n",[?LINE,self(),Gamma, Theta, Process, Delta,_Args]),
+  timer:sleep(5000),
   %% return false since unhandled
   {false, ['unknown']}.
 %%
+
 
 
 
@@ -1169,261 +763,7 @@ when is_atom(Rule) and is_list(Trace) ->
 %%
 
 
-%% @doc increments all Timers by T
-%% @see increment_clocks/2
-increment_timers(Timers,T)
-when is_map(Timers) ->
-  Timers1 = maps:fold(fun(Name,Val,In) ->
-    maps:put(Name,Val+T,In)
-  end, #{}, Timers),
-  %% return
-  Timers1.
-%%
 
-%% @doc increments all Clocks by T
-%% @see increment_timers/2
-increment_clocks(Clocks,T)
-when is_map(Clocks) ->
-  Clocks1 = maps:fold(fun(Name,Val,In) ->
-    maps:put(Name,Val+T,In)
-  end, #{}, Clocks),
-  %% return
-  Clocks1.
-%%
-
-%% @doc makes sure each clock in List has a value in the returned Clocks.
-%% if no value is found, then they are assigned value of 'global' clock
-%% if no 'global' clock is found, then warning printed and 'global' added as highest value clock, which missing clocks are subsequently given the same valuation
-instansiate_clocks(Clocks,List)
-when is_map(Clocks) and is_list(List) ->
-  %% check if 'global' in clocks
-  case is_map_key('global',Clocks) of 
-    %% global present, do nothing
-    true -> Max = maps:get('global',Clocks), Clocks1 = Clocks;
-    %% need to add global, find maximal clock
-    _ -> 
-      Max = lists:max(maps:fold(fun(_Clock,Val,InVals) -> InVals++[Val] end, [], Clocks)),
-      Clocks1 = maps:put('global',Max,Clocks)
-  end,
-  %% for each in List, set value to Max if not set already
-  Clocks2 = lists:foldl(fun(Clock, InMap) ->
-    case is_map_key(Clock,Clocks1) of 
-      true -> InMap;
-      _ -> maps:put(Clock,Max,Clocks1)
-    end
-  end, Clocks1, List),
-  %% return
-  Clocks2;
-%%
-
-%% @doc helper function to convert Clocks to map and back to list.
-instansiate_clocks(Clocks,List)
-when is_list(Clocks) and is_list(List) ->
-  Clocks1 = instansiate_clocks(maps:from_list(Clocks),List),
-  %% retrurn as list
-  maps:to_list(Clocks1).
-%%
-
-%% @doc 
-minimal_precision() -> 1.0/(list_to_integer(lists:flatten("1"++lists:duplicate(?DECIMAL_PRECISION,"0")))).
-
-
-%% @doc rounds to DECIMAL_PRECISION decimal places
-precision_rounding(Float) 
-when is_float(Float) -> 
-  Offset = math:pow(10.0,?DECIMAL_PRECISION),
-  round(Float*Offset)/Offset.
-%%
-
-
-%% @doc starts evaluation workers for each integer of the given range, and collects their IDs in a list to return
-% -spec start_evaluation_workers(atom(), {map(), map(), toast:process(), {map(),toast:types()}}, integer(), float(), float(), float()) -> list().
-
-%% @doc for starting the workers for rules (del-delta and recv)
-start_evaluation_workers(Kind, {_Gamma, _Theta, _P, _Delta}=Judgement, #{is_first:=IsFirst,is_last:=IsLast,is_lower_exclusive:=IsLowerExclusive,is_upper_exclusive:=IsUpperExclusive,lower:=Lower,upper:=Upper,decrement:=Decrement}=_Args) ->
-  %% if upper is exclusive, set counter for first to be one precision out
-  %% since the workers count down, this will ensure they do not evaluate inclusive of the bound
-  %% if not first or last, then just set to 1.0
-  Counter = case IsLast of true -> case IsUpperExclusive of true -> 1.0-Decrement; _ -> 1.0 end; _ -> 1.0 end,
-  %% check if this is also first, (i.e., for a 1 integer non-det delay)
-  {Counter1,IsLowerExclusive1} = case IsFirst of true -> case IsLowerExclusive of true -> {Counter-Decrement,false}; _ -> {Counter,false} end; _ -> {Counter,IsLowerExclusive} end,
-  %% we floor and increment lower to ensure that it is an integer moving forward
-  Lower1 = case (IsFirst or IsLast) of true -> floor(Lower)+1.0; _ -> Lower+1.0 end,
-  %% determine T to pass to worker
-  T = case IsLast of true -> case IsUpperExclusive of true -> Upper;  _ -> Lower1 end; _ -> Lower1 end,
-  %% if is last, then the distance between Lower and Upper should be less than 1
-  %% next is last if the difference between Lower1 and Upper is leq 1
-  IsNextLast = case IsLast of true -> ?assert((abs(Upper-Lower)=<1)), false; _ -> (abs(Upper-Lower1)=<1.0) end,
-  %% spawn worker for this integer
-  PID = self(),
-  WorkerID = spawn(?MODULE, evaluation_worker, [Kind, Judgement, precision_rounding(Counter1), precision_rounding(T), Decrement, PID, maps:get(show_print,_Args,?WORKER_SHOW_TRACE)]),
-  %% create new map 
-  Map1 = #{ is_upper_exclusive=>IsUpperExclusive,
-            is_lower_exclusive=>IsLowerExclusive1,
-            lower=>precision_rounding(Lower1),
-            upper=>Upper,
-            decrement=>Decrement,
-            is_last=>IsNextLast,
-            is_first=>false },
-  %% call to start next worker 
-  WorkerIDs = case IsLast of true -> []; _ -> start_evaluation_workers(Kind, Judgement, maps:put(show_print,maps:get(show_print,_Args,?WORKER_SHOW_TRACE),Map1)) end,
-  %% add to worker IDs and return
-  IDs = WorkerIDs ++ [WorkerID],
-  IDs;
-%%
-
-
-%% @doc unexpected kind
-start_evaluation_workers(Kind, {Gamma, Theta, P, Delta}=_Judgement, Map) ->
-  io:format("\n\n(~p) Warning, unknown start_evaluation_workers called: ~p.\nGamma: ~p, Theta: ~p,\nP: ~p,\nDelta: ~p,\nMap: ~p.\n",[?LINE,Kind, Gamma, Theta, P, Delta, Map]),
-  [].
-%%
-
-
-
-%% @doc worker that tail-recursively evaluates delay of incrementing value.
--spec evaluation_worker(atom(), {map(), map(), toast:process(), {map(),toast:types()}}, float(), float(), float(), pid(), boolean()) -> atom().
-
-%% @doc the first iteration of the worker sends back the result, evaluates a delay of T-Decrement, and calls the next decrememnt
-evaluation_worker(premise_recv=Kind, {Gamma, Theta, P, {#{clocks:=Clocks,resets:=Resets},Type}}=Judgement, Counter, T, Decrement, PID, ShowPrint)
-when is_float(T) and is_float(Decrement) ->
-  %% increment clocks and timers
-  Theta1 = increment_timers(Theta,T),
-  Clocks1 = increment_timers(Clocks,T),
-  %% reset clocks
-  Clocks2 = lists:foldl(fun(Clock, NewClocks) -> 
-    maps:put(Clock,0,NewClocks)
-  end, Clocks1, Resets),
-  %% evaluate for this current value of T
-  {Result,Trace1} = rule(Gamma,Theta1,P,{Clocks2,Type},#{show_print=>ShowPrint}),
-  %% establish next decrement
-  T1 = T - Decrement,
-  Counter1 = Counter - Decrement,
-  %% call next 
-  {NextEval,Trace2} = evaluation_worker(Kind, Judgement, precision_rounding(Counter1), precision_rounding(T1), Decrement, ShowPrint),
-  %% send results to PID
-  Holds = Result and NextEval,
-  PID ! {self(), {eval, {Holds,[Trace1]++Trace2}}, {range, T-Counter, T}},
-  %% return OK
-  ok;
-%%
-
-%% @doc the first iteration of the worker sends back the result, evaluates a delay of T-Decrement, and calls the next decrememnt
-evaluation_worker(premise_del_delta=Kind, {Gamma, Theta, P, Delta}=Judgement, Counter, T, Decrement, PID, ShowPrint)
-when is_float(T) and is_float(Decrement) ->
-  %% evaluate for this current value of T
-  {Result,Trace1} = rule(Gamma,Theta,{'delay',T,P},Delta,#{show_print=>ShowPrint}),
-  %% establish next decrement
-  T1 = T - Decrement,
-  Counter1 = Counter - Decrement,
-  %% call next 
-  {NextEval,Trace2} = evaluation_worker(Kind, Judgement, precision_rounding(Counter1), precision_rounding(T1), Decrement, ShowPrint),
-  %% send results to PID
-  Holds = Result and NextEval,
-  PID ! {self(), {eval, {Holds,[Trace1]++Trace2}}, {range, T-Counter, T}},
-  %% return OK
-  ok;
-%%
-
-%% @doc unexpected worker starter
-evaluation_worker(Kind, {Gamma, Theta, P, Delta}=_Judgement, Counter, T, Decrement, PID, _ShowPrint)
-when is_float(T) and is_float(Decrement) ->
-  io:format("\n\n(~p) Warning, unknown evaluation_worker called: ~p.\nGamma: ~p, Theta: ~p,\nP: ~p,\nDelta: ~p,\nCounter: ~p,\nT: ~p,\nDecrement: ~p,\nPID: ~p.\n",[?LINE,Kind, Gamma, Theta, P, Delta, Counter, T, Decrement,PID]),
-  ok.
-%%
-
-
--spec evaluation_worker(atom(), {map(), map(), toast:process(), {map(),toast:types()}}, integer(), float(), float(), boolean()) -> {boolean(),list()}.
-
-%% @doc for catching the final evaluation
-evaluation_worker(premise_recv=_Kind, {Gamma, Theta, P, {#{clocks:=Clocks,resets:=Resets},Type}}, Counter, T, _Decrement, ShowPrint)
-when (Counter=<0) ->
-  %% increment clocks and timers
-  Theta1 = increment_timers(Theta,T),
-  Clocks1 = increment_timers(Clocks,T),
-  %% reset clocks
-  Clocks2 = lists:foldl(fun(Clock, NewClocks) -> 
-    maps:put(Clock,0,NewClocks)
-  end, Clocks1, Resets),
-  %% evaluate for this current value of T
-  {Result,Trace} = rule(Gamma,Theta1,P,{Clocks2,Type},#{show_print=>ShowPrint}),
-  %% return
-  {Result,[Trace]};
-%%
-
-%% @doc evaluates a delay of T-Decrement, and calls the next decrememnt
-evaluation_worker(premise_recv=Kind, {Gamma, Theta, P, {#{clocks:=Clocks,resets:=Resets},Type}}=Judgement, Counter, T, Decrement, ShowPrint)
-when is_float(T) and is_float(Decrement) ->
-  %% increment clocks and timers
-  Theta1 = increment_timers(Theta,T),
-  Clocks1 = increment_timers(Clocks,T),
-  %% reset clocks
-  Clocks2 = lists:foldl(fun(Clock, NewClocks) -> 
-    maps:put(Clock,0,NewClocks)
-  end, Clocks1, Resets),
-  %% evaluate for this current value of T
-  {Result,Trace1} = rule(Gamma,Theta1,P,{Clocks2,Type},#{show_print=>ShowPrint}),
-  %% establish next decrement
-  T1 = T - Decrement,
-  Counter1 = Counter - Decrement,
-  %% call next 
-  {NextEval,Trace2} = evaluation_worker(Kind, Judgement, precision_rounding(Counter1), precision_rounding(T1), Decrement, ShowPrint),
-  %% return result
-  Holds = Result and NextEval,
-  {Holds,[Trace1]++Trace2};
-%%
-
-%% @doc for catching the final evaluation
-evaluation_worker(premise_del_delta=_Kind, {Gamma, Theta, P, Delta}, Counter, T, _Decrement, ShowPrint)
-when (Counter=<0) ->
-  %% evaluate for this current value of T
-  {Result,Trace} = rule(Gamma,Theta,{'delay',T,P},Delta,#{show_print=>ShowPrint}),
-  %% return
-  {Result,[Trace]};
-%%
-
-%% @doc evaluates a delay of T-Decrement, and calls the next decrememnt
-evaluation_worker(premise_del_delta=Kind, {Gamma, Theta, P, Delta}=Judgement, Counter, T, Decrement, ShowPrint)
-when is_float(T) and is_float(Decrement) ->
-  %% evaluate for this current value of T
-  {Result,Trace1} = rule(Gamma,Theta,{'delay',T,P},Delta,#{show_print=>ShowPrint}),
-  %% establish next decrement
-  T1 = T - Decrement,
-  Counter1 = Counter - Decrement,
-  %% call next 
-  {NextEval,Trace2} = evaluation_worker(Kind, Judgement, precision_rounding(Counter1), precision_rounding(T1), Decrement, ShowPrint),
-  %% return result
-  Holds = Result and NextEval,
-  {Holds,[Trace1]++Trace2};
-%%
-
-%% @doc unknown worker
-evaluation_worker(Kind, {Gamma, Theta, P, Delta}, Counter, T, Decrement, _ShowPrint) -> 
-  io:format("\n\n(~p) Warning, unknown evaluation_worker called: ~p.\nGamma: ~p, Theta: ~p,\nP: ~p,\nDelta: ~p,\nCounter: ~p,\nT: ~p,\nDecrement: ~p.\n",[?LINE,Kind, Gamma, Theta, P, Delta, Counter, T, Decrement]),
-  false.
-%%
-
-
-%% @doc type conversion functions
-to_float(N) when is_integer(N) -> list_to_float(integer_to_list(N)++".0");
-% to_float(N) when is_list(N) -> 
-to_float(N) when is_binary(N) -> binary_to_float(N);
-to_float(N) when is_float(N) -> N.
-
-to_integer(N) when is_float(N) -> round(N);
-% to_integer(N) when is_list(N) -> 
-to_integer(N) when is_binary(N) -> binary_to_integer(N);
-to_integer(N) when is_integer(N) -> N.
-
-to_binary(N) when is_float(N) -> integer_to_binary(N);
-to_binary(N) when is_list(N) -> list_to_binary(N);
-to_binary(N) when is_integer(N) -> float_to_binary(N);
-to_binary(N) when is_binary(N) -> N.
-
-to_string(N) when is_float(N) -> lists:flatten(io_lib:format("~w",[N]));
-to_string(N) when is_integer(N) -> lists:flatten(io_lib:format("~w",[N]));
-to_string(N) when is_binary(N) -> lists:flatten(io_lib:format("~w",[N]));
-to_string(N) when is_list(N) -> lists:flatten(N).
 
 %% @doc for the type-checker printing its trace as it goes
 show_trace(Rule,Pass,Premise,ShowPrint) -> 
@@ -1433,48 +773,128 @@ show_trace(Rule,Pass,Premise,ShowPrint) ->
   end.
 %%
 
-%% @doc returns if trace should be shown
-% show_trace() -> ets:member(toast_checker_ets, {show_trace,self()}) andalso ets:lookup(toast_checker_ets, {show_trace,self()}).
 
-% get_show_trace() -> case ets:member(toast_checker_ets, show_trace) of 
-%   true -> 
-%     Ret = ets:lookup(toast_checker_ets, show_trace),
-%     ?assert(is_list(Ret)),
-%     {_,_Map} = lists:nth(1,Ret),
-%     ?assert(is_map(_Map)),
-%     maps:get(pid_to_list(self()),_Map,false);
-%   _ -> false
-%   end.
-% %%
 
-% set_show_trace(Val) -> 
-%   Map = case ets:member(toast_checker_ets, show_trace) of 
-%     true -> 
-%       Ret = ets:lookup(toast_checker_ets, show_trace),
-%       ?assert(is_list(Ret)),
-%       {_,_Map} = lists:nth(1,Ret),
-%       _Map;
-%     _ -> #{}
-%   end,
-%   ?assert(is_map(Map)),
-%   ets:insert(toast_checker_ets,{show_trace,maps:put(pid_to_list(self()),Val,Map)}).
-% %%
 
-% get_show_trace() -> 
-%   io:format("\n\n\n\n7.\n"),
-%   case ets:member(toast_checker_ets, {show_trace,pid_to_list(self())}) of 
-%     true -> 
-%       List = ets:lookup(toast_checker_ets, {show_trace,pid_to_list(self())}),
-%       ?assert(is_list(List)),
-%       {_,Ret} = lists:nth(1,List);
-%     _ -> Ret = false
-%   end,
-%   io:format("\n\n\n\n8. ~p\n",[Ret]),
-%   Ret.
-% %%
+%% @doc handles joining two bounds for timeouts.
+%% used when exploring cascading receptions, and in label map
+-spec join_es(toast_process:upper_bound(), toast_process:upper_bound()|atom()) -> toast_process:upper_bound()|atom().
 
-% set_show_trace(Val) -> 
-%   io:format("\n\n\n\n9.\n"),
-%   ets:insert(toast_checker_ets,{{show_trace,pid_to_list(self())},Val}).
-% %%
+join_es(E, undefined) -> E;
+join_es(_, infinity) -> infinity;
+join_es(E, 0) -> E;
+join_es(0, E) -> E;
+join_es({_, _N}, {DBC, N}) -> {DBC, _N+N};
+join_es(_1,_2) -> io:format("\n\n(~p) Warning ~p, unexpected case: ~p.\nReturning 0.\n",[?LINE,?FUNCTION_NAME,{_1,_2}]), 0.
 
+
+
+
+%% @doc extracts the number of an E, given it is not infinity
+-spec num(toast_process:upper_bound()) -> integer().
+
+num(0) -> 0;
+num({_,N}) -> N;
+num(infinity) -> io:format("\n\n(~p) Warning ~p, does not support infinity. Returning ?INFINITY.\n",[?LINE,?FUNCTION_NAME]), ?INFINITY.
+
+
+
+
+
+%% @doc processes a single toast type in the case it has a reception that is implemented as a cascading receive in the process.
+%% if it is not receiving or cascading, then it is unchanged
+%% however, if it is a cascading receive, the constraint is wrapped in a cascade type
+-spec cascade(toast_type:timeout_process(), {map(), toast_type:interact_type()}) -> sugar_interact_type().
+cascade({_Role,'->',E,_Branches,'after',_Q}=P, {Clocks, {Direction,{Label,_Payload}=Msg,Constraints,Resets,Next}=S})
+-> 
+  Ret = cascade(P, Clocks, S),
+  case (length(maps:keys(Ret)))==0 of 
+    true -> S;
+    _ -> 
+      ?assert(is_map(Ret)),
+      %% since (other) cascade function starts on the same process, it must contain this label
+      ?assert(is_map_key(Label,Ret)),
+      %% check if the corresponding bound is the same as E (not cascading) or something else (cascading)
+      Bound = maps:get(Label,Ret),
+      case Bound of 
+        %% if the same as E, then not cascading and return S
+        E -> 
+          % io:format("label (~p) is not cascading. (~p =:= ~p)\n",[Label,E,Bound]), 
+          S;
+
+        %% otherwise, is cascading, and use 
+        _ -> 
+          io:format("label (~p) is cascading, using: ~p.\n",[Label,Bound]),
+          %% amend constraint into cascade type and return
+          {Direction, Msg, {cascade, Bound, Constraints}, Resets, Next}
+      end
+  end.
+%%
+
+
+-spec cascade(toast_type:timeout_process()|toast_type:branch_process(), map(), toast_type:interact_type()) -> map().
+
+%% wrap single recv in list
+cascade({Role,'->',E,{_Label,_Payload},NextP}=_P, Clocks, S) -> cascade({Role,'->',E,[{{_Label,_Payload},NextP}]}, Clocks, S);
+
+%% branch 
+cascade({_Role,'->',E,_Branches}=_P, Clocks, {Direction,{Label,_Payload}=_Msg,Constraints,_Resets,_Next}=_S) 
+-> 
+  case Direction of 
+    'send' -> #{};
+    'recv' -> %% check if currently enabled
+      %% ask z3 if Delta if constraints satisfied
+      {Signal, SatisfiedConstraints} = z3:ask_z3(satisfied_constraints,#{clocks=>Clocks,constraints=>Constraints}),
+      ?assert(Signal=:=ok),
+      ?assert(is_boolean(SatisfiedConstraints)),
+
+      case SatisfiedConstraints of 
+        %% must be returned in map assigning label to E
+        true -> 
+          % io:format("\n(~p) Label (~p) returned mapped to: ~p.\n",[?LINE,Label,E]), 
+          #{Label=>E};
+        
+        %% not enabled, just return empty
+        _ -> 
+          % io:format("\n(~p) Label (~p) returned empty map.\n",[?LINE,Label]), 
+          #{}
+      end
+  end;
+%%
+
+cascade({_Role,'->',E,_Branches,'after',Q}=_P, Clocks, {Direction,{Label,_Payload}=_Msg,Constraints,_Resets,_Next}=S)
+-> 
+  %% if timeout, cannot be infinity
+  ?assert(E=/='infinity'),
+  %% 
+  case Direction of
+    'send' -> #{};
+    'recv' -> %% check if currently enabled
+      %% ask z3 if Delta if constraints satisfied
+      {Signal, SatisfiedConstraints} = z3:ask_z3(satisfied_constraints,#{clocks=>Clocks,constraints=>Constraints}),
+      ?assert(Signal=:=ok),
+      ?assert(is_boolean(SatisfiedConstraints)),
+
+      case SatisfiedConstraints of 
+        % must check now if in Q
+        true -> 
+          %% increment clocks by n
+          Clocks1 = increment_clocks(Clocks,num(E)),
+          %% check for Q (if not cascade, uses 0 to ensure current E will be used)
+          Num = maps:get(Label, cascade(Q,Clocks1,S), 0),
+          %% must be returned in map assigning label to E  
+          Bound = join_es(E,Num),
+          % io:format("\n(~p) Label (~p) returned mapped to: ~p (joined (~p) and (~p)).\n(Process: ~p)\n\n",[?LINE,Label,Bound,E,Num,_P]), 
+          #{Label=>Bound};
+        %% not enabled, just return empty
+        _ -> 
+          % io:format("\n(~p) Label (~p) returned empty map.\n",[?LINE,Label]), 
+          #{}
+      end
+  end;
+%%
+
+%% @doc for any other process, return nothing
+cascade(_P, _Clocks, _S) -> 
+  % io:format("\n(~p) Checked unsupported process.\n",[?LINE]), 
+  #{}.

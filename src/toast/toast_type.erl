@@ -19,6 +19,7 @@
 
 -type msg () :: {label(), payload()}.
 
+
 %% constraints and clocks
 
 -type clock () :: label().
@@ -107,7 +108,7 @@ when (([H]=:="!") or ([H]=:="?")) ->
 
 
 %% @doc case of choice 
-parse_toast([H|T]=_String) 
+parse_toast([H|_T]=_String) 
 when [H]=:="{" ->
 
   io:format("\nstring: ~p.\n",[_String]),
