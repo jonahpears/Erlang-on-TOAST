@@ -85,76 +85,10 @@ def private_test():
   print(f"solver: {s}.")
   print(f"result: {s.check()}.")
 
-# private_test()
 
 
 
 def ongoing_test():
-  # s = Solver()
-  # e = fpInfinity(FPSort(8,24),False)
-  # t = FP('t',FPSort(8,24))
-  # n = Int('n')
-  # global_, x = Reals('global_ x')
-  # texpr = fpLEQ(t,e)
-  # delta = fpGEQ(fpAdd(RNE(),fpRealToFP(RNE(),x,Float32()),t),6.0)
-  # lhs = Implies(delta,texpr)
-  # rhs = Implies(texpr,delta)
-  # s.add(global_==6.0, x==6.0, n==6)
-  # s.add(ForAll(t,Implies(0<=t,And(lhs,rhs))))
-  # result = s.check()
-  
-  # s = Solver()
-  # e = Real('e')
-  # s.add(e==1)
-  # t = Real('t')
-  # global_, x, z = Reals('global_ x z')
-  # texpr = t <= e
-  # n = Int('n')
-  # s.add(n==1)
-  # delta = z+t<=n
-  # lhs = Implies(delta,texpr)
-  # rhs = Implies(texpr,delta)
-  # s.add(global_==1.0, x==1.0, z==1.0)
-  # s.add(ForAll(t,Implies(0<=t,lhs)))
-  # # s.add(ForAll(t,Implies(0<=t,rhs)))
-  # # s.add(ForAll(t,Implies(0<=t,And(lhs,rhs))))
-  # result = s.check()
-
-  # s = Solver()
-  # e = Real('e')
-  # s.add(e==3)
-  # t = Real('t')
-  # global_, x = Reals('global_ x')
-  # texpr = t <= e
-  # n1, n2 = Ints('n1 n2')
-  # s.add(n1==6, n2==9)
-  # delta = And(x+t>=n1, x+t<n2)
-  # lhs = Implies(delta,texpr)
-  # rhs = Implies(texpr,delta)
-  # s.add(global_==6.0, x==6.0)
-  # # s.add(ForAll(t,Implies(0<=t,And(lhs,rhs))))
-  # # s.add(ForAll(t,Implies(0<=t,lhs)))
-  # s.add(ForAll(t,Implies(0<=t,rhs)))
-  # result = s.check()
-  
-  # s = Solver()
-  # e = Real('e')
-  # s.add(e==3)
-  # t = Real('t')
-  # global_, x = Reals('global_ x')
-  # texpr = t < e
-  # n1, n2 = Ints('n1 n2')
-  # s.add(n1==1, n2==4)
-  # delta = And(x+t>=n1, x+t<n2)
-  # lhs = Implies(delta,texpr)
-  # rhs = Implies(texpr,delta)
-  # s.add(global_==1.0, x==1.0)
-  
-  n1, n2 = Ints('n1 n2')
-  global_, y, x = Reals('global_ y x')
-  s = Solver()
-  s.add(global_==1.0, y==1.0, x==1.0, n1==1, n2==2)
-  s.add(And(x>n1, y<n2))
   
   # # s.add(ForAll(t,Implies(0<=t,And(lhs,rhs))))
   # s.add(ForAll(t,Implies(0<=t,lhs)))
@@ -163,5 +97,3 @@ def ongoing_test():
   result = s.check()
   print(f"solver: {s}")
   print(f"result: {result}")
-
-# ongoing_test()
