@@ -32,7 +32,7 @@
 
 -type queue_contents () :: empty | {msg(), queue_contents()}.
 
--type rec_var () :: {string(), [msg()]}.
+-type rec_var () :: {string(), {[msg()],[party()]}}.
 
 %% toast processes (unsupported, outside scope of tool)
 out_of_scope_processes() -> [queue_process, parl_process, session_process].

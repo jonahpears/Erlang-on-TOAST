@@ -44,7 +44,7 @@ when is_map(Clocks) ->
   case ?SHOW_V3_SNIPPET of true -> 
   io:format("\n\n~p, ExecString:\n~s\n\nResponse: ~p.\n",[_Kind,ExecString,Z3Response]); _ -> ok end,
   %% return result
-  {ok, Z3Response};
+  {ok, Z3Response, ExecString};
 %%
 
 %% @doc constructs python code to ask z3 if constraint holds, given clocks and INFINITY upperbound
@@ -58,7 +58,7 @@ when is_map(Clocks) ->
   case ?SHOW_V3_SNIPPET of true -> 
   io:format("\n\n~p, (infinity) ExecString:\n~s\n\nResponse: ~p.\n",[_Kind,ExecString,Z3Response]); _ -> ok end,
   %% return result
-  {ok, Z3Response};
+  {ok, Z3Response, ExecString};
 %%
 
 %% @doc constructs python code to ask z3 if constraint holds, given clocks and non-infinite upperbound
@@ -72,7 +72,7 @@ when is_map(Clocks) ->
   case ?SHOW_V3_SNIPPET of true -> 
   io:format("\n\n~p, (non-infinity) ExecString:\n~s\n\nResponse: ~p.\n",[_Kind,ExecString,Z3Response]); _ -> ok end,
   %% return result
-  {ok, Z3Response};
+  {ok, Z3Response, ExecString};
 %%
 
 %% @doc for each Clock valuation, asks z3 to check if they are t_reading
@@ -93,12 +93,12 @@ when is_map(Clocks) and is_float(_T) ->
 
   %% if no receptions, then t_reading false
   case length(ReceptionConstraints)==0 of 
-    true -> {ok, false};
+    true -> {ok, false, ""};
 
     %% otherise, receptions
     _ ->
       %% for each reception, go through each clock and ask z3 if there exists t'<t such that constraints are satisfied
-      AskZ3 = lists:foldl(fun(Constraints, {IsOk, InSat}) ->
+      AskZ3 = lists:foldl(fun(Constraints, {IsOk, InSat, InExecString}) ->
         %% get python string to execute using z3
         ExecString = to_python_exec_string(t_reading, #{clocks=>Clocks,delta=>Constraints,t=>T}),
         %% send to python program and get response
@@ -111,21 +111,21 @@ when is_map(Clocks) and is_float(_T) ->
           ok -> 
             case is_boolean(Z3Response) of 
               %% is ok
-              true -> {ok, (InSat and Z3Response)};
+              true -> {ok, (InSat and Z3Response), InExecString++["\n\n",ExecString]};
               %% not okay, some error
-              _ -> {error, [InSat,Z3Response]}
+              _ -> {error, [InSat,Z3Response], InExecString++["\n\n",ExecString]}
             end;
 
           %% not okay, continue to collect results in list, in attempt to analyse them afterwards
-          _Err -> {IsOk, [InSat,Z3Response]}
+          _Err -> {IsOk, [InSat,Z3Response], InExecString++["\n\n",ExecString]}
 
         end
 
-      end, {ok,true}, ReceptionConstraints),
+      end, {ok,true,[]}, ReceptionConstraints),
       %% check response from z3
       case AskZ3 of %lists:foldl(AskZ3, {ok, true}, ReceptionConstraints)
 
-        {ok, IsSatisfied} -> {ok, IsSatisfied};
+        {ok, IsSatisfied, OutExecString} -> {ok, IsSatisfied, lists:flatten(OutExecString)};
 
         Err -> 
           io:format("\nError, t_reading did not return as expected...\nResult:\t~p.\n",[Err]),
@@ -141,7 +141,7 @@ ask_z3(not_t_reading, #{clocks:=_Clocks,type:=_Type,t:=_T}=Map)
 when is_map(_Clocks) and is_float(_T) ->
   %% inverse t_reading
   case ask_z3(t_reading, Map) of 
-    {ok, Result} -> {ok, not Result};
+    {ok, Result, _ExecString} -> {ok, not Result, _ExecString};
     Err -> 
       io:format("\nError, not_t_reading did not return as expected...\nResult:\t~p.\n",[Err]),
       Err

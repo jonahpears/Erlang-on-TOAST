@@ -150,12 +150,17 @@ def ongoing_test():
   # rhs = Implies(texpr,delta)
   # s.add(global_==1.0, x==1.0)
   
+  n1, n2 = Ints('n1 n2')
+  global_, y, x = Reals('global_ y x')
+  s = Solver()
+  s.add(global_==1.0, y==1.0, x==1.0, n1==1, n2==2)
+  s.add(And(x>n1, y<n2))
   
   # # s.add(ForAll(t,Implies(0<=t,And(lhs,rhs))))
   # s.add(ForAll(t,Implies(0<=t,lhs)))
-  s.add(ForAll(t,Implies(0<=t,rhs)))
+  # s.add(ForAll(t,Implies(0<=t,rhs)))
+  
   result = s.check()
-
   print(f"solver: {s}")
   print(f"result: {result}")
 

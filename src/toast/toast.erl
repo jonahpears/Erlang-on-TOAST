@@ -70,17 +70,16 @@ get_all_tests() -> [t_reading,not_t_reading,type_checking]. %  from_string
 
 %% @doc tests for type-checking
 tests(type_checking) -> [
-                        %  {del_t_pass_send,[true]},
-                        %  {del_t_fail_send,[false]},
-                        %  {del_t_recv,[false,true,false]},
-                        %  {del_t_branch,[false,true,false]},
-                        %  {del_t_branch_cascade_simple,[true]},
-                        %  {del_t_branch_cascade,[true]},
-                        %  {del_delta_send,[true]},
-                        %  {recv,[true,false]},
-                        %  {if_timer,[true,false]},
+                         {del_t_pass_send,[true]},
+                         {del_t_fail_send,[false]},
+                         {del_t_recv,[false,true,false]},
+                         {del_t_branch,[false,true,false]},
+                         {del_t_branch_cascade_simple,[true]},
+                         {del_t_branch_cascade,[true]},
+                         {del_delta_send,[true]},
+                         {recv,[true,false]},
+                         {if_timer,[true,false]},
                          {recursion_good,[true]}
-                        %  {recursion_fail,[true]}
                          ];
 
 %% @doc tests for t-reading
@@ -207,22 +206,19 @@ test(_Kind,_Name,0) -> true;
 test(type_checking=_Name, recursion_good=_Kind, Index) ->
   %% sending 
   %% get process, type and clocks
-  Process = {'p','->','infinity',{start,undefined},
-              {'set', "y", 
-              % {'def', 
+  Process = {'p','->',0,{start,undefined}, {'set', "y", 
+              {'def', 
                 {'p','->',{'leq',1},{stop_early,undefined},term,
-                 'after', {'delay', {t,'les',5}, 
-                    {'if', {"y", 'les', 5}, 
-                     'then', {'p','<-',{data,undefined},{'set',"y",{'call',{"loop",[]}}}},
+                 'after', {'delay', {t,'leq',1}, 
+                    {'if', {"y", 'les', 2}, 
+                     'then', {'p','<-',{data,undefined},{'set',"y",{'call',{"loop",{[],[]}}}}},
                      'else', {'p','->','infinity',{stop_late,undefined},term}
-                }}}}
-  },
-              % }, 'as', {"loop", []}},
-  Type = [{recv,{start,none},{'true'},[x],
-  % {'def',"loop",
-          [{recv,{stop_early,none},{x,'leq',1},[],'end'},
-           {send,{data,none},{{x,'gtr',1}, 'and', {y,'les',5}},[x],{'call',"loop"}},
-           {recv,{stop_late,none},{y,'geq',5},[],'end'}]}],
+                }}}, 'as', {"loop",{[],[]}}}}},
+  Type = [{recv,{start,none},{x,eq,0},[x,y],
+            {'def',"loop",
+              [{recv,{stop_early,none},{x,'leq',1},[],'end'},
+              {send,{data,none},{{{y,'gtr',1}, 'and', {x,'gtr',1}}, 'and', {x,'les',2}},[y],{'call',"loop"}},
+              {recv,{stop_late,none},{x,'geq',2},[],'end'}]}}],
   Clocks = [{x,0}],
   %% type check
   Gamma = #{},
@@ -244,6 +240,7 @@ test(type_checking=_Name, if_timer=_Kind, Index) ->
             }}},
   Type = [{send,{a,none},{x,'les',5},[],'end'},
           {recv,{b,none},{x,'geq',5},[],'end'}],
+  % Clocks = [{x,0}],
   Clocks = [{x,Index-1}],
   %% type check
   Gamma = #{},
@@ -414,9 +411,10 @@ test(t_reading=_Name, send_gtr=_Kind, Index) ->
   Clocks = sample:sample({clocks_valuations,{sample:sample(clocks),#{x=>#{value=>2}}}}),
   io:format("\n(~p:~p/~p) Type: ~p,\n\tClocks: ~p,\n\tT: ~p.\n\n",[_Name,_Kind,Index,Type,Clocks,T]),
   %% ask z3
-  Result = z3:ask_z3(t_reading, #{clocks=>Clocks,type=>Type,t=>T}),
+  {ok, Result, _ExecString} = z3:ask_z3(t_reading, #{clocks=>Clocks,type=>Type,t=>T}),
+  case Result of true -> ok; _ -> io:format("\n\nWarning, not t_reading. ExecString:\n~s\n.",[_ExecString]) end,
   %% return (and call next iteration)
-  Result;
+  {ok, Result};
 %%
 
 %% @doc t_reading tests, send_leq
@@ -437,9 +435,10 @@ test(t_reading=_Name, send_leq=_Kind, Index) ->
   Clocks = sample:sample({clocks_valuations,{sample:sample(clocks),#{x=>#{value=>2}}}}),
   io:format("\n(~p:~p/~p) Type: ~p,\n\tClocks: ~p,\n\tT: ~p.\n\n",[_Name,_Kind,Index,Type,Clocks,T]),
   %% ask z3
-  Result = z3:ask_z3(t_reading, #{clocks=>Clocks,type=>Type,t=>T}),
+  {ok, Result, _ExecString} = z3:ask_z3(t_reading, #{clocks=>Clocks,type=>Type,t=>T}),
+  case Result of true -> ok; _ -> io:format("\n\nWarning, not t_reading. ExecString:\n~s\n.",[_ExecString]) end,
   %% return (and call next iteration)
-  Result;
+  {ok, Result};
 %%
 
 %% @doc t_reading tests, recv_gtr
@@ -460,9 +459,10 @@ test(t_reading=_Name, recv_gtr=_Kind, Index) ->
   Clocks = sample:sample({clocks_valuations,{sample:sample(clocks),#{x=>#{value=>2}}}}),
   io:format("\n(~p:~p/~p) Type: ~p,\n\tClocks: ~p,\n\tT: ~p.\n\n",[_Name,_Kind,Index,Type,Clocks,T]),
   %% ask z3
-  Result = z3:ask_z3(t_reading, #{clocks=>Clocks,type=>Type,t=>T}),
+  {ok, Result, _ExecString} = z3:ask_z3(t_reading, #{clocks=>Clocks,type=>Type,t=>T}),
+  case Result of true -> ok; _ -> io:format("\n\nWarning, not t_reading. ExecString:\n~s\n.",[_ExecString]) end,
   %% return (and call next iteration)
-  Result;
+  {ok, Result};
 %%
 
 %% @doc t_reading tests, recv_leq
@@ -483,9 +483,10 @@ test(t_reading=_Name, recv_leq=_Kind, Index) ->
   Clocks = sample:sample({clocks_valuations,{sample:sample(clocks),#{x=>#{value=>2*Index}}}}),
   io:format("\n(~p:~p/~p) Type: ~p,\n\tClocks: ~p,\n\tT: ~p.\n\n",[_Name,_Kind,Index,Type,Clocks,T]),
   %% ask z3
-  Result = z3:ask_z3(t_reading, #{clocks=>Clocks,type=>Type,t=>T}),
+  {ok, Result, _ExecString} = z3:ask_z3(t_reading, #{clocks=>Clocks,type=>Type,t=>T}),
+  case Result of true -> ok; _ -> io:format("\n\nWarning, not t_reading. ExecString:\n~s\n.",[_ExecString]) end,
   %% return (and call next iteration)
-  Result;
+  {ok, Result};
 %%
 
 

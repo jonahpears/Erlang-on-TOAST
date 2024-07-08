@@ -4,6 +4,7 @@
 
 
 -define(DEFAULT_SHOW_TRACE,true).
+-define(DEFAULT_SHOW_Z3_ERRORS,true).
 -define(WORKER_SHOW_TRACE,false).
 
 %% how fine grained to check decimals

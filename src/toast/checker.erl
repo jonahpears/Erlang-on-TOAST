@@ -71,7 +71,7 @@ eval(Map) ->
 %% @doc type-checking rules
 %% @returns tuple of bool denoting if the result of the evaluation, and a list detailing the traces of rules visited.
 -spec rule(map(), map(), toast:process(), {map(),sugar_toast_type()}) -> {boolean(), [[atom()]]} | {boolean(), [atom()]}.
-rule(Gamma, Theta, Process, Delta) -> rule(Gamma, Theta, Process, Delta, #{show_print=>?DEFAULT_SHOW_TRACE}).
+rule(Gamma, Theta, Process, Delta) -> rule(Gamma, Theta, Process, Delta, #{show_print=>?DEFAULT_SHOW_TRACE,show_constraint_errors=>?DEFAULT_SHOW_Z3_ERRORS}).
 
 %% @doc wrapper for adding map of print args ^^
 -spec rule(map(), map(), toast:process(), {map(),sugar_toast_type()}, map()) -> {boolean(), [[atom()]]} | {boolean(), [atom()]}.
@@ -95,7 +95,13 @@ rule(Gamma, Theta, {_Role,'->',E,{Label,_Payload},P}=_Process, {Clocks,[{recv,{_
 when is_atom(Label) and (Label=:=_Label) and is_list(Resets) ->
 
   case ShowPrint of true ->
-  io:format("\n\n/ / / /[Recv]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,Clocks,Type]),
+  io:format("\n\n/ / / /[Recv]/ / / /\n"),
+  io:format("\nGamma:\t~p.",[Gamma]),
+  io:format("\nTheta:\t~p.",[Theta]),
+  io:format("\nProcs:\t~p.",[_Process]),
+  io:format("\nClock:\t~p.",[Clocks]),
+  io:format("\nType:\t~p.",[Type]),
+  io:format("\n\n"),
   ok; _ -> ok end,
 
   %% reset clocks
@@ -190,13 +196,17 @@ when is_atom(Label) and (Label=:=_Label) and is_list(Resets) ->
     _ -> io:format("\n\n(~p) Warning, rule [Recv] does not currently support Delta maps.\n",[?LINE]),
       %% ask z3 if Delta is not E-reading
       Duration = case E of infinity -> ?INFINITY; _ -> E end,
-      {Signal1, NotEReading} = z3:ask_z3(not_t_reading,#{clocks=>Clocks,type=>Type,t=>to_float(Duration)}),
+      {Signal1, NotEReading, _EReadingExecString} = z3:ask_z3(not_t_reading,#{clocks=>Clocks,type=>Type,t=>to_float(Duration)}),
       ?assert(Signal1=:=ok),
-      ?assert(is_boolean(NotEReading))
+      ?assert(is_boolean(NotEReading)),
+
+      case maps:get(show_constraint_errors,_Args,false) of true ->
+      case NotEReading of true -> ok; _ -> io:format("\n\n(~p) Warning, rule [Recv] is e-reading.\nTheta:\t~p,\nClocks:\t~p,\n\nType:\t~p,\nExecString:\n~s\n.\n",[?LINE,Theta,Clocks,Type,_EReadingExecString]) end; _ -> ok end
+    
   end,
 
   
-  {Signal2, FeasibleConstraints} = case Constraints of 
+  {Signal2, FeasibleConstraints, _FeasibileExecString} = case Constraints of 
     %% if Constraints is a cascade, then use the cascade bound
     {cascade, BoundE, _Constraints} -> z3:ask_z3(feasible_constraints,#{clocks=>Clocks,constraints=>_Constraints,e=>BoundE});
 
@@ -208,6 +218,11 @@ when is_atom(Label) and (Label=:=_Label) and is_list(Resets) ->
   % {Signal2, FeasibleConstraints} = ask_z3(feasible_constraints,#{clocks=>Clocks,constraints=>Constraints,e=>Ez3}),
   ?assert(Signal2=:=ok),
   ?assert(is_boolean(FeasibleConstraints)),
+
+
+  case maps:get(show_constraint_errors,_Args,false) of true ->
+  case FeasibleConstraints of true -> ok; _ -> io:format("\n\n(~p) Warning, rule [Recv] constraints not feasible.\nClocks:\t~p,\nType:\t~p,\nExecString:\n~s\n.\n",[?LINE,Clocks,Type,_FeasibileExecString]) end; _ -> ok end,
+  
 
   %% construct premise and return
   Premise = InitialContinuation and Continuation and FeasibleConstraints and NotEReading,
@@ -229,7 +244,13 @@ rule(Gamma, Theta, {_Role,'<-',{Label,_Payload},P}=_Process, {Clocks,Type}=_Delt
 when is_list(Type) ->
 
   case ShowPrint of true ->
-  io:format("\n\n/ / / /[Send]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,Clocks,Type]),
+  io:format("\n\n/ / / /[Send]/ / / /\n"),
+  io:format("\nGamma:\t~p.",[Gamma]),
+  io:format("\nTheta:\t~p.",[Theta]),
+  io:format("\nProcs:\t~p.",[_Process]),
+  io:format("\nClock:\t~p.",[Clocks]),
+  io:format("\nType:\t~p.",[Type]),
+  io:format("\n\n"),
   ok; _ -> ok end,
 
 
@@ -266,9 +287,12 @@ when is_list(Type) ->
   Trace1 = add_to_trace(Trace,'Send'),
 
   %% ask z3 if Delta if constraints satisfied
-  {Signal, SatisfiedConstraints} = z3:ask_z3(satisfied_constraints,#{clocks=>Clocks,constraints=>Constraints}),
+  {Signal, SatisfiedConstraints, _ExecString} = z3:ask_z3(satisfied_constraints,#{clocks=>Clocks,constraints=>Constraints}),
   ?assert(Signal=:=ok),
   ?assert(is_boolean(SatisfiedConstraints)),
+
+  case maps:get(show_constraint_errors,_Args,false) of true ->
+  case SatisfiedConstraints of true -> ok; _ -> io:format("\n\n(~p) Warning, rule [Send] constraints not satisfied.\nTheta:\t~p,\nClocks:\t~p,\nAction:\t~p,\n\nType:\t~p,\nExecString:\n~s\n.\n",[?LINE,Theta,Clocks,Send,Type,_ExecString]) end; _ -> ok end,
   
   %% construct premise and return
   Premise = Continuation and SatisfiedConstraints,
@@ -284,7 +308,13 @@ rule(Gamma, Theta, {Role,'->',E,Branches}=_Process, {Clocks,Type}=_Delta, #{show
 when is_list(Branches) and is_list(Type) ->
 
   case ShowPrint of true ->
-  io:format("\n\n/ / / /[Branch]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,Clocks,Type]),
+  io:format("\n\n/ / / /[Branch]/ / / /\n"),
+  io:format("\nGamma:\t~p.",[Gamma]),
+  io:format("\nTheta:\t~p.",[Theta]),
+  io:format("\nProcs:\t~p.",[_Process]),
+  io:format("\nClock:\t~p.",[Clocks]),
+  io:format("\nType:\t~p.",[Type]),
+  io:format("\n\n"),
   ok; _ -> ok end,
   
 
@@ -300,7 +330,7 @@ when is_list(Branches) and is_list(Type) ->
       end,
 
       %% ask z3 if Delta if constraints satisfied
-      {Signal_j, SatisfiedConstraints_j} = z3:ask_z3(satisfied_constraints,#{clocks=>Clocks,constraints=>Constraints}),
+      {Signal_j, SatisfiedConstraints_j, _ExecString} = z3:ask_z3(satisfied_constraints,#{clocks=>Clocks,constraints=>Constraints}),
       ?assert(Signal_j=:=ok),
       ?assert(is_boolean(SatisfiedConstraints_j)),
       %% check if enabled
@@ -382,7 +412,14 @@ when is_list(Branches) and is_list(Type) ->
 
   
   case ShowPrint of true ->
-  io:format("\n\n/ / / /[Timeout-P]/ / / /\n\nP:\t~p,\nC:\t~p,\nT1: (modified)\n\t~p,\nT: (unmodified)\n\t~p.\n",[_Process,Clocks,Type1,Type]),
+    io:format("\n\n/ / / /[Timeout-P]/ / / /\n"),
+    io:format("\nGamma:\t~p.",[Gamma]),
+    io:format("\nTheta:\t~p.",[Theta]),
+    io:format("\nProcs:\t~p.",[_Process]),
+    io:format("\nClock:\t~p.",[Clocks]),
+    io:format("\nType: (unmodified)\n\t~p.",[Type]),
+    io:format("\nType1: (modified)\n\t~p.",[Type1]),
+    io:format("\n\n"),
   ok; _ -> ok end,
 
   % timer:sleep(5000),
@@ -391,7 +428,14 @@ when is_list(Branches) and is_list(Type) ->
   {Continuation1, Trace1} = rule(Gamma, Theta, {Role,'->',E,Branches}, {Clocks,Type1}),
 
   case ShowPrint of true ->
-  io:format("\n\n/ / / /[Timeout-Q]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,Clocks,Type1]),
+    io:format("\n\n/ / / /[Timeout-Q]/ / / /\n"),
+    io:format("\nGamma:\t~p.",[Gamma]),
+    io:format("\nTheta:\t~p.",[Theta]),
+    io:format("\nProcs:\t~p.",[_Process]),
+    io:format("\nClock:\t~p.",[Clocks]),
+    io:format("\nType: (unmodified)\n\t~p.",[Type]),
+    io:format("\nType1: (modified)\n\t~p.",[Type1]),
+    io:format("\n\n"),
   ok; _ -> ok end,
 
   %% check Q (let E pass over Theta and Clocks)
@@ -404,7 +448,7 @@ when is_list(Branches) and is_list(Type) ->
 
     %% incrememnt clocks and timers by E, then type-check against Q
     {Less,_ValE} -> 
-      ValE = case Less of 'leq' -> _ValE; 'les' -> _ValE-minimal_precision(); _ -> io:format("\n\n(~p) Warning, the DBC in E is not recognised: ~p.\n",[?LINE,E]),_ValE end,
+      ValE = case Less of 'leq' -> _ValE+minimal_precision(); 'les' -> _ValE; _ -> io:format("\n\n(~p) Warning, the DBC in E is not recognised: ~p.\n",[?LINE,E]),_ValE end,
       Theta1 = increment_timers(Theta,ValE), 
       Clocks1 = increment_clocks(Clocks,ValE),
       {Continuation2, Trace2} = rule(Gamma, Theta1, Q, {Clocks1,Type1}, _Args)
@@ -449,7 +493,13 @@ rule(Gamma, Theta, {'if',{Timer, DBC, Value}, 'then', P, 'else', Q}=_Process, {_
   case Constraint of 
     true ->
       case ShowPrint of true ->
-      io:format("\n\n/ / / /[IfTrue]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,_Clocks,_Type]),
+      io:format("\n\n/ / / /[IfTrue]/ / / /\n"),
+      io:format("\nGamma:\t~p.",[Gamma]),
+      io:format("\nTheta:\t~p.",[Theta]),
+      io:format("\nProcs:\t~p.",[_Process]),
+      io:format("\nClock:\t~p.",[_Clocks]),
+      io:format("\nType:\t~p.",[_Type]),
+      io:format("\n\n"),
       ok; _ -> ok end,
 
       %% continue with P
@@ -460,7 +510,13 @@ rule(Gamma, Theta, {'if',{Timer, DBC, Value}, 'then', P, 'else', Q}=_Process, {_
 
     _ -> 
       case ShowPrint of true ->
-      io:format("\n\n/ / / /[IfFalse]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,_Clocks,_Type]),
+      io:format("\n\n/ / / /[IfFalse]/ / / /\n"),
+      io:format("\nGamma:\t~p.",[Gamma]),
+      io:format("\nTheta:\t~p.",[Theta]),
+      io:format("\nProcs:\t~p.",[_Process]),
+      io:format("\nClock:\t~p.",[_Clocks]),
+      io:format("\nType:\t~p.",[_Type]),
+      io:format("\n\n"),
       ok; _ -> ok end,
 
       %% continue with P
@@ -485,7 +541,13 @@ rule(Gamma, Theta, {'if',{Timer, DBC, Value}, 'then', P, 'else', Q}=_Process, {_
 rule(Gamma, Theta, {'set', Timer, P}=_Process, {_Clocks,_Type}=Delta, #{show_print:=ShowPrint}=_Args)
 ->
   case ShowPrint of true ->
-  io:format("\n\n/ / / /[Timer]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,_Clocks,_Type]),
+  io:format("\n\n/ / / /[Timer]/ / / /\n"),
+  io:format("\nGamma:\t~p.",[Gamma]),
+  io:format("\nTheta:\t~p.",[Theta]),
+  io:format("\nProcs:\t~p.",[_Process]),
+  io:format("\nClock:\t~p.",[_Clocks]),
+  io:format("\nType:\t~p.",[_Type]),
+  io:format("\n\n"),
   ok; _ -> ok end,
 
   %% set timer to 0 (regardless of if it existed before or not)
@@ -510,7 +572,13 @@ rule(Gamma, Theta, {'delay',{t, DBC, N},P}=_Process, {_Clocks,_Type}=Delta, #{sh
 when is_atom(DBC) and (is_atom(N) or is_integer(N)) ->
   
   case ShowPrint of true ->
-  io:format("\n\n/ / / /[Del-delta]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,_Clocks,_Type]),
+  io:format("\n\n/ / / /[Del-delta]/ / / /\n"),
+  io:format("\nGamma:\t~p.",[Gamma]),
+  io:format("\nTheta:\t~p.",[Theta]),
+  io:format("\nProcs:\t~p.",[_Process]),
+  io:format("\nClock:\t~p.",[_Clocks]),
+  io:format("\nType:\t~p.",[_Type]),
+  io:format("\n\n"),
   ok; _ -> ok end,
 
 
@@ -528,7 +596,7 @@ when is_atom(DBC) and (is_atom(N) or is_integer(N)) ->
                 is_first=>true,
                 is_last=>false,
                 decrement=>MinimalPrecision },
-      {N,_Map};
+      {N+MinimalPrecision,_Map};
     'geq' -> 
       _Map = #{ is_lower_exclusive=>true,
                 is_upper_exclusive=>false,
@@ -546,7 +614,7 @@ when is_atom(DBC) and (is_atom(N) or is_integer(N)) ->
                 is_first=>true,
                 is_last=>(N==1),
                 decrement=>MinimalPrecision },
-      {0,_Map};
+      {0-MinimalPrecision,_Map};
     'leq' -> 
       _Map = #{ is_lower_exclusive=>true,
                 is_upper_exclusive=>false,
@@ -608,7 +676,13 @@ when is_atom(DBC) and (is_atom(N) or is_integer(N)) ->
 rule(Gamma, Theta, {'delay',T,P}=_Process, {Clocks,Type}=_Delta, #{show_print:=ShowPrint}=_Args)
 when is_number(T) ->
   case ShowPrint of true ->
-  io:format("\n\n/ / / /[Del-t]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,Clocks,Type]),
+  io:format("\n\n/ / / /[Del-t]/ / / /\n"),
+  io:format("\nGamma:\t~p.",[Gamma]),
+  io:format("\nTheta:\t~p.",[Theta]),
+  io:format("\nProcs:\t~p.",[_Process]),
+  io:format("\nClock:\t~p.",[Clocks]),
+  io:format("\nType:\t~p.",[Type]),
+  io:format("\n\n"),
   ok; _ -> ok end,
 
   %% increment timers and clocks y T
@@ -622,9 +696,12 @@ when is_number(T) ->
   Trace1 = add_to_trace(Trace,'Del-t'),
 
   %% ask z3 if Delta is not T-reading
-  {Signal, NotTReading} = z3:ask_z3(not_t_reading,#{clocks=>Clocks,type=>Type,t=>to_float(T)}),
+  {Signal, NotTReading, _ExecString} = z3:ask_z3(not_t_reading,#{clocks=>Clocks,type=>Type,t=>to_float(T)}),
   ?assert(Signal=:=ok),
   ?assert(is_boolean(NotTReading)),
+
+  case maps:get(show_constraint_errors,_Args,false) of true ->
+  case NotTReading of true -> ok; _ -> io:format("\n\n(~p) Warning, rule [Del-t] is t-reading.\nTheta:\t~p,\nClocks:\t~p,\n\nType:\t~p,\nExecString:\n~s\n.\n",[?LINE,Theta,Clocks,Type,_ExecString]) end; _ -> ok end,
 
   %% construct premise and return
   Premise = Continuation and NotTReading,
@@ -641,22 +718,28 @@ when is_number(T) ->
 
 %% @doc rule [Rec]
 %% type-checking recursive definitions
-rule(Gamma, Theta, {'def', P, 'as', {Var, Msgs}}=_Process, {_Clocks,_Type}=Delta, #{show_print:=ShowPrint}=_Args)
+rule(Gamma, Theta, {'def', P, 'as', {Var, {Msgs,_Roles}}}=_Process, {_Clocks,_Type}=Delta, #{show_print:=ShowPrint}=_Args)
 ->
   case ShowPrint of true ->
-  io:format("\n\n/ / / /[Rec]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,_Clocks,_Type]),
+  io:format("\n\n/ / / /[Rec]/ / / /\n"),
+  io:format("\nGamma:\t~p.",[Gamma]),
+  io:format("\nTheta:\t~p.",[Theta]),
+  io:format("\nProcs:\t~p.",[_Process]),
+  io:format("\nClock:\t~p.",[_Clocks]),
+  io:format("\nType:\t~p.",[_Type]),
+  io:format("\n\n"),
   ok; _ -> ok end,
 
   %% check name not already used
   FreeName = not is_map_key(Var,Gamma),
   %% assign into Gamma
-  Gamma1 = maps:put(Var,Msgs,Gamma),
+  Gamma1 = maps:put(Var,{Msgs,_Roles},Gamma),
   
   %% continue type-checking
   {Continuation, Trace} = rule(Gamma1, Theta, P, Delta, _Args),
   
   %% update Trace
-  Trace1 = add_to_trace(Trace,'Var'),
+  Trace1 = add_to_trace(Trace,'Rec'),
 
   %% construct premise and return
   Premise = Continuation and FreeName,
@@ -668,28 +751,44 @@ rule(Gamma, Theta, {'def', P, 'as', {Var, Msgs}}=_Process, {_Clocks,_Type}=Delta
 
 %% @doc rule [Var]
 %% type-checking recursive calls
-rule(Gamma, _Theta, {'call', {Var, Msgs}}=_Process, {_Clocks,{'call', Name}=_Type}=_Delta, #{show_print:=ShowPrint}=_Args)
+rule(Gamma, _Theta, {'call', {Var, {Msgs,Roles}}}=_Process, {_Clocks,{'call', Name}=_Type}=_Delta, #{show_print:=ShowPrint}=_Args)
 ->
   case ShowPrint of true ->
-  io:format("\n\n/ / / /[Var]/ / / /\n\nP:\t~p,\nC:\t~p,\nT:\t~p.\n",[_Process,_Clocks,_Type]),
+  io:format("\n\n/ / / /[Var]/ / / /\n"),
+  io:format("\nGamma:\t~p.",[Gamma]),
+  io:format("\nTheta:\t~p.",[_Theta]),
+  io:format("\nProcs:\t~p.",[_Process]),
+  io:format("\nClock:\t~p.",[_Clocks]),
+  io:format("\nType:\t~p.",[_Type]),
+  io:format("\n\n"),
   ok; _ -> ok end,
 
   %% check names match
   NamesMatch = (Var=:=Name),
   %% check Gamma for recursive call
   IsInGamma = is_map_key(Name,Gamma),
-  
-  %% since we dont check datatypes, 
-  %% check the labels of each message are present in Msgs
-  MsgsValid = maps:fold(fun(Label,_Val,Ps) ->
-    Ps and is_map_key(Label,Msgs)
-  end, true, maps:get(Name,Gamma,#{})),
+  case maps:get(Name,Gamma,undefined) of
+    undefined -> MsgsValid = false, RolesValid = false;
+      
+    {GammaMsgs, GammaRoles} ->
+      %% since we dont check datatypes, 
+      %% check the labels of each message are present in Msgs
+      MsgsValid = maps:fold(fun(ExpectedLabel,_Val,Ps) ->
+        Ps and is_map_key(ExpectedLabel,Msgs)
+      end, true, maps:from_list(GammaMsgs)),
 
+      %% also check that roles are present 
+      RolesValid = lists:foldl(fun(ExpectedRole,Ps) ->
+        Ps and lists:member(ExpectedRole,Roles)
+      end, true, GammaRoles)
+
+  end,
+  
   %% TODO, check if rest of the premise is accounted for (checking Delta and Theta)
 
   %% construct premise and return
-  Premise = NamesMatch and IsInGamma and MsgsValid,
-  show_trace('Var',Premise,{NamesMatch,IsInGamma,MsgsValid},ShowPrint),
+  Premise = NamesMatch and IsInGamma and MsgsValid and RolesValid,
+  show_trace('Var',Premise,{NamesMatch,IsInGamma,MsgsValid,RolesValid},ShowPrint),
   {Premise, ['Var']};
 %%
 
@@ -844,7 +943,7 @@ cascade({_Role,'->',E,_Branches}=_P, Clocks, {Direction,{Label,_Payload}=_Msg,Co
     'send' -> #{};
     'recv' -> %% check if currently enabled
       %% ask z3 if Delta if constraints satisfied
-      {Signal, SatisfiedConstraints} = z3:ask_z3(satisfied_constraints,#{clocks=>Clocks,constraints=>Constraints}),
+      {Signal, SatisfiedConstraints, _ExecString} = z3:ask_z3(satisfied_constraints,#{clocks=>Clocks,constraints=>Constraints}),
       ?assert(Signal=:=ok),
       ?assert(is_boolean(SatisfiedConstraints)),
 
@@ -871,7 +970,7 @@ cascade({_Role,'->',E,_Branches,'after',Q}=_P, Clocks, {Direction,{Label,_Payloa
     'send' -> #{};
     'recv' -> %% check if currently enabled
       %% ask z3 if Delta if constraints satisfied
-      {Signal, SatisfiedConstraints} = z3:ask_z3(satisfied_constraints,#{clocks=>Clocks,constraints=>Constraints}),
+      {Signal, SatisfiedConstraints, _ExecString} = z3:ask_z3(satisfied_constraints,#{clocks=>Clocks,constraints=>Constraints}),
       ?assert(Signal=:=ok),
       ?assert(is_boolean(SatisfiedConstraints)),
 
