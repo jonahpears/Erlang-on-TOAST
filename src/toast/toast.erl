@@ -12,6 +12,104 @@
 -type delta () :: toast_type:constraints().
 
 
+
+%%
+run_demo(timeout) -> 
+
+  %% try changing 'leq' to 'les' or 'gtr'
+  %% try changing 1 to any other positive integer
+  Process = {'p','->',{'leq',1},{response,undefined},term,
+             'after',{'p','<-',{timeout,undefined},term}},
+
+  Type = [{recv,{response,none},{x,'leq',1},[],'end'},
+          {send,{timeout,none},{x,'gtr',1},[],'end'}],
+
+  Clocks = [{x,0}],
+
+  %% type check
+  Gamma = #{},
+  Theta = #{},
+  Result = checker:eval(Gamma, Theta, Process, {Clocks,Type}),
+  {IsTyped,_} = Result,
+
+  io:format("\nrun demo(timeout):\n\nGamma: ~p, Theta: ~p,\nPrc:\t~p,\nType:\t~p,\nClocks: ~p.\n\nIsTyped: ~p.",[Gamma,Theta,Process,Type,Clocks,IsTyped]),
+
+  {ok, IsTyped};
+%%
+
+
+
+%%
+run_demo(cotimeout) -> 
+
+  _Process1 = {'set',"x", {delay,{'t','leq',1}, 
+                {'if', {"x",'leq',1}, 
+                'then', {'p','<-',{response,undefined},term},
+                'else', {'p','->','infinity',{timeout,undefined},term} }}},
+
+  _Process2 = {'set',"x", {delay,{'t','leq',10}, 
+                {'if', {"x",'leq',1}, 
+                'then', {'p','<-',{response,undefined},term},
+                'else', {'p','->','infinity',{timeout,undefined},term} }}},
+
+  Process = _Process1,
+
+  Type = [{send,{response,none},{x,'leq',1},[],'end'},
+          {recv,{timeout,none},{x,'gtr',1},[],'end'}],
+
+  Clocks = [{x,0}],
+
+  %% type check
+  Gamma = #{},
+  Theta = #{},
+  Result = checker:eval(Gamma, Theta, Process, {Clocks,Type}),
+  {IsTyped,_} = Result,
+
+  io:format("\nrun demo(cotimeout):\n\nGamma: ~p, Theta: ~p,\nPrc:\t~p,\nType:\t~p,\nClocks: ~p.\n\nIsTyped: ~p.",[Gamma,Theta,Process,Type,Clocks,IsTyped]),
+
+  {ok, IsTyped};
+%%
+
+
+
+%%
+run_demo(recursive) -> 
+
+  Process = {'p','->',0,{start,undefined}, {'set', "y", 
+              {'def', 
+                {'p','->',{'leq',1},{stop_early,undefined},term,
+                'after', {'delay', {t,'leq',1}, 
+                    {'if', {"y", 'les', 2}, 
+                    'then', {'p','<-',{data,undefined},{'set',"y",{'call',{"loop",{[],[]}}}}},
+                    'else', {'p','->','infinity',{stop_late,undefined},term}
+                }}}, 'as', {"loop",{[],[]}}}}},
+
+  Type = [{recv,{start,none},{x,eq,0},[x,y],
+            {'def',"loop",
+              [{recv,{stop_early,none},{x,'leq',1},[],'end'},
+              {send,{data,none},{{{y,'gtr',1}, 'and', {x,'gtr',1}}, 'and', {x,'les',2}},[y],{'call',"loop"}},
+              {recv,{stop_late,none},{x,'geq',2},[],'end'}]}}],
+
+  Clocks = [{x,0}],
+
+  %% type check
+  Gamma = #{},
+  Theta = #{},
+  Result = checker:eval(Gamma, Theta, Process, {Clocks,Type}),
+  {IsTyped,_} = Result,
+
+  io:format("\nrun demo(recursive):\n\nGamma: ~p, Theta: ~p,\nPrc:\t~p,\nType:\t~p,\nClocks: ~p.\n\nIsTyped: ~p.",[Gamma,Theta,Process,Type,Clocks,IsTyped]),
+
+  {ok, IsTyped}.
+%%
+
+
+
+
+
+
+
+
 %% @doc wrapper function for type-checking a type and process 
 check(Type,Process) ->
   io:format("\n\n= = = = = = =\n\nchecking,\n\ntype:\t~p,\n\nprocess:\t~p.\n",[Type,Process]),
