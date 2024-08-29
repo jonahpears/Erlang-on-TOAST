@@ -16,6 +16,8 @@
                    | {'act', atom(), protocol(), 'aft', upper_bound(), protocol()}
                    | {'branch', [ {atom(), protocol()} ]}
                    | {'branch', [ {atom(), protocol()} ], 'aft', upper_bound(), protocol()}
+                   | {'select', [ {atom(), protocol()} ]}
+                   | {'select', [ {atom(), protocol()} ], 'aft', upper_bound(), protocol()}
                    | {'aft', upper_bound(), protocol()}
                    | {'timer', string(), number(), protocol()}
                    | {'delay', time(), protocol()}

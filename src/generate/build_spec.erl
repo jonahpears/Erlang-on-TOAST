@@ -177,6 +177,8 @@ to_spec(State, StateID, Edges, States, _RecMap, Spec) ->
   FinalSpec.
 
 
+
+
 -spec edge_spec(map(), atom(), integer(), list(), map(), map(), map()) -> map().
 
 %% @doc for init edge
@@ -250,6 +252,84 @@ edge_spec(#{to:=To,is_silent:=true,is_delay:=true,edge_data:=#{delay:=#{ref:=Del
   %% return new spec
   NewSpec;
 %%
+
+
+%% @doc for if 
+edge_spec(#{to:=To,is_if:=true,edge_data:=#{if_stmt:=#{ref:=Ref,is_timer:=IsTimer,is_not:=IsNot,then_id:=ThenIndex,else_id:=ElseIndex}}}=_Edge, State, StateID, _Edges, States, _RecMap, Spec) ->
+
+  %% assume is timer
+  ?assert(IsTimer=:=true),
+  ?assert(To=:=ThenIndex),
+
+  %% get next state info
+  ThenState = maps:get(ThenIndex, States),
+  ThenStateName = case is_end_state(ThenState) of
+    true -> stop_state;
+    _ -> state_name(ThenState, ThenIndex)
+  end,
+  
+  StateName = state_name(State, StateID),
+
+
+  %% get next state info
+  ElseState = maps:get(ElseIndex, States),
+  ElseStateName = case is_end_state(ElseState) of
+    true -> stop_state;
+    _ -> state_name(ElseState, ElseIndex)
+  end,
+
+  case IsNot of 
+
+    %% if inverted,
+    %% go to then state but start timeout to switch to else state from else state if timer has finished
+    true ->
+      %% switch from then state to else state if timer finishes
+      NewSpec1 = add_to_timeouts(ThenStateName,Ref,ElseStateName,Spec),
+
+      %% add immediate transition to Then state
+      NewSpec2 = add_to_timeouts(StateName,instantaneous,ThenStateName,NewSpec1),
+
+      %% update new spec
+      NewSpec = NewSpec2;
+
+    %% if not inverted, 
+    %% go to else state, and start timer to switch to then state if timer finishes
+    _ ->
+      %% switch from else state to then state if timer finishes
+      NewSpec1 = add_to_timeouts(ElseStateName,Ref,ThenStateName,Spec),
+
+      %% add immediate transition to Else state
+      NewSpec2 = add_to_timeouts(StateName,instantaneous,ElseStateName,NewSpec1),
+
+      %% update new spec
+      NewSpec = NewSpec2
+
+  end,
+  
+  %% return new spec
+  NewSpec;
+%%
+
+%% @doc for else 
+edge_spec(#{is_else:=true}=_Edge, _State, _StateID, _Edges, _States, _RecMap, Spec) ->
+  % %% get next state info
+  % ToState = maps:get(To, States),
+  % ToStateName = case is_end_state(ToState) of
+  %   true -> stop_state;
+  %   _ -> state_name(ToState, To)
+  % end,
+
+  % StateName = state_name(State, StateID),
+
+  % %% update with this edge
+  % NewSpec = add_to_timeouts(StateName,Ref,ToStateName,Spec),
+  % %% return new spec
+  % NewSpec;
+
+  %% return old spec, as corresponding else branch has already done this
+  Spec;
+%%
+
 
 %% @doc for unhandled edges
 edge_spec(Edge, _State, _StateID, _Edges, _States, _RecMap, Spec) ->
@@ -347,7 +427,7 @@ is_state_resolvable(State) ->
 %%
 
 is_state_initialisable(State) ->
-  InitialisableStates = [standard_state,recv_after_state,send_after_state,branch_state,branch_after_state,select_state,  select_after_state,if_then_else_state],
+  InitialisableStates = [standard_state,recv_after_state,send_after_state,branch_state,branch_after_state,select_state,select_after_state,if_then_else_state],
   lists:member(State,InitialisableStates).
 %%
   

@@ -102,7 +102,9 @@ and is_integer(_StateID) ->
     custom_end_state -> custom_end_state;
     error_state -> error_state;
     standard_state -> list_to_atom("state" ++ StateID ++ "_std");
-    choice_state -> list_to_atom("state" ++ StateID ++ "choice_after");
+    % choice_state -> list_to_atom("state" ++ StateID ++ "choice_after");
+    branch_state -> list_to_atom("state" ++ StateID ++ "_branch");
+    select_state -> list_to_atom("state" ++ StateID ++ "_select");
     recv_after_state -> list_to_atom("state" ++ StateID ++ "_recv_after");
     branch_after_state -> list_to_atom("state" ++ StateID ++ "_branch_after");
     send_after_state -> list_to_atom("state" ++ StateID ++ "_send_after");
@@ -111,6 +113,8 @@ and is_integer(_StateID) ->
     if_state -> list_to_atom("state" ++ StateID ++ "_if");
     if_then_else_state -> list_to_atom("state" ++ StateID ++ "_if_else");
     fatal_timeout_state -> list_to_atom("state" ++ StateID ++ "_fatal_timeout");
+    timer_start_state -> list_to_atom("state" ++ StateID ++ "_timer_start");
+    delay_state -> list_to_atom("state" ++ StateID ++ "_delay");
     _Else -> list_to_atom("state" ++ StateID ++ "_unexpected_" ++ atom_to_list(State))
   end.
 %%

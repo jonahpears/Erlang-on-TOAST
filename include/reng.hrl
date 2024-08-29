@@ -7,7 +7,7 @@
     event,
     trans_type,
     timeout = #{ref=>undefined},
-    if_stmt = #{is_timer=>false,ref=>undefined,is_not=>false},
+    if_stmt = #{is_timer=>false,ref=>undefined,is_not=>false,then_id=>undefined,else_id=>undefined},
     pattern,
     args,
     guard,

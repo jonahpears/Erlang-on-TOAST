@@ -12,6 +12,9 @@
 -type delta () :: toast_type:constraints().
 
 
+-spec process_to_protocol(atom(),process()) -> interleave:protocol().
+process_to_protocol(Name,Process) -> toast_process:to_protocol({Name,Process}).
+
 
 %%
 run_demo(timeout) -> 

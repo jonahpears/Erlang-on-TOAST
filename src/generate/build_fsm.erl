@@ -100,7 +100,8 @@ args(Param) ->
             Event = cast,
             TransType = action,
             Var = Str,
-            Act = list_to_atom("act_" ++ Var)
+            Act = list_to_atom("act_" ++ Var),
+            timer:sleep(5000)
     end,
     {Act, string:titlecase(Var), Event, TransType}.
 
@@ -171,7 +172,8 @@ to_fsm({act, Act, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks
     %% determine 
     case EdgeData#edge_data.trans_type of
       recv -> Nodes1 = maps:put(PrevVis, recv_state(), Nodes);
-      send -> Nodes1 = maps:put(PrevVis, send_state(), Nodes)
+      send -> Nodes1 = maps:put(PrevVis, send_state(), Nodes);
+      _ -> ?SHOW("\n{act, Act, P}, unhandled trans_type: \"~p\" from Act: ~p,\nEdgeData: ~p.\n",[EdgeData#edge_data.trans_type, Act, EdgeData]), Nodes1=Nodes
     end,
     to_fsm(P, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks);
 
@@ -281,7 +283,8 @@ to_fsm({act, Act, P, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis,
           Edges2,
           Nodes2,
           RecMap2,
-          PrevIndex2 + 1,
+          PrevIndex2,
+          % PrevIndex2 + 1,
           PrevIndex,
           EndIndex2,
           Clocks2
@@ -318,7 +321,7 @@ to_fsm({branch, Branches}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, C
     BranchingFSM=lists:foldl(
         fun({Label, P1}, {E, N, R, I, _, EI, CI}=F) ->
             I1 = I + 1,
-            EdgeData = data(Label),
+            EdgeData = data(list_to_atom("r_"++atom_to_list(Label))),
             ?VSHOW("\n\nbranch, (I1=>~p) EI: ~p, BranchFSM:\n\tbefore: ~p.\n",[I1, EI,F]),
             Edge = #edge{
                 from = PrevVis,
@@ -353,7 +356,7 @@ to_fsm({branch, Branches, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, Pre
     {Edges2, Nodes2, RecMap2, PrevIndex2, _PrevVis2, EndIndex2, Clocks2} = lists:foldl(
         fun({Label, P1}, {E, N, R, I, _, EI, CI}) ->
             I1 = I + 1,
-            EdgeData = data(Label),
+            EdgeData = data(list_to_atom("r_"++atom_to_list(Label))),
             Edge = #edge{
                 from = PrevVis,
                 to = I1,
@@ -387,7 +390,7 @@ to_fsm({select, Branches}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, C
     lists:foldl(
         fun({Label, P1}, {E, N, R, I, _, EI, CI}) ->
             I1 = I + 1,
-            EdgeData = data(Label),
+            EdgeData = data(list_to_atom("s_"++atom_to_list(Label))),
             Edge = #edge{
                 from = PrevVis,
                 to = I1,
@@ -413,7 +416,7 @@ to_fsm({select, Branches, aft, Timeout, Q}, Edges, Nodes, RecMap, PrevIndex, Pre
     {Edges2, Nodes2, RecMap2, PrevIndex2, _PrevVis2, EndIndex2, Clocks2} = lists:foldl(
         fun({Label, P1}, {E, N, R, I, _, EI, CI}) ->
             I1 = I + 1,
-            EdgeData = data(Label),
+            EdgeData = data(list_to_atom("s_"++atom_to_list(Label))),
             Edge = #edge{
                 from = PrevVis,
                 to = I1,
@@ -572,7 +575,7 @@ to_fsm({if_timer, Name, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, 
     %% create edge from current if_timer to P
     Edge = #edge{ from = PrevVis,
                   to = Index,
-                  edge_data = #edge_data{if_stmt=#{is_timer=>true,ref=>Name,is_not=>false}},
+                  edge_data = #edge_data{if_stmt=#{is_timer=>true,ref=>Name,is_not=>false,then_id=>Index}},
                   is_silent = true,
                   is_if = true,
                   is_else = false,
@@ -584,11 +587,12 @@ to_fsm({if_timer, Name, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, 
     %% move to P
     {QEdges, QNodes, QRecMap, QPrevIndex, _QPrevVis, QEndIndex, QClocks} = to_fsm(P, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks),
     %% get index of Q
-    QIndex = QPrevIndex + 1,
+    QIndex = QPrevIndex,
+    % QIndex = QPrevIndex + 1,
     %% create edge from current timer_state_state to Q
     QEdge = #edge{ from = PrevVis,
                   to = QIndex,
-                  edge_data = #edge_data{if_stmt=#{is_timer=>true,ref=>Name,is_not=>false}},
+                  edge_data = #edge_data{if_stmt=#{is_timer=>true,ref=>Name,is_not=>false,then_id=>Index,else_id=>QIndex}},
                   is_silent = true,
                   is_if = false,
                   is_else = true,
@@ -597,8 +601,34 @@ to_fsm({if_timer, Name, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, 
                   is_custom_end = false },
     %% add edge to edges
     QEdges1 = QEdges ++ [QEdge],
+    %% find edge for `then` branch and update with ids
+    QEdges2 = lists:foldl(fun(E, EsIn) -> 
+      case E#edge.from of 
+  
+        %% either then or else branch
+        PrevVis -> 
+          case E#edge.to of 
+  
+            %% is the `then` branch
+            Index -> 
+              EdgeData = E#edge.edge_data,
+              IfStmt = EdgeData#edge_data.if_stmt,
+              NewEdgeData = EdgeData#edge_data{if_stmt=maps:put(else_id,QIndex,IfStmt)},
+              NewE = E#edge{edge_data=NewEdgeData},
+              EsIn++[NewE];
+  
+            %% is some other branch
+            _ -> EsIn++[E]
+  
+          end;
+  
+        %% some other edge
+        _ -> EsIn++[E]
+  
+      end
+    end, [], QEdges1),
     %% move to Q
-    to_fsm(error, QEdges1, QNodes, QRecMap, QIndex, QIndex, QEndIndex, QClocks);
+    to_fsm(error, QEdges2, QNodes, QRecMap, QIndex, QIndex, QEndIndex, QClocks);
 
 %% @doc 
 to_fsm({if_not_timer, Name, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
@@ -609,7 +639,7 @@ to_fsm({if_not_timer, Name, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndInd
     %% create edge from current if_timer to P
     Edge = #edge{ from = PrevVis,
                   to = Index,
-                  edge_data = #edge_data{if_stmt=#{is_timer=>true,ref=>Name,is_not=>true}},
+                  edge_data = #edge_data{if_stmt=#{is_timer=>true,ref=>Name,is_not=>true,then_id=>Index}},
                   is_silent = true,
                   is_if = true,
                   is_else = false,
@@ -621,11 +651,12 @@ to_fsm({if_not_timer, Name, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndInd
     %% move to P
     {QEdges, QNodes, QRecMap, QPrevIndex, _QPrevVis, QEndIndex, QClocks} = to_fsm(P, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks),
     %% get index of Q
-    QIndex = QPrevIndex + 1,
+    QIndex = QPrevIndex,
+    % QIndex = QPrevIndex + 1,
     %% create edge from current timer_state_state to Q
     QEdge = #edge{ from = PrevVis,
                   to = QIndex,
-                  edge_data = #edge_data{if_stmt=#{is_timer=>true,ref=>Name,is_not=>true}},
+                  edge_data = #edge_data{if_stmt=#{is_timer=>true,ref=>Name,is_not=>true,then_id=>Index,else_id=>QIndex}},
                   is_silent = true,
                   is_if = false,
                   is_else = true,
@@ -634,8 +665,34 @@ to_fsm({if_not_timer, Name, P}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndInd
                   is_custom_end = false },
     %% add edge to edges
     QEdges1 = QEdges ++ [QEdge],
+    %% find edge for `then` branch and update with ids
+    QEdges2 = lists:foldl(fun(E, EsIn) -> 
+      case E#edge.from of 
+  
+      %% either then or else branch
+      PrevVis -> 
+        case E#edge.to of 
+  
+            %% is the `then` branch
+            Index -> 
+              EdgeData = E#edge.edge_data,
+              IfStmt = EdgeData#edge_data.if_stmt,
+              NewEdgeData = EdgeData#edge_data{if_stmt=maps:put(else_id,QIndex,IfStmt)},
+              NewE = E#edge{edge_data=NewEdgeData},
+              EsIn++[NewE];
+
+            %% is some other branch
+            _ -> EsIn++[E]
+  
+          end;
+  
+        %% some other edge
+        _ -> EsIn++[E]
+  
+      end
+    end, [], QEdges1),
     %% move to Q
-    to_fsm(error, QEdges1, QNodes, QRecMap, QIndex, QIndex, QEndIndex, QClocks);
+    to_fsm(error, QEdges2, QNodes, QRecMap, QIndex, QIndex, QEndIndex, QClocks);
 
 %% @doc 
 to_fsm({if_timer, Name, P, 'else', Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
@@ -646,7 +703,7 @@ to_fsm({if_timer, Name, P, 'else', Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis,
   %% create edge from current if_timer to P
   Edge = #edge{ from = PrevVis,
                 to = Index,
-                edge_data = #edge_data{if_stmt=#{is_timer=>true,ref=>Name,is_not=>false}},
+                edge_data = #edge_data{if_stmt=#{is_timer=>true,ref=>Name,is_not=>false,then_id=>Index}},
                 is_silent = true,
                 is_if = true,
                 is_else = false,
@@ -658,11 +715,12 @@ to_fsm({if_timer, Name, P, 'else', Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis,
   %% move to P
   {QEdges, QNodes, QRecMap, QPrevIndex, _QPrevVis, QEndIndex, QClocks} = to_fsm(P, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks),
   %% get index of Q
-  QIndex = QPrevIndex + 1,
+  QIndex = QPrevIndex,
+  % QIndex = QPrevIndex + 1,
   %% create edge from current timer_state_state to Q
   QEdge = #edge{ from = PrevVis,
                 to = QIndex,
-                edge_data = #edge_data{if_stmt=#{is_timer=>true,ref=>Name,is_not=>false}},
+                edge_data = #edge_data{if_stmt=#{is_timer=>true,ref=>Name,is_not=>false,then_id=>Index,else_id=>QIndex}},
                 is_silent = true,
                 is_if = false,
                 is_else = true,
@@ -671,8 +729,34 @@ to_fsm({if_timer, Name, P, 'else', Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis,
                 is_custom_end = false },
   %% add edge to edges
   QEdges1 = QEdges ++ [QEdge],
+  %% find edge for `then` branch and update with ids
+  QEdges2 = lists:foldl(fun(E, EsIn) -> 
+    case E#edge.from of 
+  
+    %% either then or else branch
+    PrevVis -> 
+      case E#edge.to of 
+
+          %% is the `then` branch
+          Index -> 
+            EdgeData = E#edge.edge_data,
+            IfStmt = EdgeData#edge_data.if_stmt,
+            NewEdgeData = EdgeData#edge_data{if_stmt=maps:put(else_id,QIndex,IfStmt)},
+            NewE = E#edge{edge_data=NewEdgeData},
+            EsIn++[NewE];
+
+          %% is some other branch
+          _ -> EsIn++[E]
+
+        end;
+
+      %% some other edge
+      _ -> EsIn++[E]
+
+    end
+  end, [], QEdges1),
   %% move to Q
-  to_fsm(Q, QEdges1, QNodes, QRecMap, QIndex, QIndex, QEndIndex, QClocks);
+  to_fsm(Q, QEdges2, QNodes, QRecMap, QIndex, QIndex, QEndIndex, QClocks);
 
 %% @doc 
 to_fsm({if_not_timer, Name, P, 'else', Q}, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->
@@ -683,7 +767,7 @@ to_fsm({if_not_timer, Name, P, 'else', Q}, Edges, Nodes, RecMap, PrevIndex, Prev
   %% create edge from current if_timer to P
   Edge = #edge{ from = PrevVis,
                 to = Index,
-                edge_data = #edge_data{if_stmt=#{is_timer=>true,ref=>Name,is_not=>true}},
+                edge_data = #edge_data{if_stmt=#{is_timer=>true,ref=>Name,is_not=>true,then_id=>Index}},
                 is_silent = true,
                 is_if = true,
                 is_else = false,
@@ -695,11 +779,12 @@ to_fsm({if_not_timer, Name, P, 'else', Q}, Edges, Nodes, RecMap, PrevIndex, Prev
   %% move to P
   {QEdges, QNodes, QRecMap, QPrevIndex, _QPrevVis, QEndIndex, QClocks} = to_fsm(P, Edges1, Nodes1, RecMap, Index, Index, EndIndex, Clocks),
   %% get index of Q
-  QIndex = QPrevIndex + 1,
+  QIndex = QPrevIndex,
+  % QIndex = QPrevIndex + 1,
   %% create edge from current timer_state_state to Q
   QEdge = #edge{ from = PrevVis,
                 to = QIndex,
-                edge_data = #edge_data{if_stmt=#{is_timer=>true,ref=>Name,is_not=>true}},
+                edge_data = #edge_data{if_stmt=#{is_timer=>true,ref=>Name,is_not=>true,then_id=>Index,else_id=>QIndex}},
                 is_silent = true,
                 is_if = false,
                 is_else = true,
@@ -708,8 +793,34 @@ to_fsm({if_not_timer, Name, P, 'else', Q}, Edges, Nodes, RecMap, PrevIndex, Prev
                 is_custom_end = false },
   %% add edge to edges
   QEdges1 = QEdges ++ [QEdge],
+  %% find edge for `then` branch and update with ids
+  QEdges2 = lists:foldl(fun(E, EsIn) -> 
+    case E#edge.from of 
+  
+    %% either then or else branch
+    PrevVis -> 
+      case E#edge.to of 
+
+          %% is the `then` branch
+          Index -> 
+            EdgeData = E#edge.edge_data,
+            IfStmt = EdgeData#edge_data.if_stmt,
+            NewEdgeData = EdgeData#edge_data{if_stmt=maps:put(else_id,QIndex,IfStmt)},
+            NewE = E#edge{edge_data=NewEdgeData},
+            EsIn++[NewE];
+          
+          %% is some other branch
+          _ -> EsIn++[E]
+
+        end;
+
+      %% some other edge
+      _ -> EsIn++[E]
+
+    end
+  end, [], QEdges1),
   %% move to Q
-  to_fsm(Q, QEdges1, QNodes, QRecMap, QIndex, QIndex, QEndIndex, QClocks);
+  to_fsm(Q, QEdges2, QNodes, QRecMap, QIndex, QIndex, QEndIndex, QClocks);
 
 %% @doc unhandled protocol
 to_fsm(S, Edges, Nodes, RecMap, PrevIndex, PrevVis, EndIndex, Clocks) ->

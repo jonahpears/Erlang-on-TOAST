@@ -30,7 +30,17 @@ gen(ProtocolName, Protocol, FileName) ->
     _Err -> ?SHOW("Warning, output directory (~p) could not be created.\n\nMaybe try creating it yourself and running the program again.",[output_location()])
   end,
 
-  ModuleName = list_to_atom(atom_to_list(ProtocolName)++"_"++lists:last(lists:droplast(string:tokens(FileName, "/.")))),
+  ModuleName = case FileName of 
+    %% if only ext provided
+    ".erl" -> ProtocolName;
+
+    %% if no filename provided
+    "" -> ProtocolName;
+
+    %% if some  
+    _ -> list_to_atom(atom_to_list(ProtocolName)++"_"++lists:last(lists:droplast(string:tokens(FileName, "/."))))
+
+  end,
   ?SHOW("Module Name: ~p", [ModuleName]),
 
   Fsm = build_fsm(Protocol),
@@ -46,8 +56,36 @@ gen(ProtocolName, Protocol, FileName) ->
   % ?SHOW("Module Syntax Tree: Success:\n~p.", [SyntaxTree]),
   ?SHOW("Module Syntax Tree: Success.", []),
 
-  Program = erl_prettypr:format(SyntaxTree, prettypr_options()),
+  Program1 = erl_prettypr:format(SyntaxTree, prettypr_options()),
   ?SHOW("Format to Program: Success.", []),
+
+  %% replace each "TempMacroPlaceholder_" with "?"
+  Program2 = string:replace(Program1,"TempMacroPlaceholder_","?",all),
+
+  %% make sure "-export" is after "-include("stub.hrl")."
+  %% by default, merl_build always places include before export
+  %% first remove
+  ProgramList1 = string:split(Program2,"-include(\"stub.hrl\").",leading),
+  ?assert(length(ProgramList1)==2),
+  Preamble = lists:nth(1, ProgramList1),
+  ExportAndMainMatter = lists:nth(2, ProgramList1),
+  %% then find where "-export" is
+  ExportOnwards = string:find(ExportAndMainMatter,"-export",leading),
+  %% then find where the next line break is, and put it after that
+  ProgramList = string:split(ExportOnwards,".",leading),
+  ?assert(length(ProgramList)==2),
+  ExportStringOld = lists:nth(1, ProgramList),
+  MainMatter = lists:nth(2, ProgramList),
+
+  %% add to export string "start_link/0,start_link/1,stopping/2"
+  {ExportStringFront, ExportStringEnd} = lists:split(length(ExportStringOld)-2, ExportStringOld),
+  ExportString = ExportStringFront++", start_link/0, start_link/1, stopping/2"++ExportStringEnd,
+
+  %% stitch back together
+  Program3 = Preamble ++ "\n" ++ ExportString ++ ".\n\n-include(\"stub.hrl\").\n\n%% @doc \nstart_link() -> start_link([]).\n\n%% @doc \nstart_link(Args) -> stub_start_link(Args).\n\n" ++ MainMatter,
+  % Program3 = Preamble ++ "\n" ++ ExportString ++ ".\n\n-include_lib(\"headers/stub.hrl\").\n\n%% @doc \nstart_link() -> start_link([]).\n\n%% @doc \nstart_link(Args) -> stub_start_link(Args).\n\n" ++ MainMatter,
+
+  Program = Program3,
 
   OutputPath = output_location() ++ atom_to_list(ModuleName) ++ ".erl",
   file:write_file(OutputPath, Program),
@@ -97,11 +135,12 @@ build_module_forms(Protocol, Fsm, ModuleName,MonitorSpec) ->
   Forms3 = merl_build:add_attribute(define,  [merl:var('SHOW(Str, Args, Data)'),  merl:var('case ?SHOW_ENABLED of true -> printout(Data, ?SHOW_MONITORED++"~p, "++Str, [?FUNCTION_NAME]++Args); _ -> ok end')], Forms2),
   Forms4 = merl_build:add_attribute(define,  [merl:var('SHOW_VERBOSE'),           merl:var('?SHOW_ENABLED and true')], Forms3),
   Forms5 = merl_build:add_attribute(define,  [merl:var('VSHOW(Str, Args, Data)'), merl:var('case ?SHOW_VERBOSE of true -> printout(Data, ?SHOW_MONITORED++"(verbose) ~p, "++Str, [?FUNCTION_NAME]++Args); _ -> ok end')], Forms4),
-  Forms6 = merl_build:add_attribute(define,  [merl:var('MONITOR_SPEC'),           merl:term(MonitorSpec)], Forms5),
-  Forms7 = merl_build:add_attribute(define,  [merl:var('PROTOCOL_SPEC'),          merl:term(Protocol)], Forms6),
-  Forms8 = merl_build:add_attribute(include, [merl:term("stub.hrl")],Forms7),
+  Forms6 = merl_build:add_attribute(define,  [merl:var('DO_SHOW(Str, Args, Data)'), merl:var('printout(Data, ?SHOW_MONITORED++"(verbose) ~p, "++Str, [?FUNCTION_NAME]++Args)')], Forms5),
+  Forms7 = merl_build:add_attribute(define,  [merl:var('MONITOR_SPEC'),           merl:term(MonitorSpec)], Forms6),
+  Forms8 = merl_build:add_attribute(define,  [merl:var('PROTOCOL_SPEC'),          merl:term(Protocol)], Forms7),
+  Forms9 = merl_build:add_attribute(include, [merl:term("stub.hrl")],Forms8),
 
-  MainForms = Forms8,
+  MainForms = Forms9,
 
   ?VSHOW("\nForms:\t~p.",[MainForms]),
 

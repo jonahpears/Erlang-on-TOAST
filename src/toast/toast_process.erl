@@ -62,6 +62,7 @@ supported_processes() -> [error_process, termination_process, send_process, bran
 
 %% {from, within, [msg, next], after, other}
 -type timeout_process () :: {branch_process(), 'after', toast_process()}.
+% -type cotimeout_process () :: {send_process(), 'after', toast_process()}.
 
 %% {set, timer, next}
 -type set_process () :: {'set', timer(), toast_process()}.
@@ -98,9 +99,9 @@ supported_processes() -> [error_process, termination_process, send_process, bran
 
 
 %% @doc takes toast process and returns input protocol
--spec to_protocol(toast_process()) -> interleave:protocol().
+-spec to_protocol({atom(),toast_process()}) -> interleave:protocol().
 to_protocol({Name, Process}) -> 
-  Map = #{name=>Name,rec_vars=>#{},pending_timers=>#{},timers_to_set=>[]},
+  Map = #{name=>Name,rec_vars=>#{},pending_timers=>#{},timers_to_set=>[],flags=>#{}},
   % Map = #{name=>Name,rec_vars=>#{},timers_to_set=>[],trace=>#{head=>undefined,body=>#{},next_action=>undefined,prev_action=>undefined}},
   {Protocol, Map1} = to_protocol(Process, Map),
   %% check if Map3 contains any requirements for Timer
@@ -118,89 +119,129 @@ to_protocol(term, Map) -> {'endP', Map};
 to_protocol(error, Map) -> {'error', Map};
 
 %% @doc recursive call process
-to_protocol({'call', {Name, Msgs}}, #{rec_vars:=RecVars}=Map)
-when is_list(Msgs) -> 
+to_protocol({'call', {Name, {Msgs, Roles}}}, #{rec_vars:=RecVars}=Map)
+when is_list(Msgs) and is_list(Roles) -> 
   %% make sure is defined
   ?assert(is_map_key(Name,RecVars)),
-  %% make sure each msg/timer required to callback is defined
-  #{Name:=RecMsgs} = RecVars,
+  %% make sure each msg/role required to callback is defined
+  #{Name:={RecMsgs,RecRoles}} = RecVars,
   ?assert(lists:foldl(fun(Msg,MsgIn) -> MsgIn and lists:member(Msg,Msgs) end, true, RecMsgs)),
+  ?assert(lists:foldl(fun(Role,RoleIn) -> RoleIn and lists:member(Role,Roles) end, true, RecRoles)),
   %% return call
   {{'rvar', Name}, Map};
 %%
 
 %% @doc recursive definition process
-to_protocol({'def', P, 'as', {Name, Msgs}}, #{rec_vars:=RecVars}=Map)
-when is_map(Map) and is_list(Msgs) -> 
+to_protocol({'def', P, 'as', {Name, {Msgs, Roles}}}, #{rec_vars:=RecVars}=Map)
+when is_map(Map) and is_list(Msgs) and is_list(Roles) -> 
   %% make sure not already defined
   ?assert(not is_map_key(Name,RecVars)),
   %% add new def to map
-  Map1 = maps:put(rec_vars,maps:put(Name,Msgs,RecVars),Map),
+  Map1 = maps:put(rec_vars,maps:put(Name,{Msgs,Roles},RecVars),Map),
+  %% clear flags
+  Map2 = maps:put(flags,#{},Map1),
   %% begin unfolding
-  to_protocol({'def', P, 'as', {Name, Msgs}, 'in', P}, Map1);
+  to_protocol({'def', P, 'as', {Name, {Msgs,Roles}}, 'in', P}, Map2);
 %%
 
 %% @doc recursive definition process unfolding
-to_protocol({'def', _P, 'as', {Name, Msgs}, 'in', Q}, #{rec_vars:=RecVars}=Map)
-when is_map(Map) and is_map_key(Name,RecVars) and is_list(Msgs) -> 
+to_protocol({'def', _P, 'as', {Name, {Msgs, Roles}}, 'in', Q}, #{rec_vars:=RecVars}=Map)
+when is_map(Map) and is_map_key(Name,RecVars) and is_list(Msgs) and is_list(Roles) -> 
+  %% clear flags
+  Map1 = maps:put(flags,#{},Map),
   %% continue unfolding
-  {Protocol, Map1} = to_protocol(Q, Map),
+  {Protocol, Map2} = to_protocol(Q, Map1),
   %% return protocol
-  {{rec, Name, Protocol}, Map1};
+  {{rec, Name, Protocol}, Map2};
 %%
 
 %% @doc set process timer
 to_protocol({'set', Timer, P}, Map) 
 when is_map(Map) and is_list(Timer) -> 
+  %% clear flags
+  Map1 = maps:put(flags,#{},Map),
   %% add to timers_to_set map
-  Map1 = maps:update_with(timers_to_set, fun(V) -> lists:uniq(V++[Timer]) end, [Timer], Map),
+  Map2 = maps:update_with(timers_to_set, fun(V) -> lists:uniq(V++[Timer]) end, [Timer], Map1),
   %% continue mapping
-  {Protocol, Map2} = to_protocol(P, Map1),
+  {Protocol, Map3} = to_protocol(P, Map2),
   % io:format("\nmap2:\t~p.\n",[Map2]),
   %% remove current timer from timers_to_set
-  Map3 = maps:update_with(timers_to_set, fun(V) -> lists:delete(Timer,V) end, [], Map2),
-  %% check if Map3 contains any requirements for Timer
-  resolve_pending_timers(Timer,Protocol,Map3);
+  Map4 = maps:update_with(timers_to_set, fun(V) -> lists:delete(Timer,V) end, [], Map3),
+  %% check if Map3 contains any requirements for Timer 
+  %% and go through continuation and update timer name to match
+  resolve_pending_timers(Timer,Protocol,Map4);
 %%
 
 %% @doc non-deterministic delay process
-to_protocol({'delay', {t, DBC, Const}=Delay, P}, Map) 
+to_protocol({'delay', {t, DBC, Const}=Delay, P}, #{flags:=Flags}=Map) 
 when is_map(Map) and is_atom(DBC) and is_integer(Const) -> 
   %% unsure of value to pick, choose const
-  io:format("\nFound non-deterministic delay:\t~p,\nuncertain how to proceed, using constant (~p) for delay value.\n",[Delay,Const]),
+  % io:format("\nFound non-deterministic delay:\t~p,\nuncertain how to proceed, using constant (~p) for delay value.\n(raised flag to allow potential for non-blocking send after snippet.)\n",[Delay,Const]),
   Value = Const,
   %% resolve to value and continue
-  to_protocol({'delay', Value, P}, Map);
+  % to_protocol({'delay', Value, P}, maps:put(flags,maps:merge(Flags,#{non_det_delay=>true}),Map));
+  {Protocol1, Map1} = to_protocol(P, maps:put(flags,maps:merge(Flags,#{non_det_delay=>true}),Map)),
+  %% check if send after
+  case is_map_key(send_after,maps:get(flags,Map1)) of
+
+    %% if true, then Protocol1 
+    true -> Protocol2 = Protocol1,
+      io:format("\nFound non-deterministic delay:\t~p,\nraised flag and successfully converted to send_after structure.\n",[Delay]);
+
+    
+    %% wrap in delay and return
+    _ -> Protocol2 = {'delay', Value, Protocol1},
+      io:format("\nFound non-deterministic delay:\t~p,\nuncertain how to proceed, using constant (~p) for delay value.\n",[Delay,Const])
+
+  end,
+  %% return protocol
+  {Protocol2, Map1};
 %%
 
-%% @doc non-deterministic delay process
+%% @doc deterministic delay process
 to_protocol({'delay', Delay, P}, Map) 
 when is_map(Map) and is_integer(Delay) -> 
+  %% clear flags
+  Map1 = maps:put(flags,#{},Map),
   %% continue mapping
-  {Protocol1, Map1} = to_protocol(P, Map),
+  {Protocol1, Map2} = to_protocol(P, maps:put(flags,#{},Map1)),
   %% wrap in delay and return
-  {{'delay', Delay, Protocol1}, Map1};
+  {{'delay', Delay, Protocol1}, Map2};
 %%
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% single send/recv actions
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%% @doc send process
-to_protocol({To, '<-', {Label,_Payload},P}, Map) 
+%% @doc send process that has nonblocking dependency
+to_protocol({To, '<-', {Label,_Payload},P}, #{flags:=#{non_det_delay:=true,if_statement:=true}}=Map) 
 when is_map(Map) and is_atom(To) and is_atom(Label) -> 
   %% continue mapping
   {Protocol1, Map1} = to_protocol(P, Map),
   %% wrap in act s_ and return
   ActLabel = list_to_atom("s_"++atom_to_list(Label)),
-  {{'act', ActLabel, Protocol1}, Map1};
+  {{'act', ActLabel, Protocol1}, maps:put(flags,#{send_after=>true},Map1)};
+%%
+
+%% @doc send process
+to_protocol({To, '<-', {Label,_Payload},P}, Map) 
+when is_map(Map) and is_atom(To) and is_atom(Label) -> 
+  %% clear flags
+  Map1 = maps:put(flags,#{},Map),
+  %% continue mapping
+  {Protocol1, Map2} = to_protocol(P, Map1),
+  %% wrap in act s_ and return
+  ActLabel = list_to_atom("s_"++atom_to_list(Label)),
+  {{'act', ActLabel, Protocol1}, Map2};
 %%
 
 %% @doc recv process
 to_protocol({From, '->', UpperBound, {Label,_Payload}, P}, Map) 
 when is_map(Map) and is_atom(From) and is_atom(Label) -> 
+  %% clear flags
+  Map1 = maps:put(flags,#{},Map),
   %% continue mapping
-  {Protocol1, Map1} = to_protocol(P, Map),
+  {Protocol1, Map2} = to_protocol(P, Map1),
   %% wrap in act r_ and return
   ActLabel = list_to_atom("r_"++atom_to_list(Label)),
   %% warn against having non-infinite durations without timeout
@@ -215,7 +256,7 @@ when is_map(Map) and is_atom(From) and is_atom(Label) ->
       Protocol2 = {'act', ActLabel, Protocol1, 'aft', Duration, error}
   end,
   %% return protocol
-  {Protocol2, Map1};
+  {Protocol2, Map2};
 %%
 
 %% @doc recv process (wrapped in list)
@@ -234,15 +275,17 @@ when is_map(Map) and is_atom(From) and is_atom(Label) and is_list(Branches) ->
 %% @doc branch process
 to_protocol({From, '->', UpperBound, [{{_Label,_Payload},_P}|_T]=Branches}, Map) 
 when is_map(Map) and is_atom(From) and is_atom(_Label) and is_list(Branches) -> 
+  %% clear flags
+  Map1 = maps:put(flags,#{},Map),
   %% make sure more than one branch
   ?assert(length(Branches)>1),
   %% create branches list
-  {Branches1,Map1} = lists:foldl(fun({{Label,__Payload},P},{InBranches,InMap}) -> 
+  {Branches1,Map2} = lists:foldl(fun({{Label,__Payload},P},{InBranches,InMap}) -> 
     %% continue mapping 
     {BranchProtocol, BranchMap} = to_protocol(P,InMap),
     %% add to branches, wrapped in label (without unnecessary prefix r_)
     {InBranches++[{Label, BranchProtocol}], BranchMap}
-  end, {[],Map}, Branches),
+  end, {[],Map1}, Branches),
   %% warn against having non-infinite durations without timeout
   case UpperBound of 
     infinity ->%% return protocol
@@ -255,7 +298,7 @@ when is_map(Map) and is_atom(From) and is_atom(_Label) and is_list(Branches) ->
       Protocol = {'branch', Branches1, 'aft', Duration, error}
   end,  
   %% return protocol
-  {Protocol, Map1};
+  {Protocol, Map2};
 %%
 
 %%%%%%%%%%%%%%%%%%%%
@@ -264,9 +307,11 @@ when is_map(Map) and is_atom(From) and is_atom(_Label) and is_list(Branches) ->
 
 %% @doc recv-after process
 to_protocol({From, '->', UpperBound, {{Label,Payload},P}, 'after', Timeout}, Map)
-when is_map(Map) and is_atom(From) -> 
+when is_map(Map) and is_atom(From) ->
+  %% clear flags
+  Map1 = maps:put(flags,#{},Map), 
   %% utilise previous methods, but ensure no timeout is added to end
-  {Protocol, Map1} = to_protocol({From, '->', infinity, {Label,Payload}, P}, Map),
+  {Protocol, Map2} = to_protocol({From, '->', infinity, {Label,Payload}, P}, Map1),
   %% unpack
   {'act', LabelP, NextP} = Protocol,
   %% warn about having infinite timeout
@@ -275,17 +320,17 @@ when is_map(Map) and is_atom(From) ->
       io:format("\nWarning, infinite upper bound specified for timeout.\nSince the timeout branch will never be reached, and erlang timers cannot be set to infinity, the timeout branch has been removed.\n"),
       %% set protocol and map
       Protocol2 = Protocol,
-      Map2 = Map1;
+      Map3 = Map2;
     _ -> 
       {_DBC, Duration} = UpperBound,
       ?assert(is_integer(Duration)),
       %% continue mapping 
-      {Protocol1, Map2} = to_protocol(Timeout, Map1),
+      {Protocol1, Map3} = to_protocol(Timeout, Map2),
       %% set protocol
       Protocol2 = {'act', LabelP, NextP, 'aft', Duration, Protocol1}
   end,  
   %% return protocol
-  {Protocol2, Map2};
+  {Protocol2, Map3};
 %%
 
 %% @doc recv-after process (wrapped in list)
@@ -300,8 +345,10 @@ when is_map(Map) and is_atom(From) and is_atom(Label) and is_list(Branches) ->
 %% @doc timeout process
 to_protocol({From, '->', UpperBound, [{{_Label,_Payload},_P}|_T]=Branches, 'after', Timeout}, Map)
 when is_map(Map) and is_atom(From) and is_list(Branches) -> 
+  %% clear flags
+  Map1 = maps:put(flags,#{},Map),
   %% utilise previous methods, but ensure no timeout is added to end
-  {Protocol, Map1} = to_protocol({From, '->', infinity, Branches}, Map),
+  {Protocol, Map2} = to_protocol({From, '->', infinity, Branches}, Map1),
   %% unpack
   {'branch', Branches1} = Protocol,
   %% warn about having infinite timeout
@@ -310,44 +357,33 @@ when is_map(Map) and is_atom(From) and is_list(Branches) ->
       io:format("\nWarning, infinite upper bound specified for timeout.\nSince the timeout branch will never be reached, and erlang timers cannot be set to infinity, the timeout branch has been removed.\n"),
       %% set protocol and map
       Protocol2 = Protocol,
-      Map2 = Map1;
+      Map3 = Map2;
     _ -> 
       {_DBC, Duration} = UpperBound,
       ?assert(is_integer(Duration)),
       %% continue mapping 
-      {Protocol1, Map2} = to_protocol(Timeout, Map1),
+      {Protocol1, Map3} = to_protocol(Timeout, Map2),
       %% set protocol
       Protocol2 = {'branch', Branches1, 'aft', Duration, Protocol1}
   end,  
   %% return protocol
-  {Protocol2, Map2};
+  {Protocol2, Map3};
 %%
 
 
 %%%%%%%%%%%%%%%%%%%
 %%% select process
 %%%%%%%%%%%%%%%%%%%
-to_protocol({'if', {Name, DBC, Const}=_Constraint, 'then', P, 'else', Q}, #{timers_to_set:=Timers,pending_timers:=Pending}=Map)
+to_protocol({'if', {Name, DBC, Const}=_Constraint, 'then', P, 'else', Q}, #{timers_to_set:=Timers,pending_timers:=Pending,flags:=Flags}=Map)
 when is_map(Map) and is_list(Name) and is_integer(Const) -> 
   %% check if timer has been defined previously, warn if not and arrange for it to be set at the beginning of the protocol
   case lists:member(Name,Timers) of true -> ok; _ -> io:format("\nWarning, an 'if' conditional uses timer (~p) which has not yet been set.\nThis is not a valid process and has been corrected by specifying to set the timer at the very beginning of the protocol.\n",[Name]) end,
+  Map0 = maps:put(flags,maps:merge(Flags,#{if_statement=>true}),Map),
   %% continue mapping P
-  {ProtocolP, MapP} = to_protocol(P, Map),
+  {ProtocolP, MapP} = to_protocol(P, Map0),
   %% continue mapping Q
-  {ProtocolQ, MapQ} = to_protocol(Q, Map),
-  
-  %% determine if this condition should be inverted
-  case DBC of 
-    geq -> Head = 'if_timer';
-    gtr -> Head = 'if_timer';
-    leq -> Head = 'if_not_timer';
-    les -> Head = 'if_not_timer';
-    eq -> Head = 'if_timer',
-      %% TODO :: figure out how to implement this consistently, in the monitors and stubs
-      io:format("\nWarning, constraint uses (eq) which is currently not fully supported.\nThis is due to difficulties in ensuring a timer has finished recently enough to be considered to adhere to `equal to' constraints.\n")
-  end,
+  {ProtocolQ, MapQ} = to_protocol(Q, Map0),
 
-  Protocol = {Head, Name, ProtocolP, 'else', ProtocolQ},
   %% merge maps p and q
   Map1 = maps:merge_with(fun(K, VP, VQ) -> 
     case K of 
@@ -357,11 +393,108 @@ when is_map(Map) and is_list(Name) and is_integer(Const) ->
 
       timers_to_set -> lists:uniq(VP++VQ);
 
+      flags -> maps:merge(VP,VQ);
+
       _ -> %% by default, just use old value passed in
         maps:get(K,Map)
   end end, MapP, MapQ),
-  %% add to pending timers to be passed back out 
-  Map2 = maps:put(pending_timers, maps:update_with(Name, fun(V) -> lists:uniq(V++[Const]) end, [Const], Pending), Map1),
+
+  % io:format("\n\nif,\n\nMap0:\t~p,\n\nProtocolP:\t~p,\n\nProtocolQ:\t~p,\n\nMapP:\t~p,\n\nMapQ:\t~p.\n",[Map0,ProtocolP,ProtocolQ,MapP,MapQ]),
+  % timer:sleep(2000),
+
+  %% check if MapP contains flag for changing this to send after
+  case is_map_key(send_after,maps:get(flags,MapP)) of
+
+    %% if true, then ProtocolP is just the beginning, of {act, s_, P, ...}
+    true -> 
+
+      %% map does not change, as timer not being added 
+      Map2 = Map1,
+
+      %% determine if this condition should be inverted
+      Invert = case DBC of 
+        geq -> true;
+        gtr -> true;
+        leq -> false;
+        les -> false;
+        eq -> true,
+          %% TODO :: figure out how to implement this consistently, in the monitors and stubs
+          io:format("\nWarning, constraint uses (eq) which is currently not fully supported.\nThis is due to difficulties in ensuring a timer has finished recently enough to be considered to adhere to `equal to' constraints.\n")
+      end,
+
+      %% construct the rest of the protocol
+      case Invert of 
+
+        true -> 
+          {act, MsgQ, NextQ} = ProtocolQ,
+          Protocol = {act, MsgQ, NextQ, 'aft', Const, ProtocolP};
+
+
+        _ -> 
+          {act, MsgP, NextP} = ProtocolP,
+          Protocol = {act, MsgP, NextP, 'aft', Const, ProtocolQ}
+
+
+      end;
+
+    %% otherwise, continue as normal
+    _ -> 
+
+      %% add to pending timers to be passed back out 
+      Map2 = maps:put(pending_timers, maps:update_with(Name, fun(V) -> lists:uniq(V++[Const]) end, [Const], Pending), Map1),
+      %% create name for timer
+      TimerName = Name++integer_to_list(Const),
+
+      %% check if MapQ contains flag for changing this to send after
+      case is_map_key(send_after,maps:get(flags,MapQ)) of
+
+        %% if true, then ProtocolQ is just the beginning, of {act, s_, Q, ...}
+        true -> 
+
+          %% determine if this condition should be inverted
+          Invert = case DBC of 
+            geq -> true;
+            gtr -> true;
+            leq -> false;
+            les -> false;
+            eq -> true,
+              %% TODO :: figure out how to implement this consistently, in the monitors and stubs
+              io:format("\nWarning, constraint uses (eq) which is currently not fully supported.\nThis is due to difficulties in ensuring a timer has finished recently enough to be considered to adhere to `equal to' constraints.\n")
+          end,
+
+          %% construct the rest of the protocol
+          case Invert of 
+
+            true -> 
+              {act, MsgP, NextP} = ProtocolP,
+              Protocol = {act, MsgP, NextP, 'aft', Const, ProtocolQ};
+
+
+            _ -> 
+              {act, MsgQ, NextQ} = ProtocolQ,
+              Protocol = {act, MsgQ, NextQ, 'aft', Const, ProtocolP}
+
+
+          end;
+
+        %% otherwise, continue as normal
+        _ -> 
+
+        %% determine if this condition should be inverted
+        case DBC of 
+          geq -> Head = 'if_timer';
+          gtr -> Head = 'if_timer';
+          leq -> Head = 'if_not_timer';
+          les -> Head = 'if_not_timer';
+          eq -> Head = 'if_timer',
+            %% TODO :: figure out how to implement this consistently, in the monitors and stubs
+            io:format("\nWarning, constraint uses (eq) which is currently not fully supported.\nThis is due to difficulties in ensuring a timer has finished recently enough to be considered to adhere to `equal to' constraints.\n")
+        end,
+
+        Protocol = {Head, TimerName, ProtocolP, 'else', ProtocolQ}
+
+      end
+  end,
   %% return protocol
   {Protocol, Map2};
 %%
@@ -1025,10 +1158,10 @@ maptest(linear_recursion_send_recv) ->
     'def', {
       p, '<-', {msg_A, undefined}, {
         p, '->', {msg_B, undefined}, {
-          'call', {"r1", [{msg_A, undefined}, {msg_B, undefined}], ["x"]}
+          'call', {"r1", {[{msg_A, undefined}, {msg_B, undefined}], ["x"]}}
         }
       }
-    }, 'as', {"r1", [], ["x"]}
+    }, 'as', {"r1", {[], ["x"]}}
   }};
 
 maptest(linear_recursion_recv_send) -> 
@@ -1036,10 +1169,10 @@ maptest(linear_recursion_recv_send) ->
     'def', {
       p, '->', {msg_A, undefined}, {
         p, '<-', {msg_B, undefined}, {
-          'call', {"r1", [{msg_A, undefined}, {msg_B, undefined}], ["y"]}
+          'call', {"r1", {[{msg_A, undefined}, {msg_B, undefined}], []}}
         }
       }
-    }, 'as', {"r1", [], ["y"]}
+    }, 'as', {"r1", {[], []}}
   }};
 
 %% producer-consumer (producer)
@@ -1048,12 +1181,12 @@ maptest(nonlinear_recursion_send_recv) ->
     'def', {
       'if', {"x", leq, 5}, 'then', {
         p, '<-', {msg_A, undefined}, {
-          'call', {"r1", [{msg_A, undefined}], ["x"]}
+          'call', {"r1", {[{msg_A, undefined}], []}}
         }
       }, 'else', {
         p, '->', {msg_B, undefined}, term
       }
-    }, 'as', {"r1", [], ["x"]}
+    }, 'as', {"r1", {[], []}}
   }};
 
 %% producer-consumer (consumer)
@@ -1065,12 +1198,12 @@ maptest(nonlinear_recursion_recv_send_using_if) ->
     'def', {
       'if', {"y", leq, 5}, 'then', {
         p, '->', {msg_A, undefined}, {
-          'call', {"r1", [{msg_A, undefined}], ["y"]}
+          'call', {"r1", {[{msg_A, undefined}], []}}
         }
       }, 'else', {
         p, '<-', {msg_B, undefined}, term
       }
-    }, 'as', {"r1", [], ["y"]}
+    }, 'as', {"r1", {[], []}}
   }};
 
 
@@ -1081,7 +1214,7 @@ maptest(nonlinear_recursion_recv_send_using_branch) ->
                 'call', {"r1", [{msg_A, undefined}], []}
                 }} ],
               'after', { p, '<-', {msg_B, undefined}, term}
-          }, 'as', {"r1", [], []}};
+          }, 'as', {"r1", {[], []}}};
 
 
 %%%%%%%%%%%%%%%
