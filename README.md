@@ -55,7 +55,7 @@ This file is already included in the generated stubs automatically, to allow mor
 
 
 # 2. Sample Project
-Please see [`/sample_project/`](https://github.com/jonahpears/Erlang-on-TOAST/tree/main/sample_project).
+Please see the [`sample app`](https://github.com/jonahpears/Erlang-on-TOAST-sample-app) repo (moved here).
 
 ## 2.1 Monitoring Template
 Please see [`/sample_project/gen_monitor.erl`](https://github.com/jonahpears/Erlang-on-TOAST/tree/main/sample_project/gen_monitor.erl).
