@@ -58,10 +58,10 @@ This file is already included in the generated stubs automatically, to allow mor
 Please see the [`sample app`](https://github.com/jonahpears/Erlang-on-TOAST-sample-app) repo (moved here).
 
 ## 2.1 Monitoring Template
-Please see [`/sample_project/gen_monitor.erl`](https://github.com/jonahpears/Erlang-on-TOAST/tree/main/sample_project/gen_monitor.erl).
+Please see [`/sample_app/src/monitor template/gen_monitor.erl`](https://github.com/jonahpears/Erlang-on-TOAST-sample-app/blob/main/src/monitor%20template/gen_monitor.erl).
 
 ## 2.2 Generated Stub Utility Functions
-Please see [`/sample_project/stub.hrl`](https://github.com/jonahpears/Erlang-on-TOAST/tree/main/sample_project/stub.hrl).
+Please see [`/sample_app/include/stub.hrl`](https://github.com/jonahpears/Erlang-on-TOAST-sample-app/blob/main/include/stub.hrl).
 
 
 
