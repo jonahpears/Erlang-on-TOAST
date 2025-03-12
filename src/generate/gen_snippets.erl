@@ -7,6 +7,7 @@
 -define(EQ_LIMIT_MS, 10).
 
 -define(MACRO_PLACEHOLDER, "TempMacroPlaceholder_").
+% -define(MACRO_PLACEHOLDER, "?").
 
 %% disable parse transforms
 % -define(MERL_NO_TRANSFORM, true).
@@ -402,7 +403,7 @@ state(State, StateID, {InScope, InScopeID}, {_PrevDataIndex, _StateDataIndex}, E
           %% only one silent transition
           Silent = to_map(lists:nth(1,Silents)),
           #{to:=TimeoutStateID,edge_data:=#{timeout:=#{ref:=InitDuration}}} = Silent,
-          Duration = case InitDuration of "?EQ_LIMIT_MS" -> ?MACRO_PLACEHOLDER++"EQ_LIMIT_MS"; _ -> InitDuration end,
+          Duration = InitDuration, % Duration = case InitDuration of "?EQ_LIMIT_MS" -> ?MACRO_PLACEHOLDER++"EQ_LIMIT_MS"; _ -> InitDuration end,
           %% get timeout
           TimeoutState = maps:get(TimeoutStateID, States),
           %% ! updated to use correct index
@@ -444,7 +445,7 @@ state(State, StateID, {InScope, InScopeID}, {_PrevDataIndex, _StateDataIndex}, E
           %% only one silent transition
           Silent = to_map(lists:nth(1,Silents)),
           #{to:=TimeoutStateID,edge_data:=#{timeout:=#{ref:=InitDuration}}} = Silent,
-          Duration = case InitDuration of "?EQ_LIMIT_MS" -> ?MACRO_PLACEHOLDER++"EQ_LIMIT_MS"; _ -> InitDuration end,
+          Duration = InitDuration, % Duration = case InitDuration of "?EQ_LIMIT_MS" -> ?MACRO_PLACEHOLDER++"EQ_LIMIT_MS"; _ -> InitDuration end,
           %% get timeout
           TimeoutState = maps:get(TimeoutStateID, States),
           %% ! updated to use correct index
@@ -486,7 +487,7 @@ state(State, StateID, {InScope, InScopeID}, {_PrevDataIndex, _StateDataIndex}, E
           %% only one silent transition
           Silent = to_map(lists:nth(1,Silents)),
           #{to:=TimeoutStateID,edge_data:=#{timeout:=#{ref:=InitDuration}}} = Silent,
-          Duration = case InitDuration of "?EQ_LIMIT_MS" -> ?MACRO_PLACEHOLDER++"EQ_LIMIT_MS"; _ -> InitDuration end,
+          Duration = InitDuration, % Duration = case InitDuration of "?EQ_LIMIT_MS" -> ?MACRO_PLACEHOLDER++"EQ_LIMIT_MS"; _ -> InitDuration end,
           %% get timeout
           TimeoutState = maps:get(TimeoutStateID, States),
           %% ! updated to use correct index
@@ -534,7 +535,7 @@ state(State, StateID, {InScope, InScopeID}, {_PrevDataIndex, _StateDataIndex}, E
           %% only one silent transition
           Silent = to_map(lists:nth(1,Silents)),
           #{to:=TimeoutStateID,edge_data:=#{timeout:=#{ref:=InitDuration}}} = Silent,
-          Duration = case InitDuration of "?EQ_LIMIT_MS" -> ?MACRO_PLACEHOLDER++"EQ_LIMIT_MS"; _ -> InitDuration end,
+          Duration = InitDuration, % Duration = case InitDuration of "?EQ_LIMIT_MS" -> ?MACRO_PLACEHOLDER++"EQ_LIMIT_MS"; _ -> InitDuration end,
           %% get timeout
           TimeoutState = maps:get(TimeoutStateID, States),
           %% ! updated to use correct index
@@ -554,6 +555,30 @@ state(State, StateID, {InScope, InScopeID}, {_PrevDataIndex, _StateDataIndex}, E
 
 
         error_state -> 
+          ?assert(length(RelevantEdges)==1),
+          %% get edge 
+          Edge = to_map(lists:nth(1,RelevantEdges)),
+          %% depends on case of single direction kind
+          #{to:=ToStateID,edge_data:=#{error_reason:=ErrorReason}} = Edge,
+
+          %% get call to stopping from funmap 
+          StoppingFunDefs = maps:get(ToStateID,FunMap,stopping_function_undefined),
+          ?assert(StoppingFunDefs=/=stopping_function_undefined),
+          ?assert(length(StoppingFunDefs)>0),
+          %% should all be the same enough
+          {_Exported, StopFunName, _} = lists:nth(1, StoppingFunDefs),
+        
+          %% string helpers
+          StrReason = atom_to_list(ErrorReason),
+          StrStopName = atom_to_list(StopFunName),
+          %% make snippet for error and calling stop
+          Snippet = ["error("++StrReason++"),",
+                      StrStopName++"("++StrReason++", CoParty, "++PrevData++")"],
+          %% package as necessary
+          FinalFunMap = FunMap,
+          FinalRecMap = RecMap1;
+
+        fatal_timeout_state -> 
           ?assert(length(RelevantEdges)==1),
           %% get edge 
           Edge = to_map(lists:nth(1,RelevantEdges)),
@@ -1091,7 +1116,7 @@ snippet({init_state}, _IDs, _Stuff) ->
   Clause = merl_commented(pre, [
       "% @doc Called to finish initialising process.",
       "% @see stub_init/1 in `stub.hrl`.",
-      "% If this process is set to be monitored (i.e., "++?MACRO_PLACEHOLDER++"MONITORED) then, in the space indicated below setup options for the monitor may be specified, before the session actually commences.",
+      "% If this process is set to be monitored (i.e., '?MONITORED') then, in the space indicated below setup options for the monitor may be specified, before the session actually commences.",
       "% Processes wait for a signal from the session coordinator (SessionID) before beginning."
     ],?Q([
       "(Args) -> ",
@@ -1103,7 +1128,7 @@ snippet({init_state}, _IDs, _Stuff) ->
       "CoParty = maps:get(coparty_id,Data),",
       "SessionID = maps:get(session_id,Data),",
       % "\n",
-      "case "++?MACRO_PLACEHOLDER++"MONITORED of ",
+      "case '?MONITORED' of ",
       "true -> ",
       % "%% add calls to specify behaviour of monitor here.",
       % "\n",

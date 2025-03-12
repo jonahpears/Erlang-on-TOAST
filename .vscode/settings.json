@@ -7,5 +7,9 @@
     "editor.detectIndentation": false,
     "editor.tabSize": 2,
     "editor.indentSize": "tabSize",
-    "python.analysis.typeCheckingMode": "basic"
+    "python.analysis.typeCheckingMode": "basic",
+    "workbench.colorCustomizations": {
+      "minimap.background": "#00000000",
+      "scrollbar.shadow": "#00000000"
+    }
 }

@@ -314,15 +314,22 @@ when is_map(Map) and is_atom(From) ->
   {Protocol, Map2} = to_protocol({From, '->', infinity, {Label,Payload}, P}, Map1),
   %% unpack
   {'act', LabelP, NextP} = Protocol,
+  %% ensure UpperBound is normalized for 0
+  case UpperBound of {_, 0} -> UpperBound1 = 0; _ -> UpperBound1 = UpperBound end,
   %% warn about having infinite timeout
-  case UpperBound of 
+  case UpperBound1 of 
     infinity -> 
       io:format("\nWarning, infinite upper bound specified for timeout.\nSince the timeout branch will never be reached, and erlang timers cannot be set to infinity, the timeout branch has been removed.\n"),
       %% set protocol and map
       Protocol2 = Protocol,
       Map3 = Map2;
-    _ -> 
-      {_DBC, Duration} = UpperBound,
+    0 -> 
+      io:format("\nWarning, timeout with duration 0 found.\n This will be replaced by reference to macro '?EQ_LIMIT_MS' which is configurable in the generated stubs.\n"),
+      %% continue mapping 
+      {Protocol1, Map3} = to_protocol(Timeout, Map2),
+      %% set protocol
+      Protocol2 = {'act', LabelP, NextP, 'aft', '?EQ_LIMIT_MS', Protocol1};
+    {_DBC, Duration} -> 
       ?assert(is_integer(Duration)),
       %% continue mapping 
       {Protocol1, Map3} = to_protocol(Timeout, Map2),
@@ -351,15 +358,22 @@ when is_map(Map) and is_atom(From) and is_list(Branches) ->
   {Protocol, Map2} = to_protocol({From, '->', infinity, Branches}, Map1),
   %% unpack
   {'branch', Branches1} = Protocol,
+  %% ensure UpperBound is normalized for 0
+  case UpperBound of {_, 0} -> UpperBound1 = 0; _ -> UpperBound1 = UpperBound end,
   %% warn about having infinite timeout
-  case UpperBound of 
+  case UpperBound1 of 
     infinity -> 
       io:format("\nWarning, infinite upper bound specified for timeout.\nSince the timeout branch will never be reached, and erlang timers cannot be set to infinity, the timeout branch has been removed.\n"),
       %% set protocol and map
       Protocol2 = Protocol,
       Map3 = Map2;
-    _ -> 
-      {_DBC, Duration} = UpperBound,
+    0 -> 
+      io:format("\nWarning, timeout with duration 0 found.\n This will be replaced by reference to macro '?EQ_LIMIT_MS' which is configurable in the generated stubs.\n"),
+      %% continue mapping 
+      {Protocol1, Map3} = to_protocol(Timeout, Map2),
+      %% set protocol
+      Protocol2 = {'branch', Branches1, 'aft', '?EQ_LIMIT_MS', Protocol1};
+    {_DBC, Duration} -> 
       ?assert(is_integer(Duration)),
       %% continue mapping 
       {Protocol1, Map3} = to_protocol(Timeout, Map2),
@@ -419,7 +433,7 @@ when is_map(Map) and is_list(Name) and is_integer(Const) ->
         les -> false;
         eq -> true,
           %% TODO :: figure out how to implement this consistently, in the monitors and stubs
-          io:format("\nWarning, constraint uses (eq) which is currently not fully supported.\nThis is due to difficulties in ensuring a timer has finished recently enough to be considered to adhere to `equal to' constraints.\n")
+          io:format("\nC Warning, constraint uses (eq) which is currently not fully supported.\nThis is due to difficulties in ensuring a timer has finished recently enough to be considered to adhere to `equal to' constraints.\n")
       end,
 
       %% construct the rest of the protocol
@@ -459,7 +473,7 @@ when is_map(Map) and is_list(Name) and is_integer(Const) ->
             les -> false;
             eq -> true,
               %% TODO :: figure out how to implement this consistently, in the monitors and stubs
-              io:format("\nWarning, constraint uses (eq) which is currently not fully supported.\nThis is due to difficulties in ensuring a timer has finished recently enough to be considered to adhere to `equal to' constraints.\n")
+              io:format("\nA Warning, constraint uses (eq) which is currently not fully supported.\nThis is due to difficulties in ensuring a timer has finished recently enough to be considered to adhere to `equal to' constraints.\n")
           end,
 
           %% construct the rest of the protocol
@@ -488,7 +502,7 @@ when is_map(Map) and is_list(Name) and is_integer(Const) ->
           les -> Head = 'if_not_timer';
           eq -> Head = 'if_timer',
             %% TODO :: figure out how to implement this consistently, in the monitors and stubs
-            io:format("\nWarning, constraint uses (eq) which is currently not fully supported.\nThis is due to difficulties in ensuring a timer has finished recently enough to be considered to adhere to `equal to' constraints.\n")
+            io:format("\nB Warning, constraint uses (eq) which is currently not fully supported.\nThis is due to difficulties in ensuring a timer has finished recently enough to be considered to adhere to `equal to' constraints.\n")
         end,
 
         Protocol = {Head, TimerName, ProtocolP, 'else', ProtocolQ}
