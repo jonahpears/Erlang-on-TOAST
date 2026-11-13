@@ -1,6 +1,5 @@
 -module(role_fsm_ali).
 
--file("role_fsm_ali.erl", 1).
 
 -behaviour(gen_statem).
 

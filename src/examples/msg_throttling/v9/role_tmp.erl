@@ -1,5 +1,4 @@
 -module(role_tmp).
--file("role_tmp.erl", 1).
 
 -behaviour(gen_statem).
 

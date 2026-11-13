@@ -1,5 +1,4 @@
 -module(tpri_server).
--file("tpri_server.erl", 1).
 -behaviour(gen_server).
 
 -include_lib("stdlib/include/assert.hrl").
