@@ -1,5 +1,4 @@
 -module(role_imp_cal).
--file("role_imp_cal.erl",1).
 
 -include_lib("stdlib/include/assert.hrl").
 

@@ -1,5 +1,4 @@
 -module(role_imp_bob).
--file("role_imp_bob.erl",1).
 
 -include_lib("stdlib/include/assert.hrl").
 

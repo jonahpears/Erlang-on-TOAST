@@ -1,5 +1,4 @@
 -module(tpri_sup).
--file("tpri_sup.erl", 1).
 -behaviour(supervisor).
 
 -include("tpri_data_records.hrl").

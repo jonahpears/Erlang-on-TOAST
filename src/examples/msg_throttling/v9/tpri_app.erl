@@ -1,5 +1,4 @@
 -module(tpri_app).
--file("tpri_app.erl", 1).
 -behaviour(application).
 
 -include("tpri_data_records.hrl").

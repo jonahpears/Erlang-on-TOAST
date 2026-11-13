@@ -1,5 +1,4 @@
 -module(role_sup).
--file("role_sup.erl", 1).
 -behaviour(supervisor).
 
 -include_lib("stdlib/include/assert.hrl").

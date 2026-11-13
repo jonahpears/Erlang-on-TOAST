@@ -1,6 +1,5 @@
 -module(role_fsm_bob).
 
--file("role_fsm_bob.erl", 1).
 
 -behaviour(gen_statem).
 
